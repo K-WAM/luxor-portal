@@ -1,9 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useAuth } from "../context/AuthContext";
-import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 const ownerNav = [
   { href: "/owner", label: "Dashboard" },
@@ -17,31 +15,6 @@ export default function OwnerLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, role, loading, signOut } = useAuth();
-
-  useEffect(() => {
-    if (!loading && (!user || role !== "owner")) {
-      router.push("/");
-    }
-  }, [loading, user, role, router]);
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.push("/");
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  if (!user || role !== "owner") {
-    return null;
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -72,13 +45,9 @@ export default function OwnerLayout({
         </nav>
 
         <div className="mt-auto pt-4 border-t">
-          <p className="text-xs text-gray-500 mb-2">{user.email}</p>
-          <button
-            onClick={handleSignOut}
-            className="w-full text-left text-sm text-gray-700 hover:text-black"
-          >
-            Sign Out
-          </button>
+          <Link href="/" className="text-sm text-gray-500 hover:text-black">
+            Back to Sign In
+          </Link>
         </div>
 
         <div className="mt-6 text-[11px] text-gray-400">

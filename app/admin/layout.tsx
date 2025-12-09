@@ -1,9 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useAuth } from "../context/AuthContext";
-import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 const adminNav = [
   { href: "/admin", label: "Dashboard" },
@@ -17,31 +15,6 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, role, loading, signOut } = useAuth();
-
-  useEffect(() => {
-    if (!loading && (!user || role !== "admin")) {
-      router.push("/");
-    }
-  }, [loading, user, role, router]);
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.push("/");
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  if (!user || role !== "admin") {
-    return null;
-  }
 
   return (
     <div className="min-h-screen flex bg-slate-100">
@@ -71,13 +44,9 @@ export default function AdminLayout({
         </nav>
 
         <div className="px-6 py-4 border-t border-slate-800">
-          <p className="text-xs text-slate-400 mb-2">{user.email}</p>
-          <button
-            onClick={handleSignOut}
-            className="text-sm text-slate-300 hover:text-white"
-          >
-            Sign Out
-          </button>
+          <Link href="/" className="text-sm text-slate-400 hover:text-white">
+            Back to Sign In
+          </Link>
         </div>
 
         <div className="px-6 py-4 border-t border-slate-800 text-xs text-slate-500">

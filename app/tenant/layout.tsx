@@ -1,9 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useAuth } from "../context/AuthContext";
-import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 const sidebarItems = [
   { name: "Dashboard", href: "/tenant" },
@@ -18,31 +16,6 @@ export default function TenantLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, role, loading, signOut } = useAuth();
-
-  useEffect(() => {
-    if (!loading && (!user || role !== "tenant")) {
-      router.push("/");
-    }
-  }, [loading, user, role, router]);
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.push("/");
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  if (!user || role !== "tenant") {
-    return null;
-  }
 
   return (
     <div className="flex min-h-screen">
@@ -67,13 +40,9 @@ export default function TenantLayout({
           })}
         </nav>
         <div className="mt-auto pt-6 border-t border-gray-700">
-          <p className="text-sm text-gray-400 mb-2">{user.email}</p>
-          <button
-            onClick={handleSignOut}
-            className="w-full px-4 py-2 text-left rounded hover:bg-gray-700 transition-colors"
-          >
-            Sign Out
-          </button>
+          <Link href="/" className="text-sm text-gray-400 hover:text-white">
+            Back to Sign In
+          </Link>
         </div>
       </aside>
       <main className="flex-1 bg-gray-100">{children}</main>
