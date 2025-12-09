@@ -15,9 +15,9 @@ type DocumentRecord = {
   title: string;
   file_url: string;
   file_type: string | null;
+  storage_path: string;
   visibility: "admin" | "owner" | "tenant" | "all";
   created_at: string;
-  property_name?: string; // optional if your API joins this
 };
 
 export default function AdminDocumentsPage() {
@@ -53,7 +53,10 @@ export default function AdminDocumentsPage() {
   const loadDocuments = async () => {
     try {
       setLoadingDocs(true);
-      const res = await fetch("/api/documents");
+      setError(null);
+      
+      // Admin sees all documents - fetch without property filter
+      const res = await fetch("/api/admin/documents");
       if (!res.ok) throw new Error("Failed to load documents");
       const data = await res.json();
       setDocuments(data);
@@ -105,8 +108,9 @@ export default function AdminDocumentsPage() {
       // Clear form
       setTitle("");
       setFile(null);
-      (document.getElementById("file-input") as HTMLInputElement | null)?.value &&
-        ((document.getElementById("file-input") as HTMLInputElement).value = "");
+      setSelectedPropertyId("");
+      const fileInput = document.getElementById("file-input") as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
 
       // Reload list
       await loadDocuments();
@@ -119,7 +123,6 @@ export default function AdminDocumentsPage() {
   };
 
   const getPropertyLabel = (doc: DocumentRecord) => {
-    if (doc.property_name) return doc.property_name;
     const p = properties.find((prop) => prop.id === doc.property_id);
     if (!p) return "Unassigned";
     return p.name || p.address || "Property";
@@ -160,6 +163,7 @@ export default function AdminDocumentsPage() {
                 className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
                 value={selectedPropertyId}
                 onChange={(e) => setSelectedPropertyId(e.target.value)}
+                required
               >
                 <option value="">Select a property</option>
                 {properties.map((p) => (
@@ -214,6 +218,7 @@ export default function AdminDocumentsPage() {
               type="file"
               className="text-sm"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
+              required
             />
           </div>
 

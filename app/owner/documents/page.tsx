@@ -1,19 +1,21 @@
+// app/owner/documents/page.tsx
 "use client";
 
 import { useEffect, useState, ChangeEvent } from "react";
 
 type Property = {
   id: string;
+  name?: string | null;
   address: string;
 };
 
 type DocumentRow = {
   id: string;
   property_id: string | null;
-  property?: { address: string } | null;
-  name: string;
+  title: string;
+  file_url: string;
   storage_path: string;
-  visibility: "admin" | "owner" | "tenant";
+  visibility: "admin" | "owner" | "tenant" | "all";
   created_at: string;
 };
 
@@ -25,7 +27,7 @@ export default function OwnerDocumentsPage() {
   const [loadingProps, setLoadingProps] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load properties (same /api/properties you already use)
+  // Load properties
   useEffect(() => {
     const loadProps = async () => {
       try {
@@ -39,7 +41,7 @@ export default function OwnerDocumentsPage() {
         const data: Property[] = await res.json();
         setProperties(data);
 
-        // If there is at least one property, auto-select the first
+        // Auto-select the first property
         if (data.length > 0) {
           setSelectedPropertyId(data[0].id);
         }
@@ -66,10 +68,9 @@ export default function OwnerDocumentsPage() {
         setLoadingDocs(true);
         setError(null);
 
-        // THIS is the line you asked about:
-       const res = await fetch(
-  `/api/documents?propertyId=${encodeURIComponent(selectedPropertyId)}&role=owner`
-);
+        const res = await fetch(
+          `/api/documents?propertyId=${encodeURIComponent(selectedPropertyId)}&role=owner`
+        );
 
         if (!res.ok) {
           const text = await res.text();
@@ -131,7 +132,7 @@ export default function OwnerDocumentsPage() {
           >
             {properties.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.address}
+                {p.name || p.address}
               </option>
             ))}
           </select>
@@ -162,13 +163,13 @@ export default function OwnerDocumentsPage() {
                   className="py-2 flex items-center justify-between"
                 >
                   <div>
-                    <div className="font-medium">{doc.name}</div>
+                    <div className="font-medium">{doc.title}</div>
                     <div className="text-xs text-gray-500">
                       Uploaded: {formatDate(doc.created_at)}
                     </div>
                   </div>
                   <a
-                    href={`https://kizgbvpikagittiaxran.supabase.co/storage/v1/object/public/luxor-documents/${doc.storage_path}`}
+                    href={doc.file_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs border px-2 py-1 rounded hover:bg-gray-50"
