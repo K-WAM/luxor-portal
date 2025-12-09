@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["*"],
+  allowedDevOrigins: [
+    "*.replit.dev",
+    "*.spock.replit.dev",
+    "*.kirk.replit.dev",
+    "*.picard.replit.dev",
+    "*.janeway.replit.dev",
+  ],
   async headers() {
     return [
       {
