@@ -8,10 +8,11 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-NEXT_PUBLIC_SUPABASE_URL = "https://placeholder.supabase.co"
-NEXT_PUBLIC_SUPABASE_ANON_KEY = "placeholder-key"
-SUPABASE_URL = "https://placeholder.supabase.co"
-SUPABASE_ANON_KEY = "placeholder-key"
+NEXT_PUBLIC_SUPABASE_URL = "https://kizgbvpikagittiaxran.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_v_v036546u1w4R1z8ktmQg_X6Al1YKm"
+SUPABASE_URL = "https://kizgbvpikagittiaxran.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_v_v036546u1w4R1z8ktmQg_X6Al1YKm"
+SUPABASE_SERVICE_ROLE_KEY = "sb_secret_6PlWQDKvdYMXpYyIn0YiXA_Q1GlDO78"
 
 [workflows]
 runButton = "Project"
