@@ -1,138 +1,116 @@
 "use client";
 
-import { useState, ChangeEvent, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "./context/AuthContext";
 
-type OwnerForm = {
-  address: string;
-  leaseStart: string;
-  leaseEnd: string;
-};
-
-type SavedProperty = {
-  id: number;
-  address: string;
-  leaseStart: string | null;
-  leaseEnd: string | null;
-};
-
-export default function OwnerPortal() {
-  const [form, setForm] = useState<OwnerForm>({
-    address: "",
-    leaseStart: "",
-    leaseEnd: "",
-  });
-
-  const [lastSaved, setLastSaved] = useState<SavedProperty | null>(null);
-  const [loading, setLoading] = useState(false);
+export default function SignInPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+  const { signIn, user, role, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && user && role) {
+      redirectByRole(role);
+    }
+  }, [authLoading, user, role]);
+
+  const redirectByRole = (userRole: string) => {
+    switch (userRole) {
+      case "admin":
+        router.push("/admin");
+        break;
+      case "owner":
+        router.push("/owner");
+        break;
+      case "tenant":
+        router.push("/tenant");
+        break;
+      default:
+        router.push("/");
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    setLoading(true);
 
-    try {
-      const res = await fetch("/api/properties", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(form),
-      });
+    const { error: signInError } = await signIn(email, password);
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to save property");
-      }
-
-      const data: SavedProperty = await res.json();
-      setLastSaved(data);
-      alert("Property saved to API (in memory for now)");
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Something went wrong");
-    } finally {
+    if (signInError) {
+      setError(signInError);
       setLoading(false);
     }
   };
 
+  if (authLoading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-gray-600">Loading...</div>
+      </main>
+    );
+  }
+
+  if (user && role) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-gray-600">Redirecting...</div>
+      </main>
+    );
+  }
+
   return (
-    <main>
-      <div className="card">
-        <h1 className="text-3xl font-bold mb-6">Owner Portal</h1>
-        <p className="mb-6 text-gray-700">
-          Enter your property details. For now this saves to an API endpoint in
-          memory – later we&apos;ll connect a real database.
+    <main className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+        <h1 className="text-3xl font-bold mb-2 text-center">Luxor Portal</h1>
+        <p className="text-gray-600 text-center mb-6">
+          Sign in to access your portal
         </p>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block mb-1 font-medium">Property address</label>
+            <label className="block text-sm font-medium mb-1">Email</label>
             <input
-              type="text"
-              name="address"
-              placeholder="123 Main St, Vancouver, BC"
-              value={form.address}
-              onChange={handleChange}
-              className="border rounded px-3 py-2 w-full"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+              placeholder="you@example.com"
+              required
             />
           </div>
 
           <div>
-            <label className="block mb-1 font-medium">Lease start</label>
+            <label className="block text-sm font-medium mb-1">Password</label>
             <input
-              type="date"
-              name="leaseStart"
-              value={form.leaseStart}
-              onChange={handleChange}
-              className="border rounded px-3 py-2 w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block mb-1 font-medium">Lease end</label>
-            <input
-              type="date"
-              name="leaseEnd"
-              value={form.leaseEnd}
-              onChange={handleChange}
-              className="border rounded px-3 py-2 w-full"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+              placeholder="Your password"
+              required
             />
           </div>
 
           <button
             type="submit"
-            className="mt-4 bg-black text-white px-4 py-2 rounded disabled:opacity-60"
             disabled={loading}
+            className="w-full bg-black text-white py-2 rounded font-medium disabled:opacity-60"
           >
-            {loading ? "Saving..." : "Save"}
+            {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
-
-        {/* Status + preview */}
-        <div className="mt-6 text-sm text-gray-700 space-y-2">
-          {error && <div className="text-red-600">Error: {error}</div>}
-          {lastSaved && (
-            <div className="text-green-700">
-              Last saved property: <strong>{lastSaved.address}</strong>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-4 text-sm text-gray-600">
-          <div className="font-semibold mb-1">Live form state:</div>
-          <pre className="bg-gray-100 p-3 rounded overflow-x-auto">
-            {JSON.stringify(form, null, 2)}
-          </pre>
-        </div>
       </div>
     </main>
   );
