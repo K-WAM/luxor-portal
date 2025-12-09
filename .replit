@@ -12,7 +12,7 @@ NEXT_PUBLIC_SUPABASE_URL = "https://kizgbvpikagittiaxran.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_v_v036546u1w4R1z8ktmQg_X6Al1YKm"
 SUPABASE_URL = "https://kizgbvpikagittiaxran.supabase.co"
 SUPABASE_ANON_KEY = "sb_publishable_v_v036546u1w4R1z8ktmQg_X6Al1YKm"
-SUPABASE_SERVICE_ROLE_KEY = "sb_secret_6PlWQDKvdYMXpYyIn0YiXA_Q1GlDO78"
+SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpemdidnBpa2FnaXR0aWF4cmFuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTE4ODUyNSwiZXhwIjoyMDgwNzY0NTI1fQ.YYBx6AX_LJsa1URJRj-cuO9zfoAsfcc7Imd-JrOrp8k"
 
 [workflows]
 runButton = "Project"
