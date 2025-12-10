@@ -1,6 +1,6 @@
 // app/api/admin/documents/route.ts
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 // GET /api/admin/documents - Admin sees ALL documents
 export async function GET() {

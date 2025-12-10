@@ -1,58 +1,64 @@
-// app/api/properties/route.ts
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseServer";
+import { NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
-// GET /api/properties  -> return all properties (used by owner page & admin docs dropdown)
 export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
-      .from("properties")
-      .select("*")
-      .order("created_at", { ascending: false });
+      .from('properties')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error("Supabase GET /properties error:", error);
-      return NextResponse.json(
-        { error: "Failed to load properties" },
-        { status: 500 }
-      );
-    }
+    if (error) throw error
 
-    return NextResponse.json(data ?? []);
-  } catch (err) {
-    console.error("Unexpected GET /properties error:", err);
-    return NextResponse.json(
-      { error: "Failed to load properties" },
-      { status: 500 }
-    );
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Error fetching properties:', error)
+    return NextResponse.json({ error: 'Failed to fetch properties' }, { status: 500 })
   }
 }
 
-// POST /api/properties  -> create a new property from the JSON body
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const body = await req.json();
-
+    const body = await request.json()
+    
     const { data, error } = await supabaseAdmin
-      .from("properties")
-      .insert(body)
+      .from('properties')
+      .insert({
+        address: body.address,
+        lease_start: body.leaseStart,
+        lease_end: body.leaseEnd,
+      })
       .select()
-      .single();
+      .single()
 
-    if (error) {
-      console.error("Supabase POST /properties error:", error);
-      return NextResponse.json(
-        { error: "Failed to create property" },
-        { status: 500 }
-      );
+    if (error) throw error
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Error creating property:', error)
+    return NextResponse.json({ error: 'Failed to create property' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json({ error: 'Property ID required' }, { status: 400 })
     }
 
-    return NextResponse.json(data, { status: 201 });
-  } catch (err) {
-    console.error("Unexpected POST /properties error:", err);
-    return NextResponse.json(
-      { error: "Failed to create property" },
-      { status: 500 }
-    );
+    const { error } = await supabaseAdmin
+      .from('properties')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error deleting property:', error)
+    return NextResponse.json({ error: 'Failed to delete property' }, { status: 500 })
   }
 }

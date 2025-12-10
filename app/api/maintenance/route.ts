@@ -1,122 +1,94 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-type DbMaintenanceRow = {
-  id: string;
-  property_id: string | null;
-  tenant_name: string;
-  tenant_email: string;
-  category: string | null;
-  description: string;
-  status: string;
-  created_at: string;
-};
-
-function toCamel(row: DbMaintenanceRow) {
-  return {
-    id: row.id,
-    propertyId: row.property_id,
-    tenantName: row.tenant_name,
-    tenantEmail: row.tenant_email,
-    category: row.category,
-    description: row.description,
-    status: row.status,
-    createdAt: row.created_at,
-  };
-}
-
-// GET: list all maintenance requests
 export async function GET() {
-  const { data, error } = await supabase
-    .from("maintenance_requests")
-    .select("*")
-    .order("created_at", { ascending: false });
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('maintenance_requests')
+      .select(`
+        *,
+        properties (
+          address
+        )
+      `)
+      .order('created_at', { ascending: false })
 
-  if (error || !data) {
-    console.error("Supabase GET error", error);
-    return NextResponse.json(
-      { error: error?.message || "Failed to load requests" },
-      { status: 500 }
-    );
+    if (error) throw error
+
+    // Convert snake_case to camelCase for frontend
+    const formatted = data.map(item => ({
+      id: item.id,
+      propertyId: item.property_id,
+      tenantName: item.tenant_name,
+      tenantEmail: item.tenant_email,
+      category: item.category,
+      description: item.description,
+      status: item.status,
+      internalComments: item.internal_comments,
+      createdAt: item.created_at,
+      closedAt: item.closed_at,
+      propertyAddress: item.properties?.address
+    }))
+
+    return NextResponse.json(formatted)
+  } catch (error) {
+    console.error('Error fetching maintenance requests:', error)
+    return NextResponse.json({ error: 'Failed to fetch maintenance requests' }, { status: 500 })
   }
-
-  const camel = (data as DbMaintenanceRow[]).map(toCamel);
-  return NextResponse.json(camel, { status: 200 });
 }
 
-// POST: tenant creates a new request
 export async function POST(request: Request) {
-  const body = await request.json();
-  const {
-    propertyId,
-    tenantName,
-    tenantEmail,
-    category,
-    description,
-  } = body;
+  try {
+    const body = await request.json()
+    
+    const { data, error } = await supabaseAdmin
+      .from('maintenance_requests')
+      .insert({
+        property_id: body.propertyId,
+        tenant_name: body.tenantName,
+        tenant_email: body.tenantEmail,
+        category: body.category,
+        description: body.description,
+        status: 'open',
+      })
+      .select()
+      .single()
 
-  if (!tenantName || !tenantEmail || !description) {
-    return NextResponse.json(
-      { error: "Missing required fields" },
-      { status: 400 }
-    );
+    if (error) throw error
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Error creating maintenance request:', error)
+    return NextResponse.json({ error: 'Failed to create maintenance request' }, { status: 500 })
   }
-
-  const { data, error } = await supabase
-    .from("maintenance_requests")
-    .insert({
-      property_id: propertyId || null,
-      tenant_name: tenantName,
-      tenant_email: tenantEmail,
-      category: category || null,
-      description,
-      status: "open",
-    })
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    console.error("Supabase POST error", error);
-    return NextResponse.json(
-      { error: error?.message || "Failed to create request" },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json(toCamel(data as DbMaintenanceRow), { status: 201 });
 }
 
-// PATCH: admin updates status
 export async function PATCH(request: Request) {
-  const body = await request.json();
-  const { id, status } = body;
+  try {
+    const body = await request.json()
+    const { id, status, internalComments } = body
 
-  if (!id || !status) {
-    return NextResponse.json(
-      { error: "Missing id or status" },
-      { status: 400 }
-    );
+    if (!id) {
+      return NextResponse.json({ error: 'ID required' }, { status: 400 })
+    }
+
+    const updateData: any = {}
+    if (status) updateData.status = status
+    if (internalComments !== undefined) updateData.internal_comments = internalComments
+    if (status === 'closed') updateData.closed_at = new Date().toISOString()
+
+    const { data, error } = await supabaseAdmin
+      .from('maintenance_requests')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Error updating maintenance request:', error)
+    return NextResponse.json({ error: 'Failed to update maintenance request' }, { status: 500 })
   }
-
-  const { data, error } = await supabase
-    .from("maintenance_requests")
-    .update({ status })
-    .eq("id", id)
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    console.error("Supabase PATCH error", error);
-    return NextResponse.json(
-      { error: error?.message || "Failed to update request" },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json(toCamel(data as DbMaintenanceRow), { status: 200 });
 }
