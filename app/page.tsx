@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, FormEvent, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "./context/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,10 +12,12 @@ export default function SignInPage() {
   const [loading, setLoading] = useState(false);
   const [resetStatus, setResetStatus] = useState<string | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
+  const [processingCode, setProcessingCode] = useState(false);
 
   const { signIn, user, role, loading: authLoading } = useAuth();
   const router = useRouter();
   const supabase = createClient();
+  const searchParams = useSearchParams();
 
   const redirectByRole = (userRole: string) => {
     switch (userRole) {
@@ -40,6 +42,35 @@ export default function SignInPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, role]);
 
+  // Handle magic link / recovery links that arrive with ?code=...
+  useEffect(() => {
+    const code = searchParams.get("code");
+    if (!code || processingCode) return;
+
+    const exchange = async () => {
+      setProcessingCode(true);
+      setError(null);
+      try {
+        const { error: exchangeError, data } = await supabase.auth.exchangeCodeForSession({
+          code,
+        });
+        if (exchangeError) throw exchangeError;
+
+        const userRole = (data.session?.user?.user_metadata as any)?.role;
+        if (userRole) {
+          redirectByRole(userRole);
+        }
+      } catch (err: any) {
+        setError(err?.message || "Link is invalid or expired. Try again.");
+      } finally {
+        setProcessingCode(false);
+      }
+    };
+
+    exchange();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -62,8 +93,9 @@ export default function SignInPage() {
     }
     try {
       setResetLoading(true);
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
       await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: `${baseUrl}/reset-password`,
       });
       setResetStatus("Password reset email sent. Check your inbox for the link.");
     } catch (err: any) {
