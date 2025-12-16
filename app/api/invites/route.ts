@@ -131,12 +131,40 @@ export async function POST(request: Request) {
       `)
       .single()
 
-    if (error) throw error
+    // Handle duplicate invite (unique constraint on email + property)
+    if (error?.code === '23505') {
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from('tenant_invites')
+        .update({
+          role: requestedRole,
+          token,
+          ownership_percentage: requestedRole === 'owner' && ownershipPercentage ? parseFloat(ownershipPercentage) : null,
+          status: 'pending',
+          expires_at: expiresAt.toISOString(),
+        })
+        .eq('email', email)
+        .eq('property_id', propertyId)
+        .select(`
+          *,
+          properties (
+            id,
+            address
+          )
+        `)
+        .single();
+
+      if (updateError) throw updateError;
+
+      const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/invite/${token}`;
+      return NextResponse.json({ ...updated, inviteUrl });
+    }
+
+    if (error) throw error;
 
     // Generate invite URL
-    const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/invite/${token}`
+    const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/invite/${token}`;
 
-    return NextResponse.json({ ...data, inviteUrl })
+    return NextResponse.json({ ...data, inviteUrl });
   } catch (error) {
     console.error('Error creating invite:', error)
     return NextResponse.json({ error: 'Failed to create invite' }, { status: 500 })
