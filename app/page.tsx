@@ -13,6 +13,7 @@ export default function SignInPage() {
   const [resetStatus, setResetStatus] = useState<string | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
   const [processingCode, setProcessingCode] = useState(false);
+  const [resolvingRole, setResolvingRole] = useState(false);
 
   const { signIn, user, role, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -41,6 +42,42 @@ export default function SignInPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, role]);
+
+  // If we have a user but no role yet, try resolving from /api/me then redirect.
+  useEffect(() => {
+    const resolveRole = async () => {
+      if (authLoading || resolvingRole) return;
+      if (!user || role) return;
+      try {
+        setResolvingRole(true);
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+          return;
+        }
+        const res = await fetch("/api/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (res.ok) {
+          const me = await res.json();
+          const resolvedRole = me.role || "admin";
+          redirectByRole(resolvedRole);
+        } else {
+          // Fallback to admin
+          redirectByRole("admin");
+        }
+      } catch (err) {
+        redirectByRole("admin");
+      } finally {
+        setResolvingRole(false);
+      }
+    };
+
+    resolveRole();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, role, resolvingRole]);
 
   // Handle magic link / recovery links that arrive with ?code=...
   useEffect(() => {
