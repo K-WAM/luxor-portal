@@ -15,11 +15,27 @@ export default function ResetPasswordPage() {
   const [hasSession, setHasSession] = useState<boolean>(false);
 
   useEffect(() => {
-    const checkSession = async () => {
+    const establishSessionFromUrl = async () => {
+      // Supabase sends access_token/refresh_token in the hash for recovery links
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (setSessionError) {
+          setError(setSessionError.message);
+        }
+      }
+
       const { data } = await supabase.auth.getSession();
       setHasSession(!!data.session);
     };
-    checkSession();
+
+    establishSessionFromUrl();
 
     const {
       data: { subscription },
