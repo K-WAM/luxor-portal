@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, FormEvent, useEffect } from "react";
+import { useState, FormEvent, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "./context/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 
-export default function SignInPage() {
+function SignInPageInner() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -220,5 +220,19 @@ export default function SignInPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center bg-gray-100">
+          <div className="text-gray-600 text-lg">Loading...</div>
+        </main>
+      }
+    >
+      <SignInPageInner />
+    </Suspense>
   );
 }
