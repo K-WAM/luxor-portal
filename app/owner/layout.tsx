@@ -15,7 +15,7 @@ export default function OwnerLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, signOut } = useAuth();
   const viewerLabel = loading
     ? "Checking session..."
     : user?.email
@@ -49,11 +49,19 @@ export default function OwnerLayout({
           })}
         </nav>
 
-        <div className="px-6 py-4 border-t border-slate-800">
-          <Link href="/" className="text-sm text-slate-400 hover:text-white">
-            Back to Sign In
-          </Link>
-        </div>
+        {user && (
+          <div className="px-6 py-4 border-t border-slate-800">
+            <button
+              onClick={async () => {
+                await signOut();
+                window.location.href = "/";
+              }}
+              className="text-sm text-slate-400 hover:text-white"
+            >
+              Sign out
+            </button>
+          </div>
+        )}
 
         <div className="px-6 py-4 border-t border-slate-800 text-xs text-slate-500">
           Luxor Developments Ac {new Date().getFullYear()}

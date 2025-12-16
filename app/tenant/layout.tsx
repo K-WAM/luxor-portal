@@ -17,7 +17,7 @@ export default function TenantLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, signOut } = useAuth();
   const viewerLabel = loading
     ? "Checking session..."
     : user?.email
@@ -46,11 +46,19 @@ export default function TenantLayout({
             );
           })}
         </nav>
-        <div className="mt-auto pt-6 border-t border-gray-700">
-          <Link href="/" className="text-sm text-gray-400 hover:text-white">
-            Back to Sign In
-          </Link>
-        </div>
+        {user && (
+          <div className="mt-auto pt-6 border-t border-gray-700">
+            <button
+              onClick={async () => {
+                await signOut();
+                window.location.href = "/";
+              }}
+              className="text-sm text-gray-400 hover:text-white"
+            >
+              Sign out
+            </button>
+          </div>
+        )}
       </aside>
       <main className="flex-1 bg-gray-100">
         <div className="flex items-center justify-end px-6 pt-4">
