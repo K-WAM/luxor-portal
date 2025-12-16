@@ -51,9 +51,7 @@ export default function SignInPage() {
       setProcessingCode(true);
       setError(null);
       try {
-        const { error: exchangeError, data } = await supabase.auth.exchangeCodeForSession({
-          code,
-        });
+        const { error: exchangeError, data } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) throw exchangeError;
 
         const userRole = (data.session?.user?.user_metadata as any)?.role;

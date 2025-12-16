@@ -32,9 +32,7 @@ export default function ResetPasswordPage() {
           setError(setSessionError.message);
         }
       } else if (code) {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession({
-          code,
-        });
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) {
           setError(exchangeError.message);
         }
