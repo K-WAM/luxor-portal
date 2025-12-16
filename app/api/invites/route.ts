@@ -166,8 +166,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ...data, inviteUrl });
   } catch (error) {
-    console.error('Error creating invite:', error)
-    return NextResponse.json({ error: 'Failed to create invite' }, { status: 500 })
+    console.error('Error creating invite:', error);
+    const message =
+      (error as any)?.message ||
+      (error as any)?.error_description ||
+      (error as any)?.hint ||
+      "Failed to create invite";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
