@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Property = {
   id: string;
@@ -11,6 +12,7 @@ type Property = {
 };
 
 export default function PropertiesPage() {
+  const router = useRouter();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -226,12 +228,20 @@ export default function PropertiesPage() {
                       {new Date(property.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <button
-                        onClick={() => handleDelete(property.id)}
-                        className="text-red-600 hover:text-red-700 font-medium"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex items-center space-x-3">
+                        <button
+                          onClick={() => router.push(`/admin/properties/${property.id}/financials`)}
+                          className="text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          View Financials
+                        </button>
+                        <button
+                          onClick={() => handleDelete(property.id)}
+                          className="text-red-600 hover:text-red-700 font-medium"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

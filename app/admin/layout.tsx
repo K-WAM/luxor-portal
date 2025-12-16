@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/app/context/AuthContext";
 
 const adminNav = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/properties", label: "Properties" },
+  { href: "/admin/financials", label: "Financials" },
   { href: "/admin/maintenance", label: "Maintenance Requests" },
   { href: "/admin/tenants", label: "User Invites" },
   { href: "/admin/documents", label: "Documents" },
@@ -17,6 +19,12 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { user, role, loading } = useAuth();
+  const viewerLabel = loading
+    ? "Checking session..."
+    : user?.email
+      ? `${user.email} (${role || "role"})`
+      : "Not signed in";
 
   return (
     <div className="min-h-screen flex bg-slate-100">
@@ -52,11 +60,19 @@ export default function AdminLayout({
         </div>
 
         <div className="px-6 py-4 border-t border-slate-800 text-xs text-slate-500">
-          Luxor Developments © {new Date().getFullYear()}
+          Luxor Developments Ac {new Date().getFullYear()}
         </div>
       </aside>
 
-      <main className="flex-1 p-6">{children}</main>
+      <main className="flex-1 bg-slate-50">
+        <div className="flex items-center justify-end px-6 pt-4">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Viewing as {viewerLabel}
+          </span>
+        </div>
+        <div className="p-6">{children}</div>
+      </main>
     </div>
   );
 }

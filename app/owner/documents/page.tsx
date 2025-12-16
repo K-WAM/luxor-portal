@@ -14,7 +14,7 @@ type DocumentRow = {
   property_id: string | null;
   title: string;
   file_url: string;
-  storage_path: string;
+  name: string;
   visibility: "admin" | "owner" | "tenant" | "all";
   created_at: string;
 };
@@ -69,7 +69,7 @@ export default function OwnerDocumentsPage() {
         setError(null);
 
         const res = await fetch(
-          `/api/documents?propertyId=${encodeURIComponent(selectedPropertyId)}&role=owner`
+          `/api/documents?propertyId=${encodeURIComponent(selectedPropertyId)}`
         );
 
         if (!res.ok) {

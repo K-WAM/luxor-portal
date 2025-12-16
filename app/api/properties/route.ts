@@ -1,24 +1,54 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { user, role } = await getAuthContext();
+    if (!user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    // Admin can see all properties
+    if (isAdmin(role)) {
+      const { data, error } = await supabaseAdmin
+        .from('properties')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return NextResponse.json(data);
+    }
+
+    // Owners/Tenants: only properties they are linked to
+    const propertyIds = await getAccessiblePropertyIds(user.id, role);
+
+    if (!propertyIds.length) {
+      return NextResponse.json([]);
+    }
+
     const { data, error } = await supabaseAdmin
       .from('properties')
       .select('*')
-      .order('created_at', { ascending: false })
+      .in('id', propertyIds)
+      .order('created_at', { ascending: false });
 
-    if (error) throw error
+    if (error) throw error;
 
-    return NextResponse.json(data)
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching properties:', error)
-    return NextResponse.json({ error: 'Failed to fetch properties' }, { status: 500 })
+    console.error('Error fetching properties:', error);
+    return NextResponse.json({ error: 'Failed to fetch properties' }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const { user, role } = await getAuthContext();
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    }
+
     const body = await request.json()
     
     const { data, error } = await supabaseAdmin
@@ -42,6 +72,11 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const { user, role } = await getAuthContext();
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 

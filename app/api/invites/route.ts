@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { randomBytes } from 'crypto'
+import { getAuthContext, isAdmin } from '@/lib/auth/route-helpers'
 
 // GET - Fetch all invites (admin only)
 export async function GET() {
   try {
+    const { user, role } = await getAuthContext()
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+    }
+
     const { data, error } = await supabaseAdmin
       .from('tenant_invites')
       .select(`
@@ -28,25 +34,40 @@ export async function GET() {
 // POST - Create a new invite (admin only)
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { email, propertyId, role = 'tenant', ownershipPercentage } = body
+    const { user, role } = await getAuthContext()
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+    }
 
-    if (!email || !propertyId) {
+    const body = await request.json()
+    const { email, propertyId, role: requestedRole = 'tenant', ownershipPercentage } = body
+
+    const allowedRoles = ['tenant', 'owner', 'admin', 'viewer']
+
+    if (!email) {
       return NextResponse.json(
-        { error: 'Email and property ID are required' },
+        { error: 'Email is required' },
         { status: 400 }
       )
     }
 
-    if (!['tenant', 'owner'].includes(role)) {
+    if (!allowedRoles.includes(requestedRole)) {
       return NextResponse.json(
-        { error: 'Role must be either "tenant" or "owner"' },
+        { error: 'Role must be one of tenant, owner, admin, or viewer' },
+        { status: 400 }
+      )
+    }
+
+    // property required (schema requires property_id)
+    if (!propertyId) {
+      return NextResponse.json(
+        { error: 'Property is required for this invite' },
         { status: 400 }
       )
     }
 
     // Validate ownership percentage for owners
-    if (role === 'owner') {
+    if (requestedRole === 'owner') {
       if (ownershipPercentage === undefined || ownershipPercentage === null || ownershipPercentage === '') {
         return NextResponse.json(
           { error: 'Ownership percentage is required for owners' },
@@ -65,22 +86,21 @@ export async function POST(request: Request) {
     // Generate a secure random token
     const token = randomBytes(32).toString('hex')
 
-    // Set expiration to 7 days from now
+    // Set expiration to 72 hours from now
     const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 7)
+    expiresAt.setHours(expiresAt.getHours() + 72)
 
     // Check if an active invite already exists
     const { data: existing } = await supabaseAdmin
       .from('tenant_invites')
       .select('*')
       .eq('email', email)
-      .eq('property_id', propertyId)
       .eq('status', 'pending')
       .single()
 
-    if (existing) {
+    if (existing && (existing.role === requestedRole) && (existing.property_id === propertyId || !propertyId)) {
       return NextResponse.json(
-        { error: 'An active invite already exists for this email and property' },
+        { error: 'An active invite already exists for this email' },
         { status: 400 }
       )
     }
@@ -88,14 +108,14 @@ export async function POST(request: Request) {
     const insertData: any = {
       email,
       property_id: propertyId,
-      role,
+      role: requestedRole,
       token,
       expires_at: expiresAt.toISOString(),
       status: 'pending',
     }
 
     // Add ownership percentage only for owners
-    if (role === 'owner' && ownershipPercentage) {
+    if (requestedRole === 'owner' && ownershipPercentage) {
       insertData.ownership_percentage = parseFloat(ownershipPercentage)
     }
 
@@ -126,6 +146,11 @@ export async function POST(request: Request) {
 // DELETE - Delete/cancel an invite (admin only)
 export async function DELETE(request: Request) {
   try {
+    const { user, role } = await getAuthContext()
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+    }
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 

@@ -1,19 +1,55 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('maintenance_requests')
-      .select(`
-        *,
-        properties (
-          address
-        )
-      `)
-      .order('created_at', { ascending: false })
+    const { user, role } = await getAuthContext()
+    if (!user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+
+    let data, error
+
+    // Admin: no filter, show all requests
+    if (isAdmin(role)) {
+      const result = await supabaseAdmin
+        .from('maintenance_requests')
+        .select(`
+          *,
+          properties (
+            address
+          )
+        `)
+        .order('created_at', { ascending: false })
+
+      data = result.data
+      error = result.error
+    } else {
+      const propertyIds = await getAccessiblePropertyIds(user.id, role)
+      if (!propertyIds.length) return NextResponse.json([])
+
+      const result = await supabaseAdmin
+        .from('maintenance_requests')
+        .select(`
+          *,
+          properties (
+            address
+          )
+        `)
+        .in('property_id', propertyIds)
+        .order('created_at', { ascending: false })
+
+      data = result.data
+      error = result.error
+    }
 
     if (error) throw error
+
+    // Handle null/undefined data
+    if (!data) {
+      return NextResponse.json([])
+    }
 
     // Convert snake_case to camelCase for frontend
     const formatted = data.map(item => ({
@@ -25,6 +61,7 @@ export async function GET() {
       description: item.description,
       status: item.status,
       internalComments: item.internal_comments,
+      cost: item.cost,
       createdAt: item.created_at,
       closedAt: item.closed_at,
       propertyAddress: item.properties?.address
@@ -39,18 +76,37 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const { user, role } = await getAuthContext()
+    if (!user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+
     const body = await request.json()
-    
+
+    // Only allow admins or users posting for their own property
+    if (!isAdmin(role)) {
+      const allowedProps = await getAccessiblePropertyIds(user.id, role)
+      if (!allowedProps.includes(body.propertyId)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
+
+    const insertData: any = {
+      property_id: body.propertyId,
+      tenant_name: body.tenantName,
+      tenant_email: body.tenantEmail,
+      category: body.category,
+      description: body.description,
+      status: 'open',
+    }
+
+    // Add optional fields if provided
+    if (body.cost !== undefined) insertData.cost = body.cost
+    if (body.internalComments) insertData.internal_comments = body.internalComments
+
     const { data, error } = await supabaseAdmin
       .from('maintenance_requests')
-      .insert({
-        property_id: body.propertyId,
-        tenant_name: body.tenantName,
-        tenant_email: body.tenantEmail,
-        category: body.category,
-        description: body.description,
-        status: 'open',
-      })
+      .insert(insertData)
       .select()
       .single()
 
@@ -65,17 +121,56 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    const { user, role } = await getAuthContext()
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+    }
+
     const body = await request.json()
-    const { id, status, internalComments } = body
+    const {
+      id,
+      status,
+      internalComments,
+      cost,
+      propertyId,
+      tenantName,
+      tenantEmail,
+      category,
+      description,
+      createdAt,
+      closedAt,
+    } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID required' }, { status: 400 })
     }
 
     const updateData: any = {}
-    if (status) updateData.status = status
+    if (status) {
+      updateData.status = status
+      if (status === 'closed') {
+        updateData.closed_at = new Date().toISOString()
+      }
+    }
     if (internalComments !== undefined) updateData.internal_comments = internalComments
-    if (status === 'closed') updateData.closed_at = new Date().toISOString()
+    if (cost !== undefined) updateData.cost = cost
+    if (propertyId !== undefined) updateData.property_id = propertyId
+    if (tenantName !== undefined) updateData.tenant_name = tenantName
+    if (tenantEmail !== undefined) updateData.tenant_email = tenantEmail
+    if (category !== undefined) updateData.category = category
+    if (description !== undefined) updateData.description = description
+    if (createdAt !== undefined) {
+      if (createdAt) {
+        updateData.created_at = createdAt
+      }
+    }
+    if (closedAt !== undefined) {
+      if (closedAt === null || closedAt === '') {
+        updateData.closed_at = null
+      } else {
+        updateData.closed_at = closedAt
+      }
+    }
 
     const { data, error } = await supabaseAdmin
       .from('maintenance_requests')
@@ -90,5 +185,33 @@ export async function PATCH(request: Request) {
   } catch (error) {
     console.error('Error updating maintenance request:', error)
     return NextResponse.json({ error: 'Failed to update maintenance request' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { user, role } = await getAuthContext()
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+    }
+
+    const body = await request.json()
+    const { id } = body || {}
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID required' }, { status: 400 })
+    }
+
+    const { error } = await supabaseAdmin
+      .from('maintenance_requests')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error deleting maintenance request:', error)
+    return NextResponse.json({ error: 'Failed to delete maintenance request' }, { status: 500 })
   }
 }

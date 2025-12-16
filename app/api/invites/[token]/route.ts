@@ -1,13 +1,13 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
 // GET - Validate and fetch invite details by token
 export async function GET(
-  request: Request,
-  { params }: { params: { token: string } }
+  _req: NextRequest,
+  context: { params: Promise<{ token: string }> }
 ) {
   try {
-    const token = params.token
+    const { token } = await context.params
 
     const { data: invite, error } = await supabaseAdmin
       .from('tenant_invites')
@@ -56,11 +56,11 @@ export async function GET(
 
 // POST - Accept invite and create user account
 export async function POST(
-  request: Request,
-  { params }: { params: { token: string } }
+  request: NextRequest,
+  context: { params: Promise<{ token: string }> }
 ) {
   try {
-    const token = params.token
+    const { token } = await context.params
     const body = await request.json()
     const { password } = body
 

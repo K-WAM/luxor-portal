@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 
 type Property = {
@@ -8,7 +9,7 @@ type Property = {
   address: string;
   leaseStart?: string;
   leaseEnd?: string;
-  role: string;
+  role?: string;
 };
 
 type MaintenanceRequest = {
@@ -24,7 +25,7 @@ type MaintenanceRequest = {
 };
 
 export default function TenantMaintenance() {
-  const { user } = useAuth();
+  const { user, role, loading: authLoading } = useAuth();
   const [properties, setProperties] = useState<Property[]>([]);
   const [form, setForm] = useState({
     propertyId: "",
@@ -38,55 +39,62 @@ export default function TenantMaintenance() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (user) {
-      loadData();
-    }
-  }, [user]);
-
   const loadData = async () => {
     try {
       setLoading(true);
+      setError(null);
 
-      // Load user's properties
-      const propsRes = await fetch(`/api/user/properties?userId=${user?.id}`);
-      const propsData = await propsRes.json();
-      if (!propsRes.ok) throw new Error("Failed to load properties");
-      setProperties(propsData);
+      const propsRes = await fetch("/api/properties", { cache: "no-store" });
+      if (!propsRes.ok) {
+        const errorData = await propsRes.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to load properties");
+      }
+      const propsData = (await propsRes.json()) as Property[];
+      setProperties(propsData || []);
 
-      // Pre-fill form with user info
-      setForm(prev => ({
-        ...prev,
-        tenantName: user?.user_metadata?.name || "",
-        tenantEmail: user?.email || "",
-        propertyId: propsData.length === 1 ? propsData[0].id : "",
-      }));
+      // Pre-fill form with user info and sensible default property
+      setForm((prev) => {
+        const defaultId =
+          (prev.propertyId && propsData.some((p) => p.id === prev.propertyId))
+            ? prev.propertyId
+            : propsData[0]?.id || "";
 
-      // Load maintenance requests for user's properties
-      const requestsRes = await fetch("/api/maintenance");
+        return {
+          ...prev,
+          tenantName: user?.user_metadata?.name || prev.tenantName || "",
+          tenantEmail: user?.email || prev.tenantEmail || "",
+          propertyId: defaultId,
+        };
+      });
+
+      // Load maintenance requests with server-side scoping
+      const requestsRes = await fetch("/api/maintenance", { cache: "no-store" });
+      if (!requestsRes.ok) {
+        const errorData = await requestsRes.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to load requests");
+      }
       const requestsData = await requestsRes.json();
-      if (!requestsRes.ok) throw new Error("Failed to load requests");
-
-      // Filter requests to only show this user's properties
-      const userPropertyIds = propsData.map((p: Property) => p.id);
-      const filteredRequests = requestsData.filter((r: MaintenanceRequest) =>
-        userPropertyIds.includes(r.propertyId)
-      );
-      setRequests(filteredRequests);
+      setRequests(requestsData || []);
     } catch (err: any) {
+      console.error("Error loading maintenance data:", err);
       setError(err.message || "Failed to load data");
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (authLoading) return;
+    loadData();
+  }, [authLoading, user?.id, role]);
+
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -116,15 +124,17 @@ export default function TenantMaintenance() {
     }
   };
 
-  if (loading) {
+  // Show loading while auth is loading or data is loading
+  if (authLoading || loading) {
     return (
       <div className="p-8 max-w-3xl">
         <h1 className="text-3xl font-bold mb-4">Request Maintenance</h1>
-        <p className="text-gray-600">Loading your properties...</p>
+        <p className="text-gray-600">Loading...</p>
       </div>
     );
   }
 
+  // Show empty state if no properties
   if (properties.length === 0) {
     return (
       <div className="p-8 max-w-3xl">
@@ -163,6 +173,7 @@ export default function TenantMaintenance() {
             onChange={handleChange}
             className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
+            disabled={role === "tenant"}
           >
             <option value="">Select a property</option>
             {properties.map((prop) => (
@@ -226,7 +237,7 @@ export default function TenantMaintenance() {
       ) : (
         <div className="space-y-3">
           {requests.map((r) => {
-            const property = properties.find(p => p.id === r.propertyId);
+            const property = properties.find((p) => p.id === r.propertyId);
             const statusColors: Record<string, string> = {
               open: "bg-yellow-100 text-yellow-800",
               in_progress: "bg-blue-100 text-blue-800",
@@ -249,7 +260,7 @@ export default function TenantMaintenance() {
                             hour: "numeric",
                             minute: "2-digit",
                           })
-                        : "—"}
+                        : "Date unavailable"}
                     </div>
                   </div>
                   <span

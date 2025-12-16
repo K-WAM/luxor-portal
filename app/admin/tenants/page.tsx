@@ -1,3 +1,4 @@
+// app/admin/tenants/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -24,13 +25,38 @@ type Invite = {
   inviteUrl?: string;
 };
 
+type UserRow = {
+  id: string;
+  email: string | null;
+  role: string | null;
+  created_at: string | null;
+  last_sign_in_at: string | null;
+};
+
+type UserPropertyAccess = {
+  user_id: string;
+  property_id: string;
+  role: string;
+  properties?: {
+    id: string;
+    address?: string;
+    name?: string | null;
+  } | null;
+};
+
 export default function TenantInvitesPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [userProperties, setUserProperties] = useState<UserPropertyAccess[]>([]);
+  const [userPropertyMap, setUserPropertyMap] = useState<Record<string, UserPropertyAccess[]>>({});
   const [loading, setLoading] = useState(true);
+  const [usersLoading, setUsersLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [savingAccessUserId, setSavingAccessUserId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -40,6 +66,7 @@ export default function TenantInvitesPage() {
   });
 
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [accessForm, setAccessForm] = useState<Record<string, { propertyId: string; role: string }>>({});
 
   useEffect(() => {
     loadData();
@@ -48,21 +75,39 @@ export default function TenantInvitesPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [propsRes, invitesRes] = await Promise.all([
+      const [propsRes, invitesRes, usersRes, userPropsRes] = await Promise.all([
         fetch("/api/properties"),
         fetch("/api/invites"),
+        fetch("/api/admin/users"),
+        fetch("/api/admin/user-properties"),
       ]);
 
       const propsData = await propsRes.json();
       const invitesData = await invitesRes.json();
+      const usersData = await usersRes.json();
+      const userPropsData = await userPropsRes.json();
 
       if (!propsRes.ok) throw new Error("Failed to load properties");
       if (!invitesRes.ok) throw new Error("Failed to load invites");
+      if (!usersRes.ok) throw new Error("Failed to load users");
+      if (!userPropsRes.ok) throw new Error("Failed to load user properties");
 
       setProperties(propsData);
       setInvites(invitesData);
+      setUsers(usersData);
+      setUserProperties(userPropsData);
+      const grouped = (userPropsData || []).reduce(
+        (acc: Record<string, UserPropertyAccess[]>, item: UserPropertyAccess) => {
+          acc[item.user_id] = acc[item.user_id] ? [...acc[item.user_id], item] : [item];
+          return acc;
+        },
+        {}
+      );
+      setUserPropertyMap(grouped);
+      setUsersLoading(false);
     } catch (err: any) {
       setError(err.message || "Failed to load data");
+      setUsersLoading(false);
     } finally {
       setLoading(false);
     }
@@ -92,6 +137,79 @@ export default function TenantInvitesPage() {
       setError(err.message || "Failed to create invite");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleUserRoleUpdate = async (userId: string, role: string) => {
+    setError(null);
+    setSuccess(null);
+    setSavingUserId(userId);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update user");
+      setSuccess(`Updated role for ${data.email || "user"}`);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "Failed to update user");
+    } finally {
+      setSavingUserId(null);
+    }
+  };
+
+  const handleAccessFormChange = (userId: string, field: "propertyId" | "role", value: string) => {
+    setAccessForm((prev) => ({
+      ...prev,
+      [userId]: { propertyId: prev[userId]?.propertyId || "", role: prev[userId]?.role || "owner", [field]: value },
+    }));
+  };
+
+  const handleAddAccess = async (userId: string) => {
+    setError(null);
+    setSuccess(null);
+    const form = accessForm[userId] || { propertyId: "", role: "owner" };
+    if (!form.propertyId || !form.role) {
+      setError("Select a property and role to add access.");
+      return;
+    }
+    try {
+      setSavingAccessUserId(userId);
+      const res = await fetch("/api/admin/user-properties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, propertyId: form.propertyId, role: form.role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to add access");
+      setSuccess("Access added.");
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "Failed to add access");
+    } finally {
+      setSavingAccessUserId(null);
+    }
+  };
+
+  const handleRemoveAccess = async (userId: string, propertyId: string) => {
+    setError(null);
+    setSuccess(null);
+    try {
+      setSavingAccessUserId(userId);
+      const res = await fetch(`/api/admin/user-properties?userId=${userId}&propertyId=${propertyId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to remove access");
+      setSuccess("Access removed.");
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "Failed to remove access");
+    } finally {
+      setSavingAccessUserId(null);
     }
   };
 
@@ -149,7 +267,7 @@ export default function TenantInvitesPage() {
     <div className="p-8 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">User Invites</h1>
       <p className="text-gray-600 mb-6">
-        Invite tenants or owners to create accounts and associate them with properties.
+        Invite tenants, owners, admins, or viewers to create accounts and associate them with properties.
       </p>
 
       {error && (
@@ -204,6 +322,9 @@ export default function TenantInvitesPage() {
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Required for all invites (schema enforced). For admins/viewers, pick any property to attach.
+              </p>
             </div>
 
             <div>
@@ -220,7 +341,12 @@ export default function TenantInvitesPage() {
               >
                 <option value="tenant">Tenant</option>
                 <option value="owner">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="viewer">Viewer</option>
               </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Admin sees everything; Viewer is a demo role with masked data.
+              </p>
             </div>
 
             {formData.role === "owner" && (
@@ -303,19 +429,27 @@ export default function TenantInvitesPage() {
                       {invite.email}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-900">
-                      {invite.properties?.address || "—"}
+                      {invite.properties?.address || "-"}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        invite.role === 'owner' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          invite.role === "owner"
+                            ? "bg-purple-100 text-purple-800"
+                            : invite.role === "admin"
+                              ? "bg-amber-100 text-amber-800"
+                              : invite.role === "viewer"
+                                ? "bg-slate-200 text-slate-800"
+                                : "bg-blue-100 text-blue-800"
+                        }`}
+                      >
                         {invite.role.charAt(0).toUpperCase() + invite.role.slice(1)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
-                      {invite.role === 'owner' && invite.ownership_percentage
+                      {invite.role === "owner" && invite.ownership_percentage
                         ? `${invite.ownership_percentage}%`
-                        : "—"}
+                        : "-"}
                     </td>
                     <td className="px-4 py-3 text-sm">
                       {getStatusBadge(invite.status)}
@@ -333,9 +467,7 @@ export default function TenantInvitesPage() {
                             onClick={() => copyInviteLink(invite.token)}
                             className="text-blue-600 hover:text-blue-700 font-medium"
                           >
-                            {copiedToken === invite.token
-                              ? "Copied!"
-                              : "Copy Link"}
+                            {copiedToken === invite.token ? "Copied!" : "Copy Link"}
                           </button>
                         )}
                         <button
@@ -344,6 +476,143 @@ export default function TenantInvitesPage() {
                         >
                           Delete
                         </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Existing Users (edit roles and property access) */}
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mt-8">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Existing Users</h2>
+            <p className="text-sm text-slate-600">View and update user roles and property access.</p>
+          </div>
+        </div>
+
+        {usersLoading ? (
+          <div className="p-6 text-center text-gray-500">Loading users...</div>
+        ) : users.length === 0 ? (
+          <div className="p-6 text-center text-gray-500">No users found.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Properties
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Last Sign-in
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {users.map((user) => (
+                  <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 text-sm text-slate-900">{user.email || "-"}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <select
+                        defaultValue={user.role || ""}
+                        onChange={(e) => handleUserRoleUpdate(user.id, e.target.value)}
+                        className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                        disabled={savingUserId === user.id}
+                      >
+                        <option value="">Select role</option>
+                        <option value="tenant">Tenant</option>
+                        <option value="owner">Owner</option>
+                        <option value="admin">Admin</option>
+                        <option value="viewer">Viewer</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      <div className="flex flex-wrap gap-2">
+                        {(userPropertyMap[user.id] || []).length === 0 && (
+                          <span className="text-xs text-slate-500">No properties</span>
+                        )}
+                        {(userPropertyMap[user.id] || []).map((up) => (
+                          <span
+                            key={`${up.user_id}-${up.property_id}`}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-slate-200 bg-slate-100 text-xs text-slate-700"
+                          >
+                            {up.properties?.address || up.properties?.name || up.property_id}
+                            <button
+                              onClick={() => handleRemoveAccess(user.id, up.property_id)}
+                              disabled={savingAccessUserId === user.id}
+                              className="text-slate-500 hover:text-red-600"
+                              title="Remove access"
+                              type="button"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      {user.created_at ? new Date(user.created_at).toLocaleDateString() : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="text-xs text-slate-500">
+                          ID: {user.id.slice(0, 6)}...
+                          {savingUserId === user.id && " Saving..."}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                            value={accessForm[user.id]?.propertyId || ""}
+                            onChange={(e) =>
+                              handleAccessFormChange(user.id, "propertyId", e.target.value)
+                            }
+                          >
+                            <option value="">Add property...</option>
+                            {properties.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.address}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                            value={accessForm[user.id]?.role || "owner"}
+                            onChange={(e) =>
+                              handleAccessFormChange(user.id, "role", e.target.value)
+                            }
+                          >
+                            <option value="owner">Owner</option>
+                            <option value="tenant">Tenant</option>
+                            <option value="admin">Admin</option>
+                            <option value="viewer">Viewer</option>
+                          </select>
+                          <button
+                            onClick={() => handleAddAccess(user.id)}
+                            className="text-xs px-3 py-1 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                            disabled={savingAccessUserId === user.id}
+                          >
+                            {savingAccessUserId === user.id ? "Saving..." : "Add access"}
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>

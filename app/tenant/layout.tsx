@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/app/context/AuthContext";
 
 const sidebarItems = [
   { name: "Dashboard", href: "/tenant" },
@@ -16,6 +17,12 @@ export default function TenantLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { user, role, loading } = useAuth();
+  const viewerLabel = loading
+    ? "Checking session..."
+    : user?.email
+      ? `${user.email} (${role || "role"})`
+      : "Not signed in";
 
   return (
     <div className="flex min-h-screen">
@@ -45,7 +52,15 @@ export default function TenantLayout({
           </Link>
         </div>
       </aside>
-      <main className="flex-1 bg-gray-100">{children}</main>
+      <main className="flex-1 bg-gray-100">
+        <div className="flex items-center justify-end px-6 pt-4">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Viewing as {viewerLabel}
+          </span>
+        </div>
+        <div className="p-6">{children}</div>
+      </main>
     </div>
   );
 }

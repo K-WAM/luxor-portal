@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Luxor Investment Assessment</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: radial-gradient(circle at top, #1b1207 0%, #050505 45%, #000 100%);
+      padding: 20px;
+      min-height: 100vh;
+      color: #e0e0e0;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: linear-gradient(145deg, #15100c 0%, #080705 100%);
+      border-radius: 24px;
+      box-shadow: 0 30px 90px rgba(0,0,0,0.9), 0 0 1px rgba(212,175,55,0.4);
+      overflow: hidden;
+      border: 1px solid rgba(212,175,55,0.25);
+    }
+
+    .header {
+      background: radial-gradient(circle at top, #2b1c0b 0%, #050404 55%);
+      padding: 40px 32px 30px;
+      text-align: center;
+      border-bottom: 3px solid #d4af37;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at top, rgba(212,175,55,0.18) 0%, transparent 60%),
+        radial-gradient(circle at 80% 20%, rgba(255,255,255,0.06) 0%, transparent 45%);
+      pointer-events: none;
+    }
+
+    .logo-container {
+      position: relative;
+      z-index: 1;
+    }
+
+    .logo {
+      width: 220px;
+      height: auto;
+      margin-bottom: 18px;
+      filter: drop-shadow(0 12px 30px rgba(0,0,0,0.9));
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.4em;
+      margin-bottom: 6px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #f4d03f 0%, #d4af37 50%, #c89b27 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: 0 0 30px rgba(212,175,55,0.35);
+    }
+
+    .header p {
+      color: #c0c0c0;
+      font-size: 0.98em;
+      letter-spacing: 0.8px;
+      font-weight: 300;
+    }
+
+    .top-controls {
+      margin-top: 18px;
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 0.9em;
+      color: #e0e0e0;
+    }
+
+    .control-pill {
+      background: rgba(5,5,5,0.7);
+      border-radius: 999px;
+      border: 1px solid rgba(212,175,55,0.35);
+      padding: 10px 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      backdrop-filter: blur(10px);
+    }
+
+    .control-pill label {
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-size: 0.8em;
+      color: #f0e2a0;
+    }
+
+    .control-pill input {
+      width: 70px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(212,175,55,0.4);
+      background: rgba(0,0,0,0.85);
+      color: #f4e7aa;
+      font-size: 0.9em;
+      text-align: right;
+      font-family: inherit;
+    }
+
+    .content {
+      padding: 26px 26px 30px;
+      background: radial-gradient(circle at top left, #1b130a 0%, #050404 50%);
+    }
+
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5em;
+      color: #f4dca1;
+      margin-bottom: 14px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title span.icon {
+      font-size: 1.2em;
+    }
+
+    .subnote {
+      font-size: 0.85em;
+      color: #9b9b9b;
+      margin-bottom: 10px;
+    }
+
+    .table-wrapper {
+      margin-top: 6px;
+      background: rgba(0,0,0,0.7);
+      border-radius: 16px;
+      padding: 12px;
+      border: 1px solid rgba(212,175,55,0.3);
+      box-shadow: 0 12px 35px rgba(0,0,0,0.7);
+      overflow-x: auto;
+    }
+
+    table.deal-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+      font-size: 0.85em;
+    }
+
+    table.deal-table th,
+    table.deal-table td {
+      border: 1px solid rgba(90,70,35,0.6);
+      padding: 6px 8px;
+    }
+
+    table.deal-table thead th {
+      background: linear-gradient(135deg, #2a2014 0%, #14100a 100%);
+      color: #f4e7aa;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    table.deal-table thead th:first-child {
+      text-align: left;
+    }
+
+    table.deal-table tbody tr:nth-child(odd) td {
+      background: rgba(10,10,10,0.85);
+    }
+
+    table.deal-table tbody tr:nth-child(even) td {
+      background: rgba(18,16,13,0.9);
+    }
+
+    table.deal-table tbody tr:hover td {
+      background: linear-gradient(135deg, rgba(24,20,15,0.96) 0%, rgba(10,9,7,0.98) 100%);
+    }
+
+    .metric-label {
+      font-weight: 600;
+      color: #f0e4b2;
+      width: 220px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .metric-group {
+      background: #3a2a15;
+      color: #f6e7b8;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    .metric-group span {
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 0.78em;
+    }
+
+    .input-cell input {
+      width: 100%;
+      max-width: 110px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(212,175,55,0.4);
+      background: rgba(0,0,0,0.9);
+      color: #f4e7aa;
+      text-align: right;
+      font-size: 0.85em;
+      font-family: inherit;
+    }
+
+    .input-cell input:focus {
+      outline: none;
+      border-color: #f4d03f;
+      box-shadow: 0 0 0 2px rgba(212,175,55,0.3);
+    }
+
+    .output-cell {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .output-cell.strong {
+      color: #f5e28f;
+      font-weight: 700;
+    }
+
+    .output-cell.negative {
+      color: #ff8c7a;
+    }
+
+    .output-cell.positive {
+      color: #9ff59c;
+    }
+
+    .header-input {
+      width: 90%;
+      max-width: 120px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(212,175,55,0.4);
+      background: rgba(0,0,0,0.85);
+      color: #f4e7aa;
+      text-align: center;
+      font-size: 0.85em;
+      font-family: inherit;
+    }
+
+    @media (max-width: 900px) {
+      .content {
+        padding: 18px 14px 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo-container">
+        <img class="logo" src="https://k-wam.github.io/Airbnb/assets/file_0000000015785230a90868ce0ad620f7_conversation_id_67ea1806-3c50-800e-99cc-93458cce5baa&message_id_2528423f-82b4-4cd4-99ac-21de7fa9037c%20(1).webp" alt="Luxor Logo">
+        <h1>Investment Assessment</h1>
+        <p>Compare multiple rentals, cashflow and ROI side-by-side</p>
+
+        <div class="top-controls">
+          <div class="control-pill">
+            <label for="targetCap">Target CAP</label>
+            <input type="number" id="targetCap" value="7" step="0.1" oninput="recalculate()">
+            <span>%</span>
+          </div>
+          <div class="control-pill">
+            <label for="numProps">Properties</label>
+            <input type="number" id="numProps" value="5" min="1" max="10" oninput="buildTable()">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="section-title">
+        <span class="icon">📊</span>
+        Luxor Property Matrix
+      </div>
+      <div class="subnote">
+        Enter your numbers per column. Maintenance and management are % of <strong>monthly rent</strong>. Property tax is entered as an <strong>annual</strong> amount.
+      </div>
+
+      <div class="table-wrapper">
+        <table class="deal-table" id="dealTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const MAX_PROPERTIES = 10;
+    const DEFAULT_PROPERTIES = 5;
+
+    const metrics = [
+      { id: 'group-deal', label: 'Deal Basics', group: true },
+      { id: 'location', label: 'Location / Name', type: 'text' },
+      { id: 'cost', label: 'Purchase Price', type: 'number' },
+      { id: 'repairs', label: 'Repairs (CapEx)', type: 'number', default: 0 },
+      { id: 'downpayment', label: 'Downpayment (cash in)', type: 'number' },
+
+      { id: 'group-income', label: 'Income & Operating Costs', group: true },
+      { id: 'rent', label: 'Monthly Rent', type: 'number' },
+      { id: 'hoa', label: 'HOA / Condo Fees (mo)', type: 'number', default: 0 },
+      { id: 'taxAnnual', label: 'Property Tax (annual)', type: 'number', default: 0 },
+      { id: 'insurance', label: 'Insurance (mo)', type: 'number', default: 0 },
+      { id: 'maintPct', label: 'Maintenance (% of rent)', type: 'number', default: 5 },
+      { id: 'mgmtPct', label: 'Management (% of rent)', type: 'number', default: 10 },
+
+      { id: 'group-tax', label: 'Tax & Appreciation Assumptions', group: true },
+      { id: 'taxRate', label: 'Income Tax Rate (%)', type: 'number', default: 25 },
+      { id: 'appreciationPct', label: 'Appreciation / yr (%)', type: 'number', default: 5 },
+
+      { id: 'group-cap', label: 'CAP & Value', group: true },
+      { id: 'targetCapRow', label: 'Target CAP Rate', type: 'output', format: 'percent' },
+      { id: 'actualCapWith', label: 'Actual CAP (incl property tax)', type: 'output', format: 'percent', signed: true },
+      { id: 'actualCapWithout', label: 'Actual CAP (excl property tax)', type: 'output', format: 'percent', signed: true },
+      { id: 'meetsRule', label: 'Meets % of Target (incl tax)', type: 'output', format: 'percent' },
+      { id: 'calcValue', label: 'Calculated Value @ Target CAP', type: 'output', format: 'currency' },
+      { id: 'overpriced', label: 'Overpriced By', type: 'output', format: 'percent', signed: true },
+
+      { id: 'group-cashflow', label: 'Cashflow & ROI', group: true },
+      { id: 'preTaxCF', label: 'Pre-Tax Cashflow / mo', type: 'output', format: 'currency', signed: true },
+      { id: 'preTaxROI', label: 'Pre-Tax ROI / yr', type: 'output', format: 'percent', signed: true },
+      { id: 'postTaxCF', label: 'Post-Tax Cashflow / mo', type: 'output', format: 'currency', signed: true },
+      { id: 'postTaxROI', label: 'Post-Tax ROI / yr', type: 'output', format: 'percent', signed: true },
+
+      { id: 'group-app', label: 'Appreciation & Total Return', group: true },
+      { id: 'appreciationValue', label: 'Appreciation Value / yr', type: 'output', format: 'currency' },
+      { id: 'roiWithApp', label: 'ROI with Appreciation', type: 'output', format: 'percent', signed: true }
+    ];
+
+    function currentPropertyCount() {
+      const input = document.getElementById('numProps');
+      let n = parseInt(input.value, 10);
+      if (isNaN(n) || n < 1) n = 1;
+      if (n > MAX_PROPERTIES) n = MAX_PROPERTIES;
+      input.value = n;
+      return n;
+    }
+
+    function buildTable() {
+      const n = currentPropertyCount();
+      const table = document.getElementById('dealTable');
+      table.innerHTML = '';
+
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+
+      const thMetric = document.createElement('th');
+      thMetric.textContent = 'Metric';
+      headRow.appendChild(thMetric);
+
+      for (let i = 1; i <= n; i++) {
+        const th = document.createElement('th');
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'header-input';
+        inp.id = `propName-${i}`;
+        inp.value = `Property ${i}`;
+        th.appendChild(inp);
+        headRow.appendChild(th);
+      }
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+
+      metrics.forEach(m => {
+        const tr = document.createElement('tr');
+
+        if (m.group) {
+          const td = document.createElement('td');
+          td.colSpan = n + 1;
+          td.className = 'metric-group';
+          const span = document.createElement('span');
+          span.textContent = m.label;
+          td.appendChild(span);
+          tr.appendChild(td);
+        } else {
+          const labelCell = document.createElement('td');
+          labelCell.textContent = m.label;
+          labelCell.className = 'metric-label';
+          tr.appendChild(labelCell);
+
+          for (let i = 1; i <= n; i++) {
+            const td = document.createElement('td');
+
+            if (m.type === 'number' || m.type === 'text') {
+              td.className = 'input-cell';
+              const inp = document.createElement('input');
+              inp.id = `${m.id}-p${i}`;
+              inp.type = m.type === 'number' ? 'number' : 'text';
+              if (m.default !== undefined) inp.value = m.default;
+              inp.oninput = recalculate;
+              td.appendChild(inp);
+            } else if (m.type === 'output') {
+              td.className = 'output-cell';
+              const span = document.createElement('span');
+              span.id = `${m.id}-p${i}`;
+              span.textContent = '—';
+              td.appendChild(span);
+            }
+            tr.appendChild(td);
+          }
+        }
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      recalculate();
+    }
+
+    function numValue(id) {
+      const el = document.getElementById(id);
+      if (!el) return 0;
+      const raw = (el.value || '').toString().replace(/,/g, '');
+      const v = parseFloat(raw);
+      return isNaN(v) ? 0 : v;
+    }
+
+    function formatCurrency(x) {
+      const sign = x < 0 ? '-' : '';
+      const n = Math.abs(x);
+      return sign + '$' + new Intl.NumberFormat('en-US', {
+        maximumFractionDigits: 0
+      }).format(Math.round(n));
+    }
+
+    function formatPercent(x) {
+      if (!isFinite(x)) return '—';
+      return x.toFixed(1) + '%';
+    }
+
+    function recalculate() {
+      const n = currentPropertyCount();
+      const targetCapPercent = parseFloat(document.getElementById('targetCap').value) || 7;
+      const targetCap = targetCapPercent / 100;
+
+      for (let i = 1; i <= n; i++) {
+        const cost = numValue(`cost-p${i}`);
+        const repairs = numValue(`repairs-p${i}`);
+        const totalCost = cost + repairs;
+        const down = numValue(`downpayment-p${i}`) || totalCost;
+
+        const rent = numValue(`rent-p${i}`);
+        const hoa = numValue(`hoa-p${i}`);
+        const taxAnnual = numValue(`taxAnnual-p${i}`);
+        const taxMonthly = taxAnnual / 12;
+        const insurance = numValue(`insurance-p${i}`);
+        const maintPct = numValue(`maintPct-p${i}`);
+        const mgmtPct = numValue(`mgmtPct-p${i}`);
+        const taxRate = numValue(`taxRate-p${i}`);
+        const appPct = numValue(`appreciationPct-p${i}`);
+
+        const maintMonthly = rent * (maintPct / 100);
+        const mgmtMonthly = rent * (mgmtPct / 100);
+        const monthlyFees = hoa + taxMonthly + insurance + maintMonthly + mgmtMonthly;
+
+        const monthlyIncome = rent;
+        const preTaxCFMonthly = monthlyIncome - monthlyFees;
+        const preTaxCFAnnual = preTaxCFMonthly * 12;
+
+        const annualDepreciation = totalCost > 0 ? totalCost / 27.5 : 0;
+        const depTaxReturn = annualDepreciation * (taxRate / 100);
+        const postTaxCFAnnual = preTaxCFAnnual + depTaxReturn;
+        const postTaxCFMonthly = postTaxCFAnnual / 12;
+
+        const appreciationValue = totalCost * (appPct / 100);
+
+        // CAP calculations with and without property tax
+        const NOI_withTax = preTaxCFAnnual;               // uses property tax as expense
+        const NOI_withoutTax = NOI_withTax + taxAnnual;   // add property tax back
+
+        const actualCapWith = totalCost > 0 ? NOI_withTax / totalCost : 0;
+        const actualCapWithout = totalCost > 0 ? NOI_withoutTax / totalCost : 0;
+
+        const meetsRule = targetCap > 0 ? (actualCapWith / targetCap) * 100 : 0;
+        const calcValue = targetCap > 0 ? NOI_withTax / targetCap : 0;
+        const overpriced = calcValue > 0 ? ((totalCost - calcValue) / calcValue) * 100 : 0;
+
+        const preTaxROI = down > 0 ? (preTaxCFAnnual / down) * 100 : 0;
+        const postTaxROI = down > 0 ? (postTaxCFAnnual / down) * 100 : 0;
+        const roiWithApp = down > 0 ? ((postTaxCFAnnual + appreciationValue) / down) * 100 : 0;
+
+        // CAP & rule outputs
+        setOutputPercent(`targetCapRow-p${i}`, targetCapPercent);
+        setOutputPercent(`actualCapWith-p${i}`, actualCapWith * 100, true);
+        setOutputPercent(`actualCapWithout-p${i}`, actualCapWithout * 100, true);
+        setOutputPercent(`meetsRule-p${i}`, meetsRule);
+        setOutputCurrency(`calcValue-p${i}`, calcValue);
+        setOutputPercent(`overpriced-p${i}`, overpriced, true);
+
+        // Cashflow / ROI outputs
+        setOutputCurrency(`preTaxCF-p${i}`, preTaxCFMonthly, true);
+        setOutputPercent(`preTaxROI-p${i}`, preTaxROI, true);
+        setOutputCurrency(`postTaxCF-p${i}`, postTaxCFMonthly, true);
+        setOutputPercent(`postTaxROI-p${i}`, postTaxROI, true);
+
+        // Appreciation & total return
+        setOutputCurrency(`appreciationValue-p${i}`, appreciationValue);
+        setOutputPercent(`roiWithApp-p${i}`, roiWithApp, true);
+      }
+    }
+
+    function setOutputCurrency(id, value, signed = false) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = formatCurrency(value);
+      setSignClass(el, value, signed);
+    }
+
+    function setOutputPercent(id, value, signed = false) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = formatPercent(value);
+      setSignClass(el, value, signed);
+    }
+
+    function setSignClass(el, value, signed) {
+      el.classList.remove('positive', 'negative', 'strong');
+      el.classList.add('strong');
+      if (signed) {
+        if (value > 0.001) el.classList.add('positive');
+        if (value < -0.001) el.classList.add('negative');
+      }
+    }
+
+    // Initial build & calc
+    document.getElementById('numProps').value = DEFAULT_PROPERTIES;
+    buildTable();
+  </script>
+</body>
+</html>

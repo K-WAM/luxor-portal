@@ -32,22 +32,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setRole((session?.user?.user_metadata?.role as UserRole) ?? null);
-      setLoading(false);
-    });
+    let isMounted = true;
+
+    const loadAuthState = async () => {
+      setLoading(true);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const sessionUser = sessionData.session?.user ?? null;
+        if (!isMounted) return;
+
+        setSession(sessionData.session);
+        setUser(sessionUser);
+        setRole((sessionUser?.user_metadata?.role as UserRole) ?? null);
+
+        // Re-validate the user from Auth server to ensure fresh metadata
+        const { data: userData } = await supabase.auth.getUser();
+        if (!isMounted) return;
+        if (userData.user) {
+          setUser(userData.user);
+          setRole((userData.user?.user_metadata?.role as UserRole) ?? null);
+        }
+      } catch (err) {
+        console.error("Failed to load auth state", err);
+        if (!isMounted) return;
+        setSession((prev) => prev);
+        setUser((prev) => prev);
+        setRole((prev) => prev);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadAuthState();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return;
       setSession(session);
+      const metadataRole = (session?.user?.user_metadata?.role as UserRole) ?? null;
       setUser(session?.user ?? null);
-      setRole((session?.user?.user_metadata?.role as UserRole) ?? null);
+      setRole(metadataRole);
+      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
@@ -59,12 +91,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) return { error: error.message };
 
+      const { data: userData } = await supabase.auth.getUser();
+
       setSession(data.session);
-      setUser(data.user);
-      setRole((data.user?.user_metadata?.role as UserRole) ?? null);
+      setUser(userData.user ?? data.user ?? null);
+      setRole((userData.user?.user_metadata?.role as UserRole) ?? (data.user?.user_metadata?.role as UserRole) ?? null);
+      setLoading(false);
 
       return { error: null };
     } catch (err: any) {
+      setLoading(false);
       return { error: err.message || "Failed to sign in" };
     }
   };

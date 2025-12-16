@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/app/context/AuthContext";
 
 const navItems = [
   { name: "Sign In", href: "/" },
@@ -12,13 +13,15 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname();
+  const { role } = useAuth();
 
   const isPortalPage =
     pathname.startsWith("/owner") ||
     pathname.startsWith("/tenant") ||
     pathname.startsWith("/admin");
 
-  if (isPortalPage) {
+  // Hide navbar on portal pages for non-admin roles; allow admin to navigate between portals.
+  if (isPortalPage && role !== "admin") {
     return null;
   }
 
