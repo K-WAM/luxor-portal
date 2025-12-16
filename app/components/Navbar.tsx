@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 
 const navItems = [
-  { name: "Sign In", href: "/" },
   { name: "Owner Portal", href: "/owner" },
   { name: "Tenant Portal", href: "/tenant" },
   { name: "Admin Portal", href: "/admin" },
@@ -13,7 +12,7 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { role } = useAuth();
+  const { role, user, signOut, loading } = useAuth();
 
   const isPortalPage =
     pathname.startsWith("/owner") ||
@@ -25,20 +24,40 @@ export default function Navbar() {
     return null;
   }
 
+  const filteredNav = user
+    ? navItems
+    : [{ name: "Sign In", href: "/" }, ...navItems];
+
   return (
     <nav className="bg-gray-800 text-white px-6 py-3">
-      <div className="flex gap-6">
-        {navItems.map((item) => (
+      <div className="flex items-center justify-between gap-6">
+        <div className="flex gap-6">
+          {filteredNav.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`hover:text-gray-300 ${
+                pathname === item.href ? "font-semibold" : ""
+              }`}
+            >
+              {item.name}
+            </Link>
+          ))}
+        </div>
+        {user && (
           <Link
-            key={item.href}
-            href={item.href}
-            className={`hover:text-gray-300 ${
-              pathname === item.href ? "font-semibold" : ""
-            }`}
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              if (!loading) {
+                signOut();
+              }
+            }}
+            className="text-sm text-gray-200 hover:text-white"
           >
-            {item.name}
+            Sign out
           </Link>
-        ))}
+        )}
       </div>
     </nav>
   );
