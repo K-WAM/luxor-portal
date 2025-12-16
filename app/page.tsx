@@ -3,15 +3,19 @@
 import { useState, FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./context/AuthContext";
+import { createClient } from "@/lib/supabase/client";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetStatus, setResetStatus] = useState<string | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const { signIn, user, role, loading: authLoading } = useAuth();
   const router = useRouter();
+  const supabase = createClient();
 
   const redirectByRole = (userRole: string) => {
     switch (userRole) {
@@ -49,6 +53,26 @@ export default function SignInPage() {
     }
   };
 
+  const handleResetPassword = async () => {
+    setError(null);
+    setResetStatus(null);
+    if (!email) {
+      setError("Enter your email first, then click Forgot password.");
+      return;
+    }
+    try {
+      setResetLoading(true);
+      await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      setResetStatus("Password reset email sent. Check your inbox for the link.");
+    } catch (err: any) {
+      setError(err?.message || "Failed to send reset email");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   if (authLoading) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -76,6 +100,11 @@ export default function SignInPage() {
         {error && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded border border-red-200">
             {error}
+          </div>
+        )}
+        {resetStatus && (
+          <div className="mb-4 p-3 bg-emerald-50 text-emerald-700 rounded border border-emerald-200">
+            {resetStatus}
           </div>
         )}
 
@@ -112,6 +141,16 @@ export default function SignInPage() {
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={handleResetPassword}
+            disabled={resetLoading}
+            className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-60"
+          >
+            {resetLoading ? "Sending reset email..." : "Forgot password?"}
+          </button>
+        </div>
       </div>
     </main>
   );
