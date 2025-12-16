@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 
 const navItems = [
@@ -12,6 +12,7 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { role, user, signOut, loading } = useAuth();
 
   const isPortalPage =
@@ -24,15 +25,16 @@ export default function Navbar() {
     return null;
   }
 
-  const filteredNav = user
-    ? navItems
-    : [{ name: "Sign In", href: "/" }, ...navItems];
+  // If not signed in, hide navbar entirely to avoid navigation to other portals.
+  if (!user) {
+    return null;
+  }
 
   return (
     <nav className="bg-gray-800 text-white px-6 py-3">
       <div className="flex items-center justify-between gap-6">
         <div className="flex gap-6">
-          {filteredNav.map((item) => (
+          {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -45,18 +47,17 @@ export default function Navbar() {
           ))}
         </div>
         {user && (
-          <Link
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
+          <button
+            onClick={async () => {
               if (!loading) {
-                signOut();
+                await signOut();
+                router.push("/");
               }
             }}
             className="text-sm text-gray-200 hover:text-white"
           >
             Sign out
-          </Link>
+          </button>
         )}
       </div>
     </nav>
