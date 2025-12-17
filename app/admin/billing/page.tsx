@@ -13,6 +13,7 @@ type BillRow = {
   invoiceUrl?: string;
   feePercent?: number | null;
   feeAmount?: number | null;
+  propertyId?: string;
 };
 
 export default function AdminBilling() {
