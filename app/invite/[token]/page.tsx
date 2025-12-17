@@ -8,6 +8,8 @@ type InviteData = {
   email: string;
   status: string;
   expires_at: string;
+  role?: string;
+  ownership_percentage?: number | null;
   properties: {
     id: string;
     address: string;
@@ -125,7 +127,9 @@ export default function InviteAcceptPage() {
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
         <h1 className="text-3xl font-bold mb-2 text-center">Welcome to Luxor</h1>
         <p className="text-gray-600 text-center mb-6">
-          You've been invited to join as a tenant
+          {invite?.role
+            ? `You've been invited to join as a ${invite.role}`
+            : "You've been invited to join"}
         </p>
 
         {invite && (
@@ -134,6 +138,14 @@ export default function InviteAcceptPage() {
             <div className="font-semibold text-gray-900">
               {invite.properties.address}
             </div>
+            {invite.role === "owner" && invite.ownership_percentage !== undefined && invite.ownership_percentage !== null && (
+              <div className="text-sm text-gray-600 mt-2">
+                Ownership:
+                <span className="font-semibold text-gray-900 ml-1">
+                  {invite.ownership_percentage}%
+                </span>
+              </div>
+            )}
             <div className="text-sm text-gray-600 mt-2">Your Email</div>
             <div className="font-semibold text-gray-900">{invite.email}</div>
           </div>
