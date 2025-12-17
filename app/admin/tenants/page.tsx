@@ -58,6 +58,7 @@ export default function TenantInvitesPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingAccessUserId, setSavingAccessUserId] = useState<string | null>(null);
+  const [savingOwnershipKey, setSavingOwnershipKey] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -68,6 +69,7 @@ export default function TenantInvitesPage() {
 
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [accessForm, setAccessForm] = useState<Record<string, { propertyId: string; role: string; ownershipPercentage?: string }>>({});
+  const [ownershipEdits, setOwnershipEdits] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadData();
@@ -212,6 +214,33 @@ export default function TenantInvitesPage() {
     }
   };
 
+  const handleOwnershipUpdate = async (userId: string, propertyId: string, value: string) => {
+    setError(null);
+    setSuccess(null);
+    const pct = value === "" ? null : parseFloat(value);
+    if (pct !== null && (isNaN(pct) || pct < 0 || pct > 100)) {
+      setError("Enter a valid ownership percentage between 0 and 100.");
+      return;
+    }
+    const key = `${userId}-${propertyId}`;
+    try {
+      setSavingOwnershipKey(key);
+      const res = await fetch("/api/admin/user-properties", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, propertyId, ownershipPercentage: pct }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update ownership");
+      setSuccess("Ownership updated.");
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "Failed to update ownership");
+    } finally {
+      setSavingOwnershipKey(null);
+    }
+  };
+
   const handleRemoveAccess = async (userId: string, propertyId: string) => {
     setError(null);
     setSuccess(null);
@@ -280,6 +309,8 @@ export default function TenantInvitesPage() {
       </div>
     );
   }
+
+  const visibleInvites = invites.filter((inv) => inv.status !== "accepted");
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -441,7 +472,7 @@ export default function TenantInvitesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {invites.map((invite) => (
+                {visibleInvites.map((invite) => (
                   <tr key={invite.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 text-sm text-slate-900">
                       {invite.email}
@@ -563,47 +594,83 @@ export default function TenantInvitesPage() {
                         <option value="viewer">Viewer</option>
                       </select>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700">
-                      <div className="flex flex-wrap gap-2">
-                        {(userPropertyMap[user.id] || []).length === 0 && (
-                          <span className="text-xs text-slate-500">No properties</span>
-                        )}
-                        {(userPropertyMap[user.id] || []).map((up) => (
-                          <span
-                            key={`${up.user_id}-${up.property_id}`}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-slate-200 bg-slate-100 text-xs text-slate-700"
+                  <td className="px-4 py-3 text-sm text-slate-700">
+                    <div className="flex flex-wrap gap-2">
+                      {(userPropertyMap[user.id] || []).length === 0 && (
+                        <span className="text-xs text-slate-500">No properties</span>
+                      )}
+                      {(userPropertyMap[user.id] || []).map((up) => (
+                        <span
+                          key={`${up.user_id}-${up.property_id}`}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-slate-200 bg-slate-100 text-xs text-slate-700"
+                        >
+                          {up.properties?.address || up.properties?.name || up.property_id}
+                          <button
+                            onClick={() => handleRemoveAccess(user.id, up.property_id)}
+                            disabled={savingAccessUserId === user.id}
+                            className="text-slate-500 hover:text-red-600"
+                            title="Remove access"
+                            type="button"
                           >
-                            {up.properties?.address || up.properties?.name || up.property_id}
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-700">
+                    <div className="flex flex-col gap-1">
+                      {(userPropertyMap[user.id] || []).filter((up) => up.role === "owner" && up.ownership_percentage).length === 0 && (
+                        <span className="text-xs text-slate-500">-</span>
+                      )}
+                      {(userPropertyMap[user.id] || []).map((up) =>
+                        up.role === "owner" ? (
+                          <div key={`${up.user_id}-${up.property_id}-own`} className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-amber-200 bg-amber-50 text-xs text-amber-800">
+                              {up.properties?.address || up.properties?.name || up.property_id}
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-20"
+                              value={
+                                ownershipEdits[`${up.user_id}-${up.property_id}`] ??
+                                (up.ownership_percentage !== null && up.ownership_percentage !== undefined
+                                  ? String(up.ownership_percentage)
+                                  : "")
+                              }
+                              onChange={(e) =>
+                                setOwnershipEdits((prev) => ({
+                                  ...prev,
+                                  [`${up.user_id}-${up.property_id}`]: e.target.value,
+                                }))
+                              }
+                              placeholder="%"
+                            />
                             <button
-                              onClick={() => handleRemoveAccess(user.id, up.property_id)}
-                              disabled={savingAccessUserId === user.id}
-                              className="text-slate-500 hover:text-red-600"
-                              title="Remove access"
+                              onClick={() =>
+                                handleOwnershipUpdate(
+                                  up.user_id,
+                                  up.property_id,
+                                  ownershipEdits[`${up.user_id}-${up.property_id}`] ??
+                                    (up.ownership_percentage !== null && up.ownership_percentage !== undefined
+                                      ? String(up.ownership_percentage)
+                                      : "")
+                                )
+                              }
+                              disabled={savingOwnershipKey === `${up.user_id}-${up.property_id}`}
+                              className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
                               type="button"
                             >
-                              ×
+                              {savingOwnershipKey === `${up.user_id}-${up.property_id}` ? "Saving..." : "Save"}
                             </button>
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-700">
-                      <div className="flex flex-col gap-1">
-                        {(userPropertyMap[user.id] || []).filter((up) => up.role === "owner" && up.ownership_percentage).length === 0 && (
-                          <span className="text-xs text-slate-500">-</span>
-                        )}
-                        {(userPropertyMap[user.id] || []).map((up) =>
-                          up.role === "owner" && up.ownership_percentage ? (
-                            <span
-                              key={`${up.user_id}-${up.property_id}-own`}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-amber-200 bg-amber-50 text-xs text-amber-800"
-                            >
-                              {up.properties?.address || up.properties?.name || up.property_id}: {up.ownership_percentage}%
-                            </span>
-                          ) : null
-                        )}
-                      </div>
-                    </td>
+                          </div>
+                        ) : null
+                      )}
+                    </div>
+                  </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {user.created_at ? new Date(user.created_at).toLocaleDateString() : "-"}
                     </td>

@@ -18,6 +18,7 @@ export async function GET() {
         `
         user_id,
         role,
+        ownership_percentage,
         property_id,
         properties (
           id,
@@ -43,10 +44,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const { userId, propertyId, role: newRole } = (await request.json()) as {
+    const { userId, propertyId, role: newRole, ownershipPercentage } = (await request.json()) as {
       userId?: string;
       propertyId?: string;
       role?: string;
+      ownershipPercentage?: number | string | null;
     };
 
     if (!userId || !propertyId || !newRole) {
@@ -63,6 +65,10 @@ export async function POST(request: Request) {
         user_id: userId,
         property_id: propertyId,
         role: newRole,
+        ownership_percentage:
+          newRole === "owner" && ownershipPercentage !== undefined && ownershipPercentage !== null && ownershipPercentage !== ""
+            ? parseFloat(String(ownershipPercentage))
+            : null,
       })
       .select()
       .single();
@@ -73,6 +79,45 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Error adding user property access", error);
     return NextResponse.json({ error: "Failed to add access" }, { status: 500 });
+  }
+}
+
+// PATCH: update ownership percentage (admin only)
+export async function PATCH(request: Request) {
+  try {
+    const { user, role } = await getAuthContext();
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+
+    const { userId, propertyId, ownershipPercentage } = (await request.json()) as {
+      userId?: string;
+      propertyId?: string;
+      ownershipPercentage?: number | string;
+    };
+
+    if (!userId || !propertyId) {
+      return NextResponse.json({ error: "userId and propertyId are required" }, { status: 400 });
+    }
+
+    const pct = ownershipPercentage === null || ownershipPercentage === "" ? null : parseFloat(String(ownershipPercentage));
+    if (pct !== null && (isNaN(pct) || pct < 0 || pct > 100)) {
+      return NextResponse.json({ error: "ownershipPercentage must be between 0 and 100" }, { status: 400 });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("user_properties")
+      .update({ ownership_percentage: pct })
+      .eq("user_id", userId)
+      .eq("property_id", propertyId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Error updating ownership percentage", error);
+    return NextResponse.json({ error: "Failed to update ownership" }, { status: 500 });
   }
 }
 
