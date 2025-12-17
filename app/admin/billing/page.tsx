@@ -20,6 +20,13 @@ export default function AdminBilling() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editAmounts, setEditAmounts] = useState<Record<string, { feePercent?: string; feeAmount?: string; status?: string }>>({});
+  const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
+  const [newBill, setNewBill] = useState<{ propertyId: string; month: number; year: number; feePercent: string }>({
+    propertyId: "",
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+    feePercent: "10",
+  });
 
   const totals = useMemo(() => {
     const due = bills.filter((b) => b.status === "due" || b.status === "overdue").reduce((s, b) => s + (b.amount || 0), 0);
@@ -43,7 +50,10 @@ export default function AdminBilling() {
   };
 
   useEffect(() => {
-    loadBills();
+    const load = async () => {
+      await Promise.all([loadBills(), loadProperties()]);
+    };
+    load();
   }, []);
 
   const handleSave = async (bill: BillRow) => {
@@ -88,7 +98,63 @@ export default function AdminBilling() {
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Owner Bills</h2>
-          <span className="text-xs text-slate-500">Stripe collection coming soon</span>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span>Stripe collection coming soon</span>
+          </div>
+        </div>
+        <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Property</label>
+            <select
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={newBill.propertyId}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, propertyId: e.target.value }))}
+            >
+              <option value="">Select property...</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.address}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Month</label>
+            <input
+              type="number"
+              min={1}
+              max={12}
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-24"
+              value={newBill.month}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, month: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Year</label>
+            <input
+              type="number"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-28"
+              value={newBill.year}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, year: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">% of rent</label>
+            <input
+              type="number"
+              step="0.01"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-28"
+              value={newBill.feePercent}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, feePercent: e.target.value }))}
+            />
+          </div>
+          <button
+            onClick={handleCreate}
+            disabled={loading}
+            className="h-10 px-4 rounded bg-slate-900 text-white text-sm hover:bg-slate-800 disabled:opacity-60"
+          >
+            {loading ? "Saving..." : "Create bill"}
+          </button>
         </div>
         {error && <div className="px-4 py-3 text-sm text-red-600">{error}</div>}
         <div className="overflow-x-auto">
@@ -195,3 +261,42 @@ export default function AdminBilling() {
     </div>
   );
 }
+  const loadProperties = async () => {
+    try {
+      const res = await fetch("/api/properties", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load properties");
+      setProperties(data.map((p: any) => ({ id: p.id, address: p.address })));
+    } catch (err: any) {
+      setError(err.message || "Failed to load properties");
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newBill.propertyId) {
+      setError("Select a property for the bill");
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch("/api/admin/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: newBill.propertyId,
+          ownerId: "", // owner is inferred by upsert using property + owner from table; if multiple owners, refine logic
+          month: newBill.month,
+          year: newBill.year,
+          feePercent: newBill.feePercent,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create bill");
+      await loadBills();
+    } catch (err: any) {
+      setError(err.message || "Failed to create bill");
+    } finally {
+      setLoading(false);
+    }
+  };

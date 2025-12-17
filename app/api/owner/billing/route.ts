@@ -14,16 +14,16 @@ export async function GET(request: NextRequest) {
 
     let propertyIds: string[] = [];
     if (isAdmin(role)) {
+      // Admin can view all; optional property filter
       if (propertyId) propertyIds = [propertyId];
     } else {
       propertyIds = await getAccessiblePropertyIds(user.id, role);
       if (propertyId) {
         propertyIds = propertyIds.includes(propertyId) ? [propertyId] : [];
       }
-    }
-
-    if (!propertyIds.length) {
-      return NextResponse.json([]);
+      if (!propertyIds.length) {
+        return NextResponse.json([]);
+      }
     }
 
     const { data, error } = await supabaseAdmin
@@ -47,8 +47,8 @@ export async function GET(request: NextRequest) {
         properties ( address )
       `
       )
-      .in("property_id", propertyIds)
-      .eq("owner_id", user.id)
+      .in("property_id", propertyIds.length ? propertyIds : undefined as any)
+      .eq("owner_id", isAdmin(role) ? undefined : user.id)
       .order("year", { ascending: false })
       .order("month", { ascending: false });
 

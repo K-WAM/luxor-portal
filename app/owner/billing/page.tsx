@@ -16,21 +16,51 @@ type Bill = {
 
 export default function OwnerBilling() {
   const { user, role } = useAuth();
+  const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<string>("all");
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const loadProps = async () => {
+      try {
+        const res = await fetch("/api/properties", { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load properties");
+        setProperties(data.map((p: any) => ({ id: p.id, address: p.address })));
+        if (!selectedProperty && data.length) {
+          setSelectedProperty(data[0].id);
+        }
+      } catch (err: any) {
+        console.error(err);
+      }
+    };
+    loadProps();
+  }, []);
+
+  useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
-        const params = selectedProperty !== "all" ? `?propertyId=${selectedProperty}` : "";
-        const res = await fetch(`/api/owner/billing${params}`, { cache: "no-store" });
+        const params = selectedProperty && selectedProperty !== "all" ? `?propertyId=${selectedProperty}` : "";
+        const endpoint = role === "admin" ? "/api/admin/billing" : "/api/owner/billing";
+        const res = await fetch(`${endpoint}${params}`, { cache: "no-store" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to load billing");
-        setBills(data);
+        setBills(
+          data.map((b: any) => ({
+            id: b.id,
+            propertyId: b.propertyId,
+            propertyAddress: b.propertyAddress,
+            description: b.description,
+            amount: b.amount,
+            dueDate: b.dueDate,
+            status: b.status,
+            invoiceUrl: b.invoiceUrl,
+          }))
+        );
       } catch (err: any) {
         setError(err.message || "Failed to load billing");
       } finally {
@@ -38,17 +68,20 @@ export default function OwnerBilling() {
       }
     };
     load();
-  }, [selectedProperty]);
+  }, [selectedProperty, role]);
 
   const filtered = bills.filter((b) => selectedProperty === "all" || b.propertyId === selectedProperty);
   const totalDue = filtered
     .filter((b) => b.status === "due" || b.status === "overdue")
     .reduce((sum, b) => sum + b.amount, 0);
 
-  const uniqueProps = Array.from(new Set(bills.map((b) => b.propertyId))).map((id) => ({
-    id,
-    address: bills.find((b) => b.propertyId === id)?.propertyAddress || id,
-  }));
+  const uniqueProps =
+    properties.length > 0
+      ? properties
+      : Array.from(new Set(bills.map((b) => b.propertyId))).map((id) => ({
+          id,
+          address: bills.find((b) => b.propertyId === id)?.propertyAddress || id,
+        }));
 
   return (
     <div className="p-6 max-w-6xl mx-auto">

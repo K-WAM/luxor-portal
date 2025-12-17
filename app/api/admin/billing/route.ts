@@ -62,7 +62,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       propertyId,
-      ownerId,
       month,
       year,
       feePercent,
@@ -71,9 +70,24 @@ export async function POST(request: NextRequest) {
       dueDate,
     } = body || {};
 
-    if (!propertyId || !ownerId || !month || !year) {
-      return NextResponse.json({ error: "propertyId, ownerId, month, and year are required" }, { status: 400 });
+    if (!propertyId || !month || !year) {
+      return NextResponse.json({ error: "propertyId, month, and year are required" }, { status: 400 });
     }
+
+    // Infer owner from user_properties (owner role)
+    const { data: ownerRow, error: ownerErr } = await supabaseAdmin
+      .from("user_properties")
+      .select("user_id")
+      .eq("property_id", propertyId)
+      .eq("role", "owner")
+      .limit(1)
+      .single();
+
+    if (ownerErr || !ownerRow) {
+      return NextResponse.json({ error: "No owner found for this property" }, { status: 400 });
+    }
+
+    const ownerId = ownerRow.user_id;
 
     const { data: property } = await supabaseAdmin
       .from("properties")
