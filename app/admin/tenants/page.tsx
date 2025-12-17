@@ -37,6 +37,7 @@ type UserPropertyAccess = {
   user_id: string;
   property_id: string;
   role: string;
+  ownership_percentage?: number | null;
   properties?: {
     id: string;
     address?: string;
@@ -66,7 +67,7 @@ export default function TenantInvitesPage() {
   });
 
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
-  const [accessForm, setAccessForm] = useState<Record<string, { propertyId: string; role: string }>>({});
+  const [accessForm, setAccessForm] = useState<Record<string, { propertyId: string; role: string; ownershipPercentage?: string }>>({});
 
   useEffect(() => {
     loadData();
@@ -161,27 +162,44 @@ export default function TenantInvitesPage() {
     }
   };
 
-  const handleAccessFormChange = (userId: string, field: "propertyId" | "role", value: string) => {
+  const handleAccessFormChange = (userId: string, field: "propertyId" | "role" | "ownershipPercentage", value: string) => {
     setAccessForm((prev) => ({
       ...prev,
-      [userId]: { propertyId: prev[userId]?.propertyId || "", role: prev[userId]?.role || "owner", [field]: value },
+      [userId]: {
+        propertyId: prev[userId]?.propertyId || "",
+        role: prev[userId]?.role || "owner",
+        ownershipPercentage: prev[userId]?.ownershipPercentage || "",
+        [field]: value,
+      },
     }));
   };
 
   const handleAddAccess = async (userId: string) => {
     setError(null);
     setSuccess(null);
-    const form = accessForm[userId] || { propertyId: "", role: "owner" };
+    const form = accessForm[userId] || { propertyId: "", role: "owner", ownershipPercentage: "" };
     if (!form.propertyId || !form.role) {
       setError("Select a property and role to add access.");
       return;
+    }
+    if (form.role === "owner") {
+      const pct = parseFloat(form.ownershipPercentage || "");
+      if (isNaN(pct) || pct <= 0 || pct > 100) {
+        setError("Enter a valid ownership percentage between 0 and 100.");
+        return;
+      }
     }
     try {
       setSavingAccessUserId(userId);
       const res = await fetch("/api/admin/user-properties", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, propertyId: form.propertyId, role: form.role }),
+        body: JSON.stringify({
+          userId,
+          propertyId: form.propertyId,
+          role: form.role,
+          ownershipPercentage: form.role === "owner" ? form.ownershipPercentage : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to add access");
@@ -514,6 +532,9 @@ export default function TenantInvitesPage() {
                     Properties
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Ownership
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     Created
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -566,6 +587,23 @@ export default function TenantInvitesPage() {
                         ))}
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      <div className="flex flex-col gap-1">
+                        {(userPropertyMap[user.id] || []).filter((up) => up.role === "owner" && up.ownership_percentage).length === 0 && (
+                          <span className="text-xs text-slate-500">-</span>
+                        )}
+                        {(userPropertyMap[user.id] || []).map((up) =>
+                          up.role === "owner" && up.ownership_percentage ? (
+                            <span
+                              key={`${up.user_id}-${up.property_id}-own`}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-amber-200 bg-amber-50 text-xs text-amber-800"
+                            >
+                              {up.properties?.address || up.properties?.name || up.property_id}: {up.ownership_percentage}%
+                            </span>
+                          ) : null
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {user.created_at ? new Date(user.created_at).toLocaleDateString() : "-"}
                     </td>
@@ -605,6 +643,20 @@ export default function TenantInvitesPage() {
                             <option value="admin">Admin</option>
                             <option value="viewer">Viewer</option>
                           </select>
+                          {accessForm[user.id]?.role === "owner" && (
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-24"
+                              placeholder="% owned"
+                              value={accessForm[user.id]?.ownershipPercentage || ""}
+                              onChange={(e) =>
+                                handleAccessFormChange(user.id, "ownershipPercentage", e.target.value)
+                              }
+                            />
+                          )}
                           <button
                             onClick={() => handleAddAccess(user.id)}
                             className="text-xs px-3 py-1 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
