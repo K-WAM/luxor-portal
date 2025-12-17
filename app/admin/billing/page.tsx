@@ -49,6 +49,45 @@ export default function AdminBilling() {
     }
   };
 
+  const loadProperties = async () => {
+    try {
+      const res = await fetch("/api/properties", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load properties");
+      setProperties(data.map((p: any) => ({ id: p.id, address: p.address })));
+    } catch (err: any) {
+      setError(err.message || "Failed to load properties");
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newBill.propertyId) {
+      setError("Select a property for the bill");
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch("/api/admin/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: newBill.propertyId,
+          month: newBill.month,
+          year: newBill.year,
+          feePercent: newBill.feePercent,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create bill");
+      await loadBills();
+    } catch (err: any) {
+      setError(err.message || "Failed to create bill");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       await Promise.all([loadBills(), loadProperties()]);
@@ -260,43 +299,3 @@ export default function AdminBilling() {
       </div>
     </div>
   );
-}
-  const loadProperties = async () => {
-    try {
-      const res = await fetch("/api/properties", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load properties");
-      setProperties(data.map((p: any) => ({ id: p.id, address: p.address })));
-    } catch (err: any) {
-      setError(err.message || "Failed to load properties");
-    }
-  };
-
-  const handleCreate = async () => {
-    if (!newBill.propertyId) {
-      setError("Select a property for the bill");
-      return;
-    }
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch("/api/admin/billing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          propertyId: newBill.propertyId,
-          ownerId: "", // owner is inferred by upsert using property + owner from table; if multiple owners, refine logic
-          month: newBill.month,
-          year: newBill.year,
-          feePercent: newBill.feePercent,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create bill");
-      await loadBills();
-    } catch (err: any) {
-      setError(err.message || "Failed to create bill");
-    } finally {
-      setLoading(false);
-    }
-  };
