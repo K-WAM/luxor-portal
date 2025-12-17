@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 
 const sidebarItems = [
@@ -17,6 +17,7 @@ export default function TenantLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, role, loading, signOut } = useAuth();
   const viewerLabel = loading
     ? "Checking session..."
@@ -62,10 +63,23 @@ export default function TenantLayout({
       </aside>
       <main className="flex-1 bg-gray-100">
         <div className="flex items-center justify-end px-6 pt-4">
-          <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Viewing as {viewerLabel}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Viewing as {viewerLabel}
+            </span>
+            {user && (
+              <button
+                onClick={async () => {
+                  await signOut();
+                  router.push("/");
+                }}
+                className="text-xs text-gray-600 hover:text-gray-900 underline"
+              >
+                Sign out
+              </button>
+            )}
+          </div>
         </div>
         <div className="p-6">{children}</div>
       </main>
