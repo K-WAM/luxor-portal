@@ -154,11 +154,16 @@ export async function PATCH(request: NextRequest) {
 
     // Recompute total_due if fee fields changed
     if ("fee_percent" in updates || "fee_amount" in updates) {
-      const { data: existing } = await supabaseAdmin.from("billing_invoices").select("base_rent").eq("id", id).single();
+      const { data: existing } = await supabaseAdmin
+        .from("billing_invoices")
+        .select("base_rent, fee_percent, fee_amount")
+        .eq("id", id)
+        .single();
       const baseRent = existing?.base_rent || 0;
       const percent = updates.fee_percent ?? existing?.fee_percent ?? null;
       const override = updates.fee_amount ?? existing?.fee_amount ?? null;
-      updates.total_due = override !== null && override !== undefined ? override : percent !== null ? baseRent * (percent / 100) : 0;
+      updates.total_due =
+        override !== null && override !== undefined ? override : percent !== null ? baseRent * (percent / 100) : 0;
     }
 
     const { data, error } = await supabaseAdmin
