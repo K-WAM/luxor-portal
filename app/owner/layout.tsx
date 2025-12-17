@@ -91,6 +91,12 @@ export default function OwnerLayout({
           </div>
         </div>
         <div className="p-6">{children}</div>
+        <footer className="px-6 pb-6 text-xs text-slate-500 flex items-center gap-3">
+          <a href="/contact" className="text-blue-600 hover:text-blue-700">Contact us</a>
+          <a href="https://luxordev.com" target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700">
+            luxordev.com
+          </a>
+        </footer>
       </main>
     </div>
   );

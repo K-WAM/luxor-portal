@@ -219,6 +219,12 @@ function SignInPageInner() {
           </button>
         </div>
       </div>
+      <div className="mt-4 text-center text-sm text-gray-600">
+        <a href="/contact" className="text-blue-600 hover:text-blue-700 mr-3">Contact us</a>
+        <a href="https://luxordev.com" target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700">
+          luxordev.com
+        </a>
+      </div>
     </main>
   );
 }

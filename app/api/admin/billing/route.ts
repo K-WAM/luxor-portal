@@ -40,6 +40,7 @@ export async function GET() {
         ownerEmail: ownerEmailMap[row.owner_id] || row.owner_id,
         propertyId: row.property_id,
         propertyAddress: row.properties?.address || "",
+        property: row.properties?.address || "",
         description: row.description || "",
         amount: row.total_due ?? row.fee_amount ?? 0,
         feePercent: row.fee_percent,
@@ -202,5 +203,29 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error("Error updating billing invoice", error);
     return NextResponse.json({ error: "Failed to update billing invoice" }, { status: 500 });
+  }
+}
+
+// DELETE: remove a billing invoice (admin)
+export async function DELETE(request: NextRequest) {
+  try {
+    const { user, role } = await getAuthContext();
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    const { error } = await supabaseAdmin.from("billing_invoices").delete().eq("id", id);
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting billing invoice", error);
+    return NextResponse.json({ error: "Failed to delete billing invoice" }, { status: 500 });
   }
 }

@@ -6,6 +6,7 @@ type BillRow = {
   id: string;
   ownerEmail: string;
   property: string;
+  propertyAddress?: string;
   description: string;
   amount: number;
   dueDate: string;
@@ -218,7 +219,7 @@ export default function AdminBilling() {
                   <tr key={bill.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 text-slate-900">{bill.ownerEmail}</td>
                     <td className="px-4 py-3 text-slate-800">
-                      {bill.property || bill.propertyId}
+                      {bill.propertyAddress || bill.property || bill.propertyId}
                     </td>
                     <td className="px-4 py-3 text-slate-700">{bill.description || "PM fee"}</td>
                     <td className="px-4 py-3 text-right text-slate-900">
