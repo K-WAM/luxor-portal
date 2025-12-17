@@ -13,10 +13,8 @@ export async function GET(request: NextRequest) {
     const propertyId = searchParams.get("propertyId");
 
     let propertyIds: string[] = [];
-    if (isAdmin(role)) {
-      // Admin can view all; optional property filter
-      if (propertyId) propertyIds = [propertyId];
-    } else {
+    const isAdminRole = isAdmin(role);
+    if (!isAdminRole) {
       propertyIds = await getAccessiblePropertyIds(user.id, role);
       if (propertyId) {
         propertyIds = propertyIds.includes(propertyId) ? [propertyId] : [];
@@ -24,9 +22,11 @@ export async function GET(request: NextRequest) {
       if (!propertyIds.length) {
         return NextResponse.json([]);
       }
+    } else if (propertyId) {
+      propertyIds = [propertyId];
     }
 
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("billing_invoices")
       .select(
         `
@@ -47,10 +47,17 @@ export async function GET(request: NextRequest) {
         properties ( address )
       `
       )
-      .in("property_id", propertyIds.length ? propertyIds : undefined as any)
-      .eq("owner_id", isAdmin(role) ? undefined : user.id)
       .order("year", { ascending: false })
       .order("month", { ascending: false });
+
+    if (propertyIds.length) {
+      query = query.in("property_id", propertyIds);
+    }
+    if (!isAdminRole) {
+      query = query.eq("owner_id", user.id);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
