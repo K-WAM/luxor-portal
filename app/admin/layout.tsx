@@ -12,7 +12,6 @@ const adminNav = [
   { href: "/admin/billing", label: "Billing" },
   { href: "/admin/tenants", label: "User Invites" },
   { href: "/admin/documents", label: "Documents" },
-  { href: "/contact", label: "Contact us" },
 ];
 
 export default function AdminLayout({
@@ -55,14 +54,19 @@ export default function AdminLayout({
           })}
         </nav>
 
-        <div className="px-6 py-4 border-t border-slate-800">
-          <Link href="/" className="text-sm text-slate-400 hover:text-white">
+        <div className="mt-auto space-y-2 px-6 py-4 border-t border-slate-800 text-sm text-slate-400">
+          <Link href="/contact" className="block hover:text-white">
+            Contact us
+          </Link>
+          <a href="https://luxordev.com" target="_blank" rel="noreferrer" className="block hover:text-white">
+            Back to luxordev.com
+          </a>
+          <Link href="/" className="block hover:text-white">
             Back to Sign In
           </Link>
-        </div>
-
-        <div className="px-6 py-4 border-t border-slate-800 text-xs text-slate-500">
-          Luxor Developments Ac {new Date().getFullYear()}
+          <div className="text-xs text-slate-500 pt-1">
+            Luxor Developments Ac {new Date().getFullYear()}
+          </div>
         </div>
       </aside>
 

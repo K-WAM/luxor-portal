@@ -49,7 +49,13 @@ export default function TenantLayout({
           })}
         </nav>
         {user && (
-          <div className="mt-auto pt-6 border-t border-gray-700">
+          <div className="mt-auto pt-6 border-t border-gray-700 space-y-2 text-sm text-gray-400">
+            <a href="/contact" className="block hover:text-white">
+              Contact us
+            </a>
+            <a href="https://luxordev.com" target="_blank" rel="noreferrer" className="block hover:text-white">
+              Back to luxordev.com
+            </a>
             <button
               onClick={async () => {
                 await signOut();

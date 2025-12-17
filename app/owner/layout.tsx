@@ -8,7 +8,6 @@ const ownerNav = [
   { href: "/owner", label: "Dashboard" },
   { href: "/owner/documents", label: "My Documents" },
   { href: "/owner/billing", label: "Billing" },
-  { href: "/contact", label: "Contact us" },
 ];
 
 export default function OwnerLayout({
@@ -66,8 +65,16 @@ export default function OwnerLayout({
           </div>
         )}
 
-        <div className="px-6 py-4 border-t border-slate-800 text-xs text-slate-500">
-          Luxor Developments Ac {new Date().getFullYear()}
+        <div className="px-6 py-4 border-t border-slate-800 text-sm text-slate-400 space-y-1">
+          <a href="/contact" className="block hover:text-white">
+            Contact us
+          </a>
+          <a href="https://luxordev.com" target="_blank" rel="noreferrer" className="block hover:text-white">
+            Back to luxordev.com
+          </a>
+          <div className="text-xs text-slate-500 pt-1">
+            Luxor Developments Ac {new Date().getFullYear()}
+          </div>
         </div>
       </aside>
 
