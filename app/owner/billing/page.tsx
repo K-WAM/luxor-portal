@@ -14,49 +14,31 @@ type Bill = {
   invoiceUrl?: string;
 };
 
-// In lieu of a backend feed, show placeholder data so owners can review fees.
-const sampleBills: Bill[] = [
-  {
-    id: "b1",
-    propertyId: "prop-1",
-    propertyAddress: "317 West Riverbend Drive, Sunrise, FL, 33326",
-    description: "Property management fee - December",
-    amount: 350,
-    dueDate: "2025-12-20",
-    status: "due",
-    invoiceUrl: "#",
-  },
-  {
-    id: "b2",
-    propertyId: "prop-1",
-    propertyAddress: "317 West Riverbend Drive, Sunrise, FL, 33326",
-    description: "Lease renewal prep",
-    amount: 150,
-    dueDate: "2025-12-05",
-    status: "paid",
-    invoiceUrl: "#",
-  },
-  {
-    id: "b3",
-    propertyId: "prop-2",
-    propertyAddress: "10370 Buena Ventura Dr., Boca Raton, FL, 33498",
-    description: "Property management fee - November",
-    amount: 325,
-    dueDate: "2025-11-20",
-    status: "overdue",
-    invoiceUrl: "#",
-  },
-];
-
 export default function OwnerBilling() {
   const { user, role } = useAuth();
   const [selectedProperty, setSelectedProperty] = useState<string>("all");
   const [bills, setBills] = useState<Bill[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // TODO: replace with real fetch to /api/owner/billing once available
-    setBills(sampleBills);
-  }, []);
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const params = selectedProperty !== "all" ? `?propertyId=${selectedProperty}` : "";
+        const res = await fetch(`/api/owner/billing${params}`, { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load billing");
+        setBills(data);
+      } catch (err: any) {
+        setError(err.message || "Failed to load billing");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [selectedProperty]);
 
   const filtered = bills.filter((b) => selectedProperty === "all" || b.propertyId === selectedProperty);
   const totalDue = filtered
@@ -81,11 +63,11 @@ export default function OwnerBilling() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-          <div className="text-xs uppercase text-slate-500 mb-1">Balance due</div>
-          <div className="text-2xl font-semibold text-slate-900">${totalDue.toFixed(2)}</div>
-        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+            <div className="text-xs uppercase text-slate-500 mb-1">Balance due</div>
+            <div className="text-2xl font-semibold text-slate-900">${totalDue.toFixed(2)}</div>
+          </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
           <div className="text-xs uppercase text-slate-500 mb-1">Property</div>
           <select
@@ -111,7 +93,11 @@ export default function OwnerBilling() {
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Invoices</h2>
         </div>
-        <div className="overflow-x-auto">
+        {error && <div className="px-4 py-3 text-sm text-red-600">{error}</div>}
+        {loading ? (
+          <div className="p-6 text-center text-slate-500">Loading...</div>
+        ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
               <tr>
@@ -159,6 +145,7 @@ export default function OwnerBilling() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

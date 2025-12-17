@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 
 type BillRow = {
   id: string;
@@ -11,47 +11,65 @@ type BillRow = {
   dueDate: string;
   status: "due" | "paid" | "overdue" | "pending";
   invoiceUrl?: string;
+  feePercent?: number | null;
+  feeAmount?: number | null;
 };
 
-const sampleAdminBills: BillRow[] = [
-  {
-    id: "pm-1001",
-    ownerEmail: "kwamwad@gmail.com",
-    property: "317 West Riverbend Drive, Sunrise, FL, 33326",
-    description: "Property management fee - December",
-    amount: 350,
-    dueDate: "2025-12-20",
-    status: "due",
-    invoiceUrl: "#",
-  },
-  {
-    id: "pm-1002",
-    ownerEmail: "kwamwad@gmail.com",
-    property: "10370 Buena Ventura Dr., Boca Raton, FL, 33498",
-    description: "Property management fee - November",
-    amount: 325,
-    dueDate: "2025-11-20",
-    status: "overdue",
-    invoiceUrl: "#",
-  },
-  {
-    id: "pm-1003",
-    ownerEmail: "juana.g.b@gmail.com",
-    property: "317 West Riverbend Drive, Sunrise, FL, 33326",
-    description: "Lease renewal prep",
-    amount: 150,
-    dueDate: "2025-12-05",
-    status: "paid",
-    invoiceUrl: "#",
-  },
-];
-
 export default function AdminBilling() {
+  const [bills, setBills] = useState<BillRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editAmounts, setEditAmounts] = useState<Record<string, { feePercent?: string; feeAmount?: string; status?: string }>>({});
+
   const totals = useMemo(() => {
-    const due = sampleAdminBills.filter((b) => b.status === "due" || b.status === "overdue").reduce((s, b) => s + b.amount, 0);
-    const paid = sampleAdminBills.filter((b) => b.status === "paid").reduce((s, b) => s + b.amount, 0);
+    const due = bills.filter((b) => b.status === "due" || b.status === "overdue").reduce((s, b) => s + (b.amount || 0), 0);
+    const paid = bills.filter((b) => b.status === "paid").reduce((s, b) => s + (b.amount || 0), 0);
     return { due, paid };
+  }, [bills]);
+
+  const loadBills = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch("/api/admin/billing", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load billing");
+      setBills(data);
+    } catch (err: any) {
+      setError(err.message || "Failed to load billing");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBills();
   }, []);
+
+  const handleSave = async (bill: BillRow) => {
+    const edits = editAmounts[bill.id] || {};
+    try {
+      setLoading(true);
+      const res = await fetch("/api/admin/billing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: bill.id,
+          feePercent: edits.feePercent ?? bill.feePercent,
+          feeAmount: edits.feeAmount ?? bill.feeAmount,
+          status: edits.status ?? bill.status,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update");
+      setEditAmounts((prev) => ({ ...prev, [bill.id]: {} }));
+      await loadBills();
+    } catch (err: any) {
+      setError(err.message || "Failed to update billing");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -72,6 +90,7 @@ export default function AdminBilling() {
           <h2 className="text-lg font-semibold text-slate-900">Owner Bills</h2>
           <span className="text-xs text-slate-500">Stripe collection coming soon</span>
         </div>
+        {error && <div className="px-4 py-3 text-sm text-red-600">{error}</div>}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
@@ -87,47 +106,88 @@ export default function AdminBilling() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sampleAdminBills.map((bill) => (
-                <tr key={bill.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-900">{bill.ownerEmail}</td>
-                  <td className="px-4 py-3 text-slate-800">{bill.property}</td>
-                  <td className="px-4 py-3 text-slate-700">{bill.description}</td>
-                  <td className="px-4 py-3 text-right text-slate-900">${bill.amount.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-slate-700">{new Date(bill.dueDate).toLocaleDateString()}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        bill.status === "paid"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : bill.status === "overdue"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-amber-100 text-amber-800"
-                      }`}
-                    >
-                      {bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {bill.invoiceUrl ? (
-                      <a href={bill.invoiceUrl} className="text-blue-600 hover:text-blue-700 text-sm">
-                        View
-                      </a>
-                    ) : (
-                      <span className="text-xs text-slate-500">Not uploaded</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800">
-                        Send reminder
-                      </button>
-                      <button className="text-xs px-2 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50">
-                        Add invoice
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {bills.map((bill) => {
+                const edits = editAmounts[bill.id] || {};
+                return (
+                  <tr key={bill.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 text-slate-900">{bill.ownerEmail}</td>
+                    <td className="px-4 py-3 text-slate-800">{bill.property}</td>
+                    <td className="px-4 py-3 text-slate-700">{bill.description}</td>
+                    <td className="px-4 py-3 text-right text-slate-900">
+                      ${bill.amount?.toFixed(2)}
+                      <div className="flex items-center gap-1 mt-1 justify-end text-[11px] text-slate-600">
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="%"
+                          className="w-16 border border-slate-300 rounded px-2 py-1"
+                          value={edits.feePercent ?? (bill.feePercent ?? "")}
+                          onChange={(e) =>
+                            setEditAmounts((prev) => ({
+                              ...prev,
+                              [bill.id]: { ...prev[bill.id], feePercent: e.target.value },
+                            }))
+                          }
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="$ override"
+                          className="w-20 border border-slate-300 rounded px-2 py-1"
+                          value={edits.feeAmount ?? (bill.feeAmount ?? "")}
+                          onChange={(e) =>
+                            setEditAmounts((prev) => ({
+                              ...prev,
+                              [bill.id]: { ...prev[bill.id], feeAmount: e.target.value },
+                            }))
+                          }
+                        />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{new Date(bill.dueDate).toLocaleDateString()}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                        value={edits.status ?? bill.status}
+                        onChange={(e) =>
+                          setEditAmounts((prev) => ({
+                            ...prev,
+                            [bill.id]: { ...prev[bill.id], status: e.target.value },
+                          }))
+                        }
+                      >
+                        <option value="due">Due</option>
+                        <option value="overdue">Overdue</option>
+                        <option value="paid">Paid</option>
+                        <option value="pending">Pending</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-3">
+                      {bill.invoiceUrl ? (
+                        <a href={bill.invoiceUrl} className="text-blue-600 hover:text-blue-700 text-sm">
+                          View
+                        </a>
+                      ) : (
+                        <span className="text-xs text-slate-500">Not uploaded</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800">
+                          Send reminder
+                        </button>
+                        <button
+                          onClick={() => handleSave(bill)}
+                          disabled={loading}
+                          className="text-xs px-2 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+                        >
+                          {loading ? "Saving..." : "Save"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
