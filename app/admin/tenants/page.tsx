@@ -310,7 +310,7 @@ export default function TenantInvitesPage() {
     );
   }
 
-  const visibleInvites = invites.filter((inv) => inv.status !== "accepted");
+  const visibleInvites = invites.filter((inv) => (inv.status || "").toLowerCase() !== "accepted");
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -560,10 +560,7 @@ export default function TenantInvitesPage() {
                     Role
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Properties
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Ownership
+                    Properties & Ownership
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     Created
@@ -594,83 +591,73 @@ export default function TenantInvitesPage() {
                         <option value="viewer">Viewer</option>
                       </select>
                     </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
-                    <div className="flex flex-wrap gap-2">
-                      {(userPropertyMap[user.id] || []).length === 0 && (
-                        <span className="text-xs text-slate-500">No properties</span>
-                      )}
-                      {(userPropertyMap[user.id] || []).map((up) => (
-                        <span
-                          key={`${up.user_id}-${up.property_id}`}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-slate-200 bg-slate-100 text-xs text-slate-700"
-                        >
-                          {up.properties?.address || up.properties?.name || up.property_id}
-                          <button
-                            onClick={() => handleRemoveAccess(user.id, up.property_id)}
-                            disabled={savingAccessUserId === user.id}
-                            className="text-slate-500 hover:text-red-600"
-                            title="Remove access"
-                            type="button"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
-                    <div className="flex flex-col gap-1">
-                      {(userPropertyMap[user.id] || []).filter((up) => up.role === "owner" && up.ownership_percentage).length === 0 && (
-                        <span className="text-xs text-slate-500">-</span>
-                      )}
-                      {(userPropertyMap[user.id] || []).map((up) =>
-                        up.role === "owner" ? (
-                          <div key={`${up.user_id}-${up.property_id}-own`} className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-amber-200 bg-amber-50 text-xs text-amber-800">
-                              {up.properties?.address || up.properties?.name || up.property_id}
-                            </span>
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.01"
-                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-20"
-                              value={
-                                ownershipEdits[`${up.user_id}-${up.property_id}`] ??
-                                (up.ownership_percentage !== null && up.ownership_percentage !== undefined
-                                  ? String(up.ownership_percentage)
-                                  : "")
-                              }
-                              onChange={(e) =>
-                                setOwnershipEdits((prev) => ({
-                                  ...prev,
-                                  [`${up.user_id}-${up.property_id}`]: e.target.value,
-                                }))
-                              }
-                              placeholder="%"
-                            />
-                            <button
-                              onClick={() =>
-                                handleOwnershipUpdate(
-                                  up.user_id,
-                                  up.property_id,
-                                  ownershipEdits[`${up.user_id}-${up.property_id}`] ??
-                                    (up.ownership_percentage !== null && up.ownership_percentage !== undefined
-                                      ? String(up.ownership_percentage)
-                                      : "")
-                                )
-                              }
-                              disabled={savingOwnershipKey === `${up.user_id}-${up.property_id}`}
-                              className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
-                              type="button"
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      <div className="flex flex-col gap-2">
+                        {(userPropertyMap[user.id] || []).length === 0 && (
+                          <span className="text-xs text-slate-500">No properties</span>
+                        )}
+                        {(userPropertyMap[user.id] || []).map((up) => {
+                          const key = `${up.user_id}-${up.property_id}`;
+                          const ownershipValue =
+                            ownershipEdits[key] ??
+                            (up.ownership_percentage !== null && up.ownership_percentage !== undefined
+                              ? String(up.ownership_percentage)
+                              : "");
+                          return (
+                            <div
+                              key={key}
+                              className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1"
                             >
-                              {savingOwnershipKey === `${up.user_id}-${up.property_id}` ? "Saving..." : "Save"}
-                            </button>
-                          </div>
-                        ) : null
-                      )}
-                    </div>
-                  </td>
+                              <span className="text-xs text-slate-800">
+                                {up.properties?.address || up.properties?.name || up.property_id}
+                              </span>
+                              {up.role === "owner" && (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.01"
+                                    className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-20"
+                                    value={ownershipValue}
+                                    onChange={(e) =>
+                                      setOwnershipEdits((prev) => ({
+                                        ...prev,
+                                        [key]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="%"
+                                  />
+                                  <button
+                                    onClick={() =>
+                                      handleOwnershipUpdate(
+                                        up.user_id,
+                                        up.property_id,
+                                        ownershipValue
+                                      )
+                                    }
+                                    disabled={savingOwnershipKey === key}
+                                    className="text-[11px] px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
+                                    type="button"
+                                  >
+                                    {savingOwnershipKey === key ? "Saving..." : "Save"}
+                                  </button>
+                                </div>
+                              )}
+                              <button
+                                onClick={() => handleRemoveAccess(user.id, up.property_id)}
+                                disabled={savingAccessUserId === user.id}
+                                className="ml-auto text-slate-400 hover:text-red-600 text-xs"
+                                title="Remove access"
+                                type="button"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {user.created_at ? new Date(user.created_at).toLocaleDateString() : "-"}
                     </td>
