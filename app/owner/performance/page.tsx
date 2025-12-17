@@ -102,7 +102,7 @@ export default function AssetPerformance() {
   if (loading && properties.length === 0) {
     return (
       <div>
-        <h1 className="text-2xl font-bold mb-4">Asset Performance</h1>
+        <h1 className="text-2xl font-bold mb-4">Performance Breakdown</h1>
         <p className="text-gray-600">Loading your properties...</p>
       </div>
     );
@@ -111,7 +111,7 @@ export default function AssetPerformance() {
   if (properties.length === 0) {
     return (
       <div>
-        <h1 className="text-2xl font-bold mb-4">Asset Performance</h1>
+        <h1 className="text-2xl font-bold mb-4">Performance Breakdown</h1>
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
           <p className="text-yellow-800">
             You don't have any owner properties associated with your account yet.
@@ -151,7 +151,7 @@ export default function AssetPerformance() {
   return (
     <div className="max-w-4xl">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Asset Performance</h1>
+        <h1 className="text-2xl font-bold">Performance Breakdown</h1>
 
         {/* Property Selector */}
         {properties.length > 1 && (
