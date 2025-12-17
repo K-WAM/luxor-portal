@@ -15,8 +15,7 @@ export async function GET() {
       .select(
         `
         *,
-        properties ( address ),
-        owners:owner_id ( email )
+        properties ( address )
       `
       )
       .order("year", { ascending: false })
@@ -28,7 +27,7 @@ export async function GET() {
       data?.map((row: any) => ({
         id: row.id,
         ownerId: row.owner_id,
-        ownerEmail: row.owners?.email || "",
+        ownerEmail: "",
         propertyId: row.property_id,
         propertyAddress: row.properties?.address || "",
         description: row.description || "",
