@@ -12,6 +12,7 @@ const adminNav = [
   { href: "/admin/billing", label: "Billing" },
   { href: "/admin/tenants", label: "User Invites" },
   { href: "/admin/documents", label: "Documents" },
+  { href: "/contact", label: "Contact us" },
 ];
 
 export default function AdminLayout({
@@ -73,12 +74,6 @@ export default function AdminLayout({
           </span>
         </div>
         <div className="p-6">{children}</div>
-        <footer className="px-6 pb-6 text-xs text-slate-500 flex items-center gap-3">
-          <a href="/contact" className="text-blue-600 hover:text-blue-700">Contact us</a>
-          <a href="https://luxordev.com" target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700">
-            luxordev.com
-          </a>
-        </footer>
       </main>
     </div>
   );
