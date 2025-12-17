@@ -216,8 +216,10 @@ export default function AdminBilling() {
                 return (
                   <tr key={bill.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 text-slate-900">{bill.ownerEmail}</td>
-                    <td className="px-4 py-3 text-slate-800">{bill.property}</td>
-                    <td className="px-4 py-3 text-slate-700">{bill.description}</td>
+                    <td className="px-4 py-3 text-slate-800">
+                      {bill.property || bill.propertyId}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{bill.description || "PM fee"}</td>
                     <td className="px-4 py-3 text-right text-slate-900">
                       ${bill.amount?.toFixed(2)}
                       <div className="flex items-center gap-1 mt-1 justify-end text-[11px] text-slate-600">
@@ -280,6 +282,26 @@ export default function AdminBilling() {
                       <div className="flex gap-2">
                         <button className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800">
                           Send reminder
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (loading) return;
+                            setLoading(true);
+                            setError(null);
+                            try {
+                              const res = await fetch(`/api/admin/billing?id=${bill.id}`, { method: "DELETE" });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || "Failed to delete");
+                              await loadBills();
+                            } catch (err: any) {
+                              setError(err.message || "Failed to delete bill");
+                            } finally {
+                              setLoading(false);
+                            }
+                          }}
+                          className="text-xs px-2 py-1 rounded bg-red-50 border border-red-200 text-red-700 hover:bg-red-100"
+                        >
+                          Delete
                         </button>
                         <button
                           onClick={() => handleSave(bill)}

@@ -23,11 +23,21 @@ export async function GET() {
 
     if (error) throw error;
 
+    // Build owner email map
+    const ownerIds = Array.from(new Set((data || []).map((row: any) => row.owner_id))).filter(Boolean);
+    const ownerEmailMap: Record<string, string> = {};
+    if (ownerIds.length) {
+      const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
+      userList?.users?.forEach((u) => {
+        if (ownerIds.includes(u.id)) ownerEmailMap[u.id] = u.email || u.id;
+      });
+    }
+
     const mapped =
       data?.map((row: any) => ({
         id: row.id,
         ownerId: row.owner_id,
-        ownerEmail: "",
+        ownerEmail: ownerEmailMap[row.owner_id] || row.owner_id,
         propertyId: row.property_id,
         propertyAddress: row.properties?.address || "",
         description: row.description || "",
