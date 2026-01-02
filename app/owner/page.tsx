@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import Image from "next/image";
 import GaugeChart from "@/app/components/charts/GaugeChart";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
+import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
+import { usePeriodFilter } from "@/app/hooks/usePeriodFilter";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -43,6 +45,8 @@ type PropertyFinancials = {
   target_monthly_rent: number;
   purchase_date: string;
   lease_start?: string;
+  lease_end?: string;
+  last_month_rent_collected?: boolean;
 };
 
 type MonthlyPerformance = {
@@ -90,11 +94,78 @@ export default function OwnerDashboard() {
 
   const [property, setProperty] = useState<PropertyFinancials | null>(null);
   const [monthly, setMonthly] = useState<MonthlyPerformance[]>([]);
-  const [metrics, setMetrics] = useState<CalculatedMetrics | null>(null);
+  const [rawMetrics, setRawMetrics] = useState<CalculatedMetrics | null>(null);
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+
+  // Period filter hook for YTD vs Lease Term toggle
+  const { periodType, setPeriodType, monthsInPeriod, label: periodLabel } = usePeriodFilter({
+    leaseStart: property?.lease_start,
+    leaseEnd: property?.lease_end,
+    currentYear: selectedYear
+  });
+
+  // Recalculate metrics when period type or data changes
+  const metrics = useMemo(() => {
+    if (!property || !monthly || monthly.length === 0) return rawMetrics;
+
+    // Convert monthly data to canonical format
+    const monthlyData = monthly.map(m => ({
+      month: m.month,
+      year: selectedYear,
+      rent_income: m.rent_income || 0,
+      maintenance: m.maintenance || 0,
+      pool: m.pool || 0,
+      garden: m.garden || 0,
+      hoa_payments: m.hoa_payments || 0,
+      property_tax: m.property_tax || 0,
+      property_market_estimate: m.property_market_estimate
+    }));
+
+    const propertyData = {
+      home_cost: property.home_cost || 0,
+      home_repair_cost: property.home_repair_cost || 0,
+      closing_costs: property.closing_costs || 0,
+      total_cost: property.total_cost || 0,
+      current_market_estimate: property.current_market_estimate || 0,
+      purchase_date: property.purchase_date,
+      lease_start: property.lease_start,
+      lease_end: property.lease_end,
+      target_monthly_rent: property.target_monthly_rent,
+      last_month_rent_collected: property.last_month_rent_collected
+    };
+
+    // Calculate metrics with optional month filter for lease term
+    const canonicalMetrics = calculateCanonicalMetrics(
+      propertyData,
+      monthlyData,
+      {
+        monthsFilter: periodType === 'lease' ? monthsInPeriod : undefined
+      }
+    );
+
+    return {
+      ytd_rent_income: canonicalMetrics.ytd.rent_income,
+      ytd_maintenance: canonicalMetrics.ytd.maintenance,
+      ytd_pool: canonicalMetrics.ytd.pool,
+      ytd_garden: canonicalMetrics.ytd.garden,
+      ytd_hoa: canonicalMetrics.ytd.hoa_payments,
+      ytd_total_expenses: canonicalMetrics.ytd.total_expenses,
+      ytd_net_income: canonicalMetrics.ytd.net_income,
+      ytd_property_tax: canonicalMetrics.ytd.property_tax,
+      cost_basis: canonicalMetrics.cost_basis,
+      current_market_value: canonicalMetrics.current_market_value,
+      appreciation_value: canonicalMetrics.appreciation_value,
+      appreciation_pct: canonicalMetrics.appreciation_pct,
+      roi_pre_tax: canonicalMetrics.roi_pre_tax,
+      roi_post_tax: canonicalMetrics.roi_post_tax,
+      roi_with_appreciation: canonicalMetrics.roi_with_appreciation,
+      maintenance_pct: canonicalMetrics.maintenance_pct,
+      months_owned: canonicalMetrics.months_owned
+    };
+  }, [property, monthly, selectedYear, periodType, monthsInPeriod, rawMetrics]);
 
   useEffect(() => {
     const loadMe = async () => {
@@ -213,9 +284,9 @@ Use the provided property and document context from the server; do not guess.`;
       setProperty(data.property);
       setMonthly(data.monthly || []);
 
-        // Use pre-computed metrics from server (canonical calculations)
+        // Use pre-computed metrics from server (canonical calculations) as base
         if (data.metrics) {
-          setMetrics({
+          setRawMetrics({
             ytd_rent_income: data.metrics.ytd.rent_income,
             ytd_maintenance: data.metrics.ytd.maintenance,
             ytd_pool: data.metrics.ytd.pool,
@@ -239,7 +310,7 @@ Use the provided property and document context from the server; do not guess.`;
     } catch (err: any) {
       console.error("Error loading financial data:", err);
       setError(err.message || "Failed to load financial data");
-      setMetrics(null);
+      setRawMetrics(null);
     } finally {
       setLoading(false);
     }
@@ -316,7 +387,7 @@ Use the provided property and document context from the server; do not guess.`;
                   Investment Performance
                 </h1>
                 <p className="text-sm text-slate-600">
-                  {property?.address || "Select a property"}
+                  {property?.address || "Select a property"} • {periodLabel}
                 </p>
               </div>
             </div>
@@ -352,6 +423,7 @@ Use the provided property and document context from the server; do not guess.`;
                     </option>
                   ))}
                 </select>
+                <PeriodToggle value={periodType} onChange={setPeriodType} />
               </div>
             </div>
           </div>

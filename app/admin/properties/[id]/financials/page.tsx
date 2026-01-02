@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
+import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
+import { usePeriodFilter } from "@/app/hooks/usePeriodFilter";
 
 type PropertyFinancials = {
   id: string;
@@ -59,6 +61,13 @@ export default function PropertyFinancialSummaryPage() {
   const [error, setError] = useState<string | null>(null);
 
   const currentYear = new Date().getFullYear();
+
+  // Period filter hook for YTD vs Lease Term toggle
+  const { periodType, setPeriodType, monthsInPeriod, label: periodLabel } = usePeriodFilter({
+    leaseStart: property?.lease_start,
+    leaseEnd: property?.lease_end,
+    currentYear
+  });
 
   useEffect(() => {
     loadAllData();
@@ -165,6 +174,7 @@ export default function PropertyFinancialSummaryPage() {
         current_market_estimate: property.current_market_estimate || 0,
         purchase_date: property.purchase_date || null,
         lease_start: property.lease_start || null,
+        lease_end: property.lease_end || null,
         target_monthly_rent: property.target_monthly_rent || 0,
         deposit: property.deposit || 0,
         last_month_rent_collected: !!property.last_month_rent_collected,
@@ -180,9 +190,12 @@ export default function PropertyFinancialSummaryPage() {
         property_tax: m.property_tax,
         property_market_estimate: m.property_market_estimate ?? null,
       })),
-      { estimatedAnnualPropertyTax }
+      {
+        estimatedAnnualPropertyTax,
+        monthsFilter: periodType === 'lease' ? monthsInPeriod : undefined
+      }
     );
-  }, [property, monthlyData, yeTarget]);
+  }, [property, monthlyData, yeTarget, periodType, monthsInPeriod]);
 
   if (loading) {
     return (
@@ -231,14 +244,17 @@ export default function PropertyFinancialSummaryPage() {
             ← Back to Properties
           </button>
           <h1 className="text-3xl font-bold">Financial Summary</h1>
-          <p className="text-gray-600">{property.address}</p>
+          <p className="text-gray-600">{property.address} • {periodLabel}</p>
         </div>
-        <button
-          onClick={() => router.push('/admin/financials')}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          Edit Financials
-        </button>
+        <div className="flex items-center gap-3">
+          <PeriodToggle value={periodType} onChange={setPeriodType} />
+          <button
+            onClick={() => router.push('/admin/financials')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Edit Financials
+          </button>
+        </div>
       </div>
 
       {error && (

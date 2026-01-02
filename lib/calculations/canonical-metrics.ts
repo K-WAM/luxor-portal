@@ -56,6 +56,11 @@ export type CanonicalMetricsOptions = {
   asOf?: Date;
   estimatedAnnualPropertyTax?: number | null;
   estimatedYtdPropertyTax?: number | null;
+  /**
+   * Filter monthly data to specific months (e.g., [5, 6, 7, 8, 9, 10, 11, 12] for May-Dec lease term)
+   * If not provided, defaults to all months up to asOf date (standard YTD behavior)
+   */
+  monthsFilter?: number[];
 };
 
 /**
@@ -132,8 +137,14 @@ function getLastMonthRentBonusAmount(property: PropertyData): number {
 /**
  * Calculate YTD totals from monthly performance data
  * Year-to-date is limited to months <= the asOf month for the current year.
+ * Can be filtered to specific months via monthsFilter option (e.g., for lease term filtering).
  */
-function calculateYTDTotals(monthly: MonthlyDataRow[], metricsYear: number, asOf: Date): YTDTotals {
+function calculateYTDTotals(
+  monthly: MonthlyDataRow[],
+  metricsYear: number,
+  asOf: Date,
+  monthsFilter?: number[]
+): YTDTotals {
   const monthsElapsed = getMonthsElapsedInYear(metricsYear, asOf);
   if (monthsElapsed <= 0) {
     return {
@@ -149,7 +160,14 @@ function calculateYTDTotals(monthly: MonthlyDataRow[], metricsYear: number, asOf
   }
 
   const maxMonth = Math.min(12, monthsElapsed);
-  const scoped = monthly.filter(m => m.year === metricsYear && m.month >= 1 && m.month <= maxMonth);
+
+  // Filter by year and month range
+  let scoped = monthly.filter(m => m.year === metricsYear && m.month >= 1 && m.month <= maxMonth);
+
+  // Apply additional month filter if provided (for lease term filtering)
+  if (monthsFilter && monthsFilter.length > 0) {
+    scoped = scoped.filter(m => monthsFilter.includes(m.month));
+  }
 
   return scoped.reduce(
     (acc, month) => {
@@ -251,8 +269,8 @@ export function calculateCanonicalMetrics(
   const asOf = options.asOf ?? new Date();
   const metricsYear = getMetricsYear(monthly, asOf);
 
-  // Step 1: Calculate YTD totals
-  const ytd = calculateYTDTotals(monthly, metricsYear, asOf);
+  // Step 1: Calculate YTD totals (with optional month filtering for lease term)
+  const ytd = calculateYTDTotals(monthly, metricsYear, asOf, options.monthsFilter);
 
   // Excel deposit / last-month rent rule: add 1 month of rent if collected upfront
   if (shouldApplyLastMonthRentBonus(property, metricsYear)) {

@@ -9,6 +9,8 @@ import {
   calculateROIIfSoldToday,
 } from "@/lib/financial-calculations";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
+import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
+import { usePeriodFilter } from "@/app/hooks/usePeriodFilter";
 
 type Property = {
   id: string;
@@ -134,6 +136,13 @@ export default function FinancialsPage() {
 
   // Sale closing costs (for ROI if sold calculation)
   const [saleClosingCosts, setSaleClosingCosts] = useState("");
+
+  // Period filter hook for YTD vs Lease Term toggle
+  const { periodType, setPeriodType, monthsInPeriod, label: periodLabel } = usePeriodFilter({
+    leaseStart: propertyFinancials.lease_start || null,
+    leaseEnd: propertyFinancials.lease_end || null,
+    currentYear: performanceYear
+  });
 
   const parseDateOnly = (dateStr: string) => {
     const [y, m, d] = dateStr.split("-").map(Number);
@@ -317,12 +326,16 @@ export default function FinancialsPage() {
         current_market_estimate: parseFloat(propertyFinancials.current_market_estimate) || 0,
         purchase_date: propertyFinancials.purchase_date || null,
         lease_start: propertyFinancials.lease_start || null,
+        lease_end: propertyFinancials.lease_end || null,
         target_monthly_rent: parseFloat(propertyFinancials.target_monthly_rent) || 0,
         deposit: parseFloat(propertyFinancials.deposit) || 0,
         last_month_rent_collected: propertyFinancials.last_month_rent_collected,
       },
       monthlyForYear,
-      { estimatedAnnualPropertyTax }
+      {
+        estimatedAnnualPropertyTax,
+        monthsFilter: periodType === 'lease' ? monthsInPeriod : undefined
+      }
     );
   }, [
     allMonthlyData,
@@ -333,11 +346,14 @@ export default function FinancialsPage() {
     propertyFinancials.current_market_estimate,
     propertyFinancials.purchase_date,
     propertyFinancials.lease_start,
+    propertyFinancials.lease_end,
     propertyFinancials.target_monthly_rent,
     propertyFinancials.deposit,
     propertyFinancials.last_month_rent_collected,
     calculatedTotalCost,
     yeTarget.property_tax,
+    periodType,
+    monthsInPeriod,
   ]);
 
   const actualYtd = useMemo(() => canonicalMetrics.ytd, [canonicalMetrics]);
@@ -839,37 +855,45 @@ export default function FinancialsPage() {
 
       {/* Tab Navigation */}
       <div className="border-b border-slate-200 mb-6">
-        <div className="flex space-x-8">
-          <button
-            onClick={() => setActiveTab("property")}
-            className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === "property"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Property Financials
-          </button>
-          <button
-            onClick={() => setActiveTab("targets")}
-            className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === "targets"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Year-End Targets
-          </button>
-          <button
-            onClick={() => setActiveTab("monthly")}
-            className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === "monthly"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Monthly Performance
-          </button>
+        <div className="flex items-center justify-between">
+          <div className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab("property")}
+              className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === "property"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Property Financials
+            </button>
+            <button
+              onClick={() => setActiveTab("targets")}
+              className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === "targets"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Year-End Targets
+            </button>
+            <button
+              onClick={() => setActiveTab("monthly")}
+              className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === "monthly"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Monthly Performance
+            </button>
+          </div>
+          {activeTab === "monthly" && (
+            <div className="pb-3 flex items-center gap-3">
+              <span className="text-sm text-slate-600">{periodLabel}</span>
+              <PeriodToggle value={periodType} onChange={setPeriodType} />
+            </div>
+          )}
         </div>
       </div>
 
