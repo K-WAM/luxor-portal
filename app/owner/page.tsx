@@ -51,6 +51,7 @@ type PropertyFinancials = {
 
 type MonthlyPerformance = {
   month: number;
+  year: number;
   month_name: string;
   rent_income: number;
   maintenance: number;
@@ -116,13 +117,27 @@ export default function OwnerDashboard() {
       return monthly;
     }
 
-    // For "lease" or "ytd", filter to only include months in the period
-    if (monthsInPeriod && monthsInPeriod.length > 0) {
-      return monthly.filter(m => monthsInPeriod.includes(m.month));
+    // For "lease", filter to exact lease term months (may span years)
+    if (periodType === "lease" && property?.lease_start && property?.lease_end) {
+      const { getLeaseTermMonths } = require("@/app/hooks/usePeriodFilter");
+      const leaseMonths: Array<{year: number; month: number}> = getLeaseTermMonths(property.lease_start, property.lease_end);
+
+      return monthly.filter(m =>
+        leaseMonths.some((lm: {year: number; month: number}) => lm.year === m.year && lm.month === m.month)
+      ).sort((a, b) => {
+        // Sort by year first, then month
+        if (a.year !== b.year) return a.year - b.year;
+        return a.month - b.month;
+      });
+    }
+
+    // For "ytd", filter to only include months in the current year up to current month
+    if (periodType === "ytd" && monthsInPeriod && monthsInPeriod.length > 0) {
+      return monthly.filter(m => m.year === selectedYear && monthsInPeriod.includes(m.month));
     }
 
     return monthly;
-  }, [monthly, monthsInPeriod, periodType]);
+  }, [monthly, monthsInPeriod, periodType, property, selectedYear]);
 
   // Recalculate metrics when period type or data changes
   const metrics = useMemo(() => {
@@ -290,6 +305,8 @@ Use the provided property and document context from the server; do not guess.`;
   const loadFinancialData = async () => {
     try {
       setLoading(true);
+
+      // Fetch data for the selected year
       const res = await fetch(
         `/api/owner/financial-metrics?propertyId=${selectedPropertyId}&year=${selectedYear}`,
         { cache: "no-store" }
@@ -301,7 +318,34 @@ Use the provided property and document context from the server; do not guess.`;
       }
 
       setProperty(data.property);
-      setMonthly(data.monthly || []);
+
+      // If lease term spans multiple years, fetch additional year data
+      let combinedMonthly = data.monthly || [];
+
+      if (data.property?.lease_start && data.property?.lease_end) {
+        const leaseStartYear = new Date(data.property.lease_start).getFullYear();
+        const leaseEndYear = new Date(data.property.lease_end).getFullYear();
+
+        // If lease spans multiple years and we're looking at one of them
+        if (leaseStartYear !== leaseEndYear) {
+          const otherYear = selectedYear === leaseStartYear ? leaseEndYear : leaseStartYear;
+
+          // Fetch data from the other year
+          const otherRes = await fetch(
+            `/api/owner/financial-metrics?propertyId=${selectedPropertyId}&year=${otherYear}`,
+            { cache: "no-store" }
+          );
+
+          if (otherRes.ok) {
+            const otherData = await otherRes.json();
+            if (otherData.monthly) {
+              combinedMonthly = [...combinedMonthly, ...otherData.monthly];
+            }
+          }
+        }
+      }
+
+      setMonthly(combinedMonthly);
 
         // Use pre-computed metrics from server (canonical calculations) as base
         if (data.metrics) {
