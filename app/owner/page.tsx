@@ -143,10 +143,24 @@ export default function OwnerDashboard() {
   const metrics = useMemo(() => {
     if (!property || !monthly || monthly.length === 0) return rawMetrics;
 
-    // Convert monthly data to canonical format
-    const monthlyData = monthly.map(m => ({
+    // Filter data based on period type BEFORE passing to canonical metrics
+    let dataForCalculation = monthly;
+
+    if (periodType === 'ytd') {
+      // YTD: Only include data from the selected year
+      dataForCalculation = monthly.filter(m => m.year === selectedYear);
+    } else if (periodType === 'lease') {
+      // Lease Term: Use filteredMonthly which already has the correct lease months
+      dataForCalculation = filteredMonthly;
+    } else if (periodType === 'alltime') {
+      // All Time: Use all available data
+      dataForCalculation = monthly;
+    }
+
+    // Convert to canonical format - USE ACTUAL YEAR FROM DATA!
+    const monthlyData = dataForCalculation.map(m => ({
       month: m.month,
-      year: selectedYear,
+      year: m.year, // CRITICAL: Use actual year, not selectedYear!
       rent_income: m.rent_income || 0,
       maintenance: m.maintenance || 0,
       pool: m.pool || 0,
@@ -169,15 +183,11 @@ export default function OwnerDashboard() {
       last_month_rent_collected: property.last_month_rent_collected
     };
 
-    // Calculate metrics with optional month filter
-    // - YTD and Lease: filter to specific months
-    // - All Time: no month filter (undefined means all months up to current date)
+    // No monthsFilter needed - we've already filtered the data above
     const canonicalMetrics = calculateCanonicalMetrics(
       propertyData,
       monthlyData,
-      {
-        monthsFilter: periodType === 'alltime' ? undefined : monthsInPeriod
-      }
+      {} // Data is pre-filtered, no need for monthsFilter
     );
 
     return {
