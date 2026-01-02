@@ -329,33 +329,54 @@ Use the provided property and document context from the server; do not guess.`;
 
       setProperty(data.property);
 
-      // If lease term spans multiple years, fetch additional year data
-      let combinedMonthly = data.monthly || [];
+      // Determine which years we need to fetch based on period type and property dates
+      const yearsToFetch = new Set<number>([selectedYear]);
 
-      if (data.property?.lease_start && data.property?.lease_end) {
-        const leaseStartYear = new Date(data.property.lease_start).getFullYear();
-        const leaseEndYear = new Date(data.property.lease_end).getFullYear();
+      if (data.property) {
+        // For lease term: fetch lease years
+        if (data.property.lease_start && data.property.lease_end) {
+          const leaseStartYear = new Date(data.property.lease_start).getFullYear();
+          const leaseEndYear = new Date(data.property.lease_end).getFullYear();
 
-        // If lease spans multiple years and we're looking at one of them
-        if (leaseStartYear !== leaseEndYear) {
-          const otherYear = selectedYear === leaseStartYear ? leaseEndYear : leaseStartYear;
+          for (let year = leaseStartYear; year <= leaseEndYear; year++) {
+            yearsToFetch.add(year);
+          }
+        }
 
-          // Fetch data from the other year
-          const otherRes = await fetch(
-            `/api/owner/financial-metrics?propertyId=${selectedPropertyId}&year=${otherYear}`,
-            { cache: "no-store" }
-          );
+        // For all time: fetch from purchase date to current year
+        if (data.property.purchase_date) {
+          const purchaseYear = new Date(data.property.purchase_date).getFullYear();
+          const currentYear = new Date().getFullYear();
 
-          if (otherRes.ok) {
-            const otherData = await otherRes.json();
-            if (otherData.monthly) {
-              combinedMonthly = [...combinedMonthly, ...otherData.monthly];
-            }
+          for (let year = purchaseYear; year <= currentYear; year++) {
+            yearsToFetch.add(year);
           }
         }
       }
 
-      setMonthly(combinedMonthly);
+      // Fetch data from all required years
+      const allMonthlyData = [...(data.monthly || [])];
+      const otherYears = Array.from(yearsToFetch).filter(y => y !== selectedYear);
+
+      for (const year of otherYears) {
+        try {
+          const yearRes = await fetch(
+            `/api/owner/financial-metrics?propertyId=${selectedPropertyId}&year=${year}`,
+            { cache: "no-store" }
+          );
+
+          if (yearRes.ok) {
+            const yearData = await yearRes.json();
+            if (yearData.monthly) {
+              allMonthlyData.push(...yearData.monthly);
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to fetch data for year ${year}:`, err);
+        }
+      }
+
+      setMonthly(allMonthlyData);
 
         // Use pre-computed metrics from server (canonical calculations) as base
         if (data.metrics) {
