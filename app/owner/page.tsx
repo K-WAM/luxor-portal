@@ -107,6 +107,23 @@ export default function OwnerDashboard() {
     currentYear: selectedYear
   });
 
+  // Filter monthly data based on selected period
+  const filteredMonthly = useMemo(() => {
+    if (!monthly || monthly.length === 0) return [];
+
+    // For "alltime", don't filter by months (show all months)
+    if (periodType === "alltime") {
+      return monthly;
+    }
+
+    // For "lease" or "ytd", filter to only include months in the period
+    if (monthsInPeriod && monthsInPeriod.length > 0) {
+      return monthly.filter(m => monthsInPeriod.includes(m.month));
+    }
+
+    return monthly;
+  }, [monthly, monthsInPeriod, periodType]);
+
   // Recalculate metrics when period type or data changes
   const metrics = useMemo(() => {
     if (!property || !monthly || monthly.length === 0) return rawMetrics;
@@ -137,12 +154,14 @@ export default function OwnerDashboard() {
       last_month_rent_collected: property.last_month_rent_collected
     };
 
-    // Calculate metrics with optional month filter for lease term
+    // Calculate metrics with optional month filter
+    // - YTD and Lease: filter to specific months
+    // - All Time: no month filter (undefined means all months up to current date)
     const canonicalMetrics = calculateCanonicalMetrics(
       propertyData,
       monthlyData,
       {
-        monthsFilter: periodType === 'lease' ? monthsInPeriod : undefined
+        monthsFilter: periodType === 'alltime' ? undefined : monthsInPeriod
       }
     );
 
@@ -683,12 +702,12 @@ Use the provided property and document context from the server; do not guess.`;
             </h3>
             <Bar
               data={{
-                labels: monthly.map(m => m.month_name),
+                labels: filteredMonthly.map(m => m.month_name),
                 datasets: [
-                  { label: "Maintenance", data: monthly.map(m => m.maintenance), backgroundColor: "#ed7d31" },
-                  { label: "Pool", data: monthly.map(m => m.pool), backgroundColor: "#5b9bd5" },
-                  { label: "Garden", data: monthly.map(m => m.garden), backgroundColor: "#a5a5a5" },
-                  { label: "HOA Payments", data: monthly.map(m => m.hoa_payments), backgroundColor: "#ffc000" },
+                  { label: "Maintenance", data: filteredMonthly.map(m => m.maintenance), backgroundColor: "#ed7d31" },
+                  { label: "Pool", data: filteredMonthly.map(m => m.pool), backgroundColor: "#5b9bd5" },
+                  { label: "Garden", data: filteredMonthly.map(m => m.garden), backgroundColor: "#a5a5a5" },
+                  { label: "HOA Payments", data: filteredMonthly.map(m => m.hoa_payments), backgroundColor: "#ffc000" },
                 ]
               }}
               options={{
@@ -731,11 +750,11 @@ Use the provided property and document context from the server; do not guess.`;
           <div className="bg-white border border-slate-200 p-6 mb-6 rounded-xl shadow-sm">
             <Bar
               data={{
-                labels: monthly.map(m => m.month_name),
+                labels: filteredMonthly.map(m => m.month_name),
                 datasets: [
-                  { label: "Rent Income", data: monthly.map(m => m.rent_income), backgroundColor: "#a9d18e" },
-                  { label: "Total Expenses", data: monthly.map(m => m.total_expenses), backgroundColor: "#e17055" },
-                  { label: "Net Income", data: monthly.map(m => m.net_income), backgroundColor: "#70ad47" },
+                  { label: "Rent Income", data: filteredMonthly.map(m => m.rent_income), backgroundColor: "#a9d18e" },
+                  { label: "Total Expenses", data: filteredMonthly.map(m => m.total_expenses), backgroundColor: "#e17055" },
+                  { label: "Net Income", data: filteredMonthly.map(m => m.net_income), backgroundColor: "#70ad47" },
                 ]
               }}
               options={{
@@ -767,10 +786,10 @@ Use the provided property and document context from the server; do not guess.`;
           <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
             <Line
               data={{
-                labels: monthly.map(m => m.month_name),
+                labels: filteredMonthly.map(m => m.month_name),
                 datasets: [{
                   label: "Property Market Estimate",
-                  data: monthly.map(m => m.property_market_estimate || 0),
+                  data: filteredMonthly.map(m => m.property_market_estimate || 0),
                   borderColor: "#4472c4",
                   backgroundColor: "rgba(68, 114, 196, 0.1)",
                   tension: 0.4,

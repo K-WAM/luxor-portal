@@ -44,6 +44,17 @@ export function usePeriodFilter({
       };
     }
 
+    if (periodType === "alltime") {
+      // All Time: All months, no filtering
+      const months = Array.from({ length: 12 }, (_, i) => i + 1);
+      return {
+        startMonth: 1,
+        endMonth: 12,
+        monthsInPeriod: months,
+        label: `All Time`
+      };
+    }
+
     // Lease Term: Based on lease_start and lease_end dates
     if (!leaseStart || !leaseEnd) {
       // Fallback to YTD if lease dates are not available
