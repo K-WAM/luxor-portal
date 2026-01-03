@@ -25,9 +25,9 @@ export default function TenantPortal() {
           href="/tenant/payments"
           className="bg-white border rounded-lg p-6 hover:shadow-lg transition-shadow"
         >
-          <h3 className="text-xl font-semibold mb-2">Payment History</h3>
+          <h3 className="text-xl font-semibold mb-2">Payment</h3>
           <p className="text-gray-600 text-sm">
-            Review your payment history and upcoming payments.
+            Review your payments and upcoming dues.
           </p>
         </Link>
 

@@ -10,6 +10,7 @@ const adminNav = [
   { href: "/admin/financials", label: "Financials" },
   { href: "/admin/maintenance", label: "Maintenance Requests" },
   { href: "/admin/billing", label: "Billing" },
+  { href: "/admin/owner-billing", label: "Owner Billing Details" },
   { href: "/admin/tenants", label: "User Invites" },
   { href: "/admin/documents", label: "Documents" },
 ];

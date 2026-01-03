@@ -19,12 +19,21 @@ type MonthlyRow = {
   year: number;
 };
 
+type OwnerBilling = {
+  userId: string;
+  ownerEmail: string;
+  zelleEmail: string | null;
+  zellePhone: string | null;
+};
+
 export default function TenantPayments() {
   const { user, role, loading: authLoading } = useAuth();
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
   const [property, setProperty] = useState<Property | null>(null);
+  const [ownerBilling, setOwnerBilling] = useState<OwnerBilling[]>([]);
+  const [ownerBillingError, setOwnerBillingError] = useState<string | null>(null);
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +107,32 @@ export default function TenantPayments() {
 
     load();
   }, [authLoading, user?.id, role, selectedPropertyId, year]);
+
+  useEffect(() => {
+    const loadBilling = async () => {
+      if (authLoading || !selectedPropertyId) return;
+      try {
+        setOwnerBillingError(null);
+        const res = await fetch(`/api/owner-billing?propertyId=${selectedPropertyId}`, {
+          cache: "no-store",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load owner billing details");
+        setOwnerBilling(data || []);
+      } catch (err: any) {
+        setOwnerBilling([]);
+        setOwnerBillingError(err.message || "Failed to load owner billing details.");
+      }
+    };
+
+    loadBilling();
+  }, [authLoading, selectedPropertyId]);
+
+  const zelleRecipient = useMemo(() => {
+    if (!ownerBilling.length) return null;
+    const withZelle = ownerBilling.find((o) => o.zelleEmail || o.zellePhone);
+    return withZelle || ownerBilling[0];
+  }, [ownerBilling]);
 
   const monthRows = useMemo(() => {
     const sorted = [...monthly].sort((a, b) =>
@@ -219,7 +254,21 @@ export default function TenantPayments() {
               <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                 <div className="text-sm font-semibold text-gray-900">Zelle</div>
                 <div className="text-sm text-gray-700 mt-1">Send your payment to:</div>
-                <div className="text-base font-semibold text-gray-900 mt-1">connect@luxordev.com</div>
+                {ownerBillingError ? (
+                  <div className="text-sm text-red-600 mt-1">{ownerBillingError}</div>
+                ) : zelleRecipient?.zelleEmail ? (
+                  <div className="text-base font-semibold text-gray-900 mt-1">
+                    {zelleRecipient.zelleEmail}
+                  </div>
+                ) : zelleRecipient?.zellePhone ? (
+                  <div className="text-base font-semibold text-gray-900 mt-1">
+                    {zelleRecipient.zellePhone}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500 mt-1">
+                    Zelle details not set. Contact your property manager.
+                  </div>
+                )}
                 <div className="text-xs text-gray-500 mt-2">
                   Include your property address in the memo. Once received, we&apos;ll mark it as paid.
                 </div>

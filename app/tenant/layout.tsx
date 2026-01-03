@@ -7,7 +7,7 @@ import { useAuth } from "@/app/context/AuthContext";
 const sidebarItems = [
   { name: "Dashboard", href: "/tenant" },
   { name: "Documents", href: "/tenant/documents" },
-  { name: "Payment History", href: "/tenant/payments" },
+  { name: "Payment", href: "/tenant/payments" },
   { name: "Request Maintenance", href: "/tenant/maintenance" },
   { name: "Contact us", href: "/contact" },
 ];
