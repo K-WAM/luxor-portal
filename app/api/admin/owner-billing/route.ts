@@ -38,7 +38,7 @@ export async function GET() {
       )
       .eq("role", "owner");
 
-    let rowsData = data || [];
+    let rowsData: any[] = (data as any[]) || [];
     let warning: string | null = null;
 
     if (error) {
@@ -59,7 +59,7 @@ export async function GET() {
         .eq("role", "owner");
 
       if (fallback.error) throw fallback.error;
-      rowsData = fallback.data || [];
+      rowsData = (fallback.data as any[]) || [];
       warning =
         "Zelle fields are not available yet. Run the user_properties migration to enable Zelle storage.";
     }
