@@ -34,6 +34,7 @@ export default function TenantPayments() {
   const [property, setProperty] = useState<Property | null>(null);
   const [ownerBilling, setOwnerBilling] = useState<OwnerBilling[]>([]);
   const [ownerBillingError, setOwnerBillingError] = useState<string | null>(null);
+  const [ownerBillingWarning, setOwnerBillingWarning] = useState<string | null>(null);
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,10 +119,12 @@ export default function TenantPayments() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to load owner billing details");
-        setOwnerBilling(data || []);
+        setOwnerBilling(data.rows || []);
+        setOwnerBillingWarning(data.warning || null);
       } catch (err: any) {
         setOwnerBilling([]);
         setOwnerBillingError(err.message || "Failed to load owner billing details.");
+        setOwnerBillingWarning(null);
       }
     };
 
@@ -266,7 +269,7 @@ export default function TenantPayments() {
                   </div>
                 ) : (
                   <div className="text-sm text-gray-500 mt-1">
-                    Zelle details not set. Contact your property manager.
+                    {ownerBillingWarning || "Zelle details not set. Contact your property manager."}
                   </div>
                 )}
                 <div className="text-xs text-gray-500 mt-2">

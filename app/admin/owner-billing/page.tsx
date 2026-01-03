@@ -23,6 +23,7 @@ const isValidPhone = (value: string) => {
 
 export default function OwnerBillingDetailsPage() {
   const [rows, setRows] = useState<OwnerBillingRow[]>([]);
+  const [warning, setWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -40,7 +41,8 @@ export default function OwnerBillingDetailsPage() {
       const res = await fetch("/api/admin/owner-billing", { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load owner billing details");
-      setRows(data || []);
+      setRows(data.rows || []);
+      setWarning(data.warning || null);
     } catch (err: any) {
       setError(err.message || "Failed to load owner billing details");
     } finally {
@@ -133,6 +135,11 @@ export default function OwnerBillingDetailsPage() {
       {success && (
         <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
           {success}
+        </div>
+      )}
+      {warning && (
+        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-700">
+          {warning}
         </div>
       )}
 

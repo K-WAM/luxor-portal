@@ -11,6 +11,9 @@ const isValidPhone = (value: string) => {
   return digits.length >= 7 && digits.length <= 15;
 };
 
+const isMissingColumnError = (error: any) =>
+  error?.code === "42703" || /zelle/i.test(error?.message || "");
+
 export async function GET() {
   try {
     const { user, role } = await getAuthContext();
@@ -35,7 +38,31 @@ export async function GET() {
       )
       .eq("role", "owner");
 
-    if (error) throw error;
+    let rowsData = data || [];
+    let warning: string | null = null;
+
+    if (error) {
+      if (!isMissingColumnError(error)) throw error;
+      const fallback = await supabaseAdmin
+        .from("user_properties")
+        .select(
+          `
+          user_id,
+          property_id,
+          ownership_percentage,
+          properties (
+            id,
+            address
+          )
+        `
+        )
+        .eq("role", "owner");
+
+      if (fallback.error) throw fallback.error;
+      rowsData = fallback.data || [];
+      warning =
+        "Zelle fields are not available yet. Run the user_properties migration to enable Zelle storage.";
+    }
 
     const { data: usersData, error: usersError } =
       await supabaseAdmin.auth.admin.listUsers();
@@ -54,7 +81,7 @@ export async function GET() {
       return properties.address || "";
     };
 
-    const rows = (data || []).map((row) => ({
+    const rows = rowsData.map((row: any) => ({
       userId: row.user_id,
       ownerEmail: userEmailMap.get(row.user_id) || "",
       propertyId: row.property_id,
@@ -71,7 +98,7 @@ export async function GET() {
       return a.ownerEmail.localeCompare(b.ownerEmail);
     });
 
-    return NextResponse.json(rows);
+    return NextResponse.json({ rows, warning });
   } catch (error) {
     console.error("Error fetching owner billing details:", error);
     return NextResponse.json(

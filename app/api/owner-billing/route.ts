@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from "@/lib/auth/route-helpers";
 
+const isMissingColumnError = (error: any) =>
+  error?.code === "42703" || /zelle/i.test(error?.message || "");
+
 export async function GET(request: Request) {
   try {
     const { user, role } = await getAuthContext();
@@ -27,11 +30,24 @@ export async function GET(request: Request) {
       .select("user_id, zelle_email, zelle_phone")
       .eq("property_id", propertyId)
       .eq("role", "owner");
+    let rowsData = data || [];
+    let warning: string | null = null;
 
-    if (error) throw error;
+    if (error) {
+      if (!isMissingColumnError(error)) throw error;
+      const fallback = await supabaseAdmin
+        .from("user_properties")
+        .select("user_id")
+        .eq("property_id", propertyId)
+        .eq("role", "owner");
+      if (fallback.error) throw fallback.error;
+      rowsData = fallback.data || [];
+      warning =
+        "Zelle fields are not available yet. Run the user_properties migration to enable Zelle storage.";
+    }
 
-    if (!data || data.length === 0) {
-      return NextResponse.json([]);
+    if (!rowsData || rowsData.length === 0) {
+      return NextResponse.json({ rows: [], warning });
     }
 
     const { data: usersData, error: usersError } =
@@ -43,14 +59,13 @@ export async function GET(request: Request) {
       if (u.id) userEmailMap.set(u.id, u.email || "");
     });
 
-    const owners = data.map((row) => ({
+    const owners = rowsData.map((row: any) => ({
       userId: row.user_id,
       ownerEmail: userEmailMap.get(row.user_id) || "",
       zelleEmail: row.zelle_email || null,
       zellePhone: row.zelle_phone || null,
     }));
-
-    return NextResponse.json(owners);
+    return NextResponse.json({ rows: owners, warning });
   } catch (error) {
     console.error("Error fetching owner billing info:", error);
     return NextResponse.json(
