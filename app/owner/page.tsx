@@ -108,13 +108,31 @@ export default function OwnerDashboard() {
     currentYear: selectedYear
   });
 
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    monthly.forEach((m) => {
+      if (Number.isFinite(m.year)) years.add(m.year);
+    });
+    if (years.size === 0) years.add(selectedYear);
+    return Array.from(years).sort((a, b) => a - b);
+  }, [monthly, selectedYear]);
+
+  useEffect(() => {
+    if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[availableYears.length - 1]);
+    }
+  }, [availableYears, selectedYear]);
+
   // Filter monthly data based on selected period
   const filteredMonthly = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
 
     // For "alltime", don't filter by months (show all months)
     if (periodType === "alltime") {
-      return monthly;
+      return [...monthly].sort((a, b) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return a.month - b.month;
+      });
     }
 
     // For "lease", filter to exact lease term months (may span years)
@@ -133,7 +151,9 @@ export default function OwnerDashboard() {
 
     // For "ytd", filter to only include months in the current year up to current month
     if (periodType === "ytd" && monthsInPeriod && monthsInPeriod.length > 0) {
-      return monthly.filter(m => m.year === selectedYear && monthsInPeriod.includes(m.month));
+      return monthly
+        .filter(m => m.year === selectedYear && monthsInPeriod.includes(m.month))
+        .sort((a, b) => a.month - b.month);
     }
 
     return monthly;
@@ -512,9 +532,10 @@ Use the provided property and document context from the server; do not guess.`;
                 <select
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={periodType !== "ytd"}
+                  className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
                 >
-                  {[2024, 2025, 2026].map((year) => (
+                  {availableYears.map((year) => (
                     <option key={year} value={year}>
                       {year}
                     </option>
