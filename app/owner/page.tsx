@@ -187,7 +187,10 @@ export default function OwnerDashboard() {
     const canonicalMetrics = calculateCanonicalMetrics(
       propertyData,
       monthlyData,
-      {} // Data is pre-filtered, no need for monthsFilter
+      {
+        // Data is pre-filtered; multiYear prevents year-only filtering for lease/all-time.
+        multiYear: periodType !== "ytd"
+      }
     );
 
     return {

@@ -10,7 +10,7 @@ import {
 } from "@/lib/financial-calculations";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
-import { usePeriodFilter } from "@/app/hooks/usePeriodFilter";
+import { getLeaseTermMonths, usePeriodFilter } from "@/app/hooks/usePeriodFilter";
 
 type Property = {
   id: string;
@@ -138,11 +138,17 @@ export default function FinancialsPage() {
   const [saleClosingCosts, setSaleClosingCosts] = useState("");
 
   // Period filter hook for YTD vs Lease Term toggle
-  const { periodType, setPeriodType, monthsInPeriod, label: periodLabel } = usePeriodFilter({
+  const { periodType, setPeriodType, label: periodLabel } = usePeriodFilter({
     leaseStart: propertyFinancials.lease_start || null,
     leaseEnd: propertyFinancials.lease_end || null,
     currentYear: performanceYear
   });
+
+  const periodLabelShort = useMemo(() => {
+    if (periodType === "ytd") return `YTD ${performanceYear}`;
+    if (periodType === "alltime") return "All Time";
+    return "Lease Term";
+  }, [periodType, performanceYear]);
 
   const parseDateOnly = (dateStr: string) => {
     const [y, m, d] = dateStr.split("-").map(Number);
@@ -308,14 +314,48 @@ export default function FinancialsPage() {
     return Math.max(0, months);
   }, [propertyFinancials.purchase_date]);
 
+  const sortedMonthlyData = useMemo(() => {
+    return [...allMonthlyData].sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return a.month - b.month;
+    });
+  }, [allMonthlyData]);
+
+  const displayMonthlyData = useMemo(() => {
+    if (!sortedMonthlyData.length) return [];
+
+    if (periodType === "lease" && propertyFinancials.lease_start && propertyFinancials.lease_end) {
+      const leaseMonths = getLeaseTermMonths(propertyFinancials.lease_start, propertyFinancials.lease_end);
+      const leaseKeys = new Set(leaseMonths.map(m => `${m.year}-${m.month}`));
+      return sortedMonthlyData.filter(row => leaseKeys.has(`${row.year}-${row.month}`));
+    }
+
+    if (periodType === "alltime") {
+      const lastPaidIndex = sortedMonthlyData.reduce((idx, row, i) => {
+        return row.rent_income > 0 ? i : idx;
+      }, -1);
+      if (lastPaidIndex >= 0) {
+        return sortedMonthlyData.slice(0, lastPaidIndex + 1);
+      }
+      return sortedMonthlyData;
+    }
+
+    // YTD: filter to the selected year for the table view
+    return sortedMonthlyData.filter(row => row.year === performanceYear);
+  }, [
+    sortedMonthlyData,
+    periodType,
+    performanceYear,
+    propertyFinancials.lease_start,
+    propertyFinancials.lease_end,
+  ]);
+
   const canonicalMetrics = useMemo(() => {
     const estimatedAnnualPropertyTax = parseFloat(yeTarget.property_tax) || 0;
-    const monthlyForYear = allMonthlyData
-      .filter(m => m.year === performanceYear)
-      .map(m => ({
-        ...m,
-        property_market_estimate: m.property_market_estimate ?? null,
-      }));
+    const monthlyForCalc = displayMonthlyData.map(m => ({
+      ...m,
+      property_market_estimate: m.property_market_estimate ?? null,
+    }));
 
     return calculateCanonicalMetrics(
       {
@@ -331,15 +371,15 @@ export default function FinancialsPage() {
         deposit: parseFloat(propertyFinancials.deposit) || 0,
         last_month_rent_collected: propertyFinancials.last_month_rent_collected,
       },
-      monthlyForYear,
+      monthlyForCalc,
       {
         estimatedAnnualPropertyTax,
-        monthsFilter: periodType === 'lease' ? monthsInPeriod : undefined
+        // Data is pre-filtered; multiYear prevents year-only filtering for lease/all-time.
+        multiYear: periodType !== "ytd"
       }
     );
   }, [
-    allMonthlyData,
-    performanceYear,
+    displayMonthlyData,
     propertyFinancials.home_cost,
     propertyFinancials.home_repair_cost,
     propertyFinancials.closing_costs,
@@ -353,7 +393,6 @@ export default function FinancialsPage() {
     calculatedTotalCost,
     yeTarget.property_tax,
     periodType,
-    monthsInPeriod,
   ]);
 
   const actualYtd = useMemo(() => canonicalMetrics.ytd, [canonicalMetrics]);
@@ -427,7 +466,9 @@ export default function FinancialsPage() {
     performanceYear,
     propertyFinancials.lease_start,
     propertyFinancials.lease_end,
+    propertyFinancials.purchase_date,
     financialsLoaded,
+    periodType,
   ]);
 
   // Auto-populate YE Target from property planned costs and auto-calculate maintenance at 5%
@@ -530,46 +571,49 @@ export default function FinancialsPage() {
     try {
       setLoadingMonthly(true);
       const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const leaseStartDate = propertyFinancials.lease_start ? parseDateOnly(propertyFinancials.lease_start) : null;
+      const leaseEndDate = propertyFinancials.lease_end ? parseDateOnly(propertyFinancials.lease_end) : null;
+      const purchaseDate = propertyFinancials.purchase_date ? parseDateOnly(propertyFinancials.purchase_date) : null;
 
-      // Generate month list starting from lease_start month, spanning up to 13 months
+      const buildMonthsInRange = (startDate: Date, endDate: Date) => {
+        if (endDate < startDate) return [];
+        const months: { month: number; year: number; month_name: string }[] = [];
+        const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        const endKey = endDate.getFullYear() * 12 + endDate.getMonth();
+        while (current.getFullYear() * 12 + current.getMonth() <= endKey) {
+          const year = current.getFullYear();
+          const monthIndex = current.getMonth();
+          months.push({
+            month: monthIndex + 1,
+            year,
+            month_name: `${monthNames[monthIndex]} ${year}`,
+          });
+          current.setMonth(current.getMonth() + 1);
+        }
+        return months;
+      };
+
       let monthsToLoad: { month: number; year: number; month_name: string }[] = [];
 
-      const startYear = performanceYear;
-      const startDate = new Date(startYear, 0, 1);
-      const leaseEndDate = propertyFinancials.lease_end ? parseDateOnly(propertyFinancials.lease_end) : null;
-
-      // Determine end month/year (if lease_end is before startYear, fall back to Dec of startYear)
-      let endYear = startYear;
-      let endMonth = 11; // Dec
-      if (leaseEndDate) {
-        const endAfterStart = leaseEndDate >= startDate;
-        if (endAfterStart) {
-          endYear = leaseEndDate.getFullYear();
-          endMonth = leaseEndDate.getMonth();
-        }
+      if (periodType === "lease" && leaseStartDate && leaseEndDate) {
+        monthsToLoad = buildMonthsInRange(leaseStartDate, leaseEndDate);
+      } else if (periodType === "alltime") {
+        const start = purchaseDate || leaseStartDate || new Date(performanceYear, 0, 1);
+        const now = new Date();
+        const end = new Date(now.getFullYear(), now.getMonth(), 1);
+        monthsToLoad = buildMonthsInRange(start, end);
+      } else {
+        const start = new Date(performanceYear, 0, 1);
+        const end = new Date(performanceYear, 11, 1);
+        monthsToLoad = buildMonthsInRange(start, end);
       }
 
-      let currentYear = startYear;
-      let currentMonth = 0; // Jan
-      while (currentYear < endYear || (currentYear === endYear && currentMonth <= endMonth)) {
-        monthsToLoad.push({
-          month: currentMonth + 1,
-          year: currentYear,
-          month_name: `${monthNames[currentMonth]} ${currentYear}`
-        });
-        currentMonth++;
-        if (currentMonth >= 12) {
-          currentMonth = 0;
-          currentYear++;
-        }
-      }
-
-      // If no lease_end and nothing pushed, default to Jan-Dec
+      // Fallback to Jan-Dec if range is invalid or empty
       if (monthsToLoad.length === 0) {
         monthsToLoad = monthNames.map((name, idx) => ({
           month: idx + 1,
           year: performanceYear,
-          month_name: `${name} ${performanceYear}`
+          month_name: `${name} ${performanceYear}`,
         }));
       }
 
@@ -1343,15 +1387,18 @@ export default function FinancialsPage() {
       {activeTab === "monthly" && (
         <div className="bg-white rounded-lg border border-slate-200 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Monthly Performance for {performanceYear}</h2>
+            <h2 className="text-xl font-semibold">
+              Monthly Performance {periodType === "ytd" ? `for ${performanceYear}` : `(${periodLabelShort})`}
+            </h2>
             <div className="flex items-center space-x-3">
               <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium">Year:</label>
+                <label className="text-sm font-medium">Year (YTD):</label>
                 <input
                   type="number"
                   value={performanceYear}
                   onChange={(e) => setPerformanceYear(parseInt(e.target.value))}
-                  className="w-24 border border-slate-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={periodType !== "ytd"}
+                  className="w-24 border border-slate-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
                 />
               </div>
               <button
@@ -1425,6 +1472,10 @@ export default function FinancialsPage() {
                   <span className="font-medium">Cost Basis:</span>{" "}
                   {formatCurrency(calculatedTotalCost)}
                 </div>
+                <div className="mb-1">
+                  <span className="font-medium">Received Deposit:</span>{" "}
+                  {formatCurrency(parseFloat(propertyFinancials.deposit) || 0)}
+                </div>
                 <div className="mb-1 ml-4 text-xs">
                   <span className="font-medium">Purchase price:</span>{" "}
                   {formatCurrency(parseFloat(propertyFinancials.home_cost) || 0)}
@@ -1463,7 +1514,7 @@ export default function FinancialsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {allMonthlyData.map((monthData, index) => (
+                  {displayMonthlyData.map((monthData) => (
                   <tr key={`${monthData.year}-${monthData.month}`} className={monthData.rent_income > 0 ? "bg-white" : "bg-gray-50"}>
                     <td className="border border-slate-300 px-3 py-2 font-medium sticky left-0 bg-white">
                       {monthData.month_name}
@@ -1475,8 +1526,8 @@ export default function FinancialsPage() {
                         value={monthData.rent_income || ""}
                         onChange={(e) => {
                           const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m, i) => {
-                            if (i === index) {
+                          setAllMonthlyData(prev => prev.map((m) => {
+                            if (m.year === monthData.year && m.month === monthData.month) {
                               // Excel: total_expenses EXCLUDES property_tax
                               const totalExp = (m.maintenance || 0) + (m.pool || 0) + (m.garden || 0) + (m.hoa_payments || 0);
                               return { ...m, rent_income: value, total_expenses: totalExp, net_income: value - totalExp };
@@ -1496,8 +1547,8 @@ export default function FinancialsPage() {
                         value={monthData.maintenance || ""}
                         onChange={(e) => {
                           const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m, i) => {
-                            if (i === index) {
+                          setAllMonthlyData(prev => prev.map((m) => {
+                            if (m.year === monthData.year && m.month === monthData.month) {
                               const totalExp = value + (m.pool || 0) + (m.garden || 0) + (m.hoa_payments || 0);
                               return { ...m, maintenance: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
                             }
@@ -1516,8 +1567,8 @@ export default function FinancialsPage() {
                         value={monthData.pool || ""}
                         onChange={(e) => {
                           const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m, i) => {
-                            if (i === index) {
+                          setAllMonthlyData(prev => prev.map((m) => {
+                            if (m.year === monthData.year && m.month === monthData.month) {
                               const totalExp = (m.maintenance || 0) + value + (m.garden || 0) + (m.hoa_payments || 0);
                               return { ...m, pool: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
                             }
@@ -1536,8 +1587,8 @@ export default function FinancialsPage() {
                         value={monthData.garden || ""}
                         onChange={(e) => {
                           const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m, i) => {
-                            if (i === index) {
+                          setAllMonthlyData(prev => prev.map((m) => {
+                            if (m.year === monthData.year && m.month === monthData.month) {
                               const totalExp = (m.maintenance || 0) + (m.pool || 0) + value + (m.hoa_payments || 0);
                               return { ...m, garden: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
                             }
@@ -1556,8 +1607,8 @@ export default function FinancialsPage() {
                         value={monthData.hoa_payments || ""}
                         onChange={(e) => {
                           const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m, i) => {
-                            if (i === index) {
+                          setAllMonthlyData(prev => prev.map((m) => {
+                            if (m.year === monthData.year && m.month === monthData.month) {
                               const totalExp = (m.maintenance || 0) + (m.pool || 0) + (m.garden || 0) + value;
                               return { ...m, hoa_payments: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
                             }
@@ -1576,8 +1627,8 @@ export default function FinancialsPage() {
                         value={monthData.property_tax || ""}
                         onChange={(e) => {
                           const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m, i) => {
-                            if (i === index) {
+                          setAllMonthlyData(prev => prev.map((m) => {
+                            if (m.year === monthData.year && m.month === monthData.month) {
                               // Property tax does NOT affect total_expenses or net_income in Excel formula
                               return { ...m, property_tax: value };
                             }
@@ -1596,7 +1647,11 @@ export default function FinancialsPage() {
                         value={monthData.property_market_estimate ?? ""}
                         onChange={(e) => {
                           const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m, i) => i === index ? { ...m, property_market_estimate: value } : m));
+                          setAllMonthlyData(prev => prev.map((m) =>
+                            m.year === monthData.year && m.month === monthData.month
+                              ? { ...m, property_market_estimate: value }
+                              : m
+                          ));
                         }}
                         onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'property_market_estimate', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
@@ -1615,7 +1670,7 @@ export default function FinancialsPage() {
                 {/* Totals Row */}
                 <tr className="bg-slate-200 font-bold border-t-2 border-slate-400">
                   <td className="border border-slate-300 px-3 py-2 sticky left-0 bg-slate-200">
-                    YTD Total
+                    {periodType === "ytd" ? "YTD Total" : "Period Total"}
                   </td>
                   <td className="border border-slate-300 px-3 py-2 text-right">
                     {formatCurrency(actualYtd.rent_income)}
@@ -1774,7 +1829,9 @@ export default function FinancialsPage() {
 
                 return (
                   <>
-                    <h3 className="font-semibold text-slate-900 mb-4 text-lg">Return on Investment (YTD)</h3>
+                    <h3 className="font-semibold text-slate-900 mb-4 text-lg">
+                      Return on Investment ({periodLabelShort})
+                    </h3>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                       {/* Income-Based ROI */}
                       <div className="space-y-3">

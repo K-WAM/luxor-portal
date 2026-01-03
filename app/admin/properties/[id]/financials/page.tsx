@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
-import { usePeriodFilter } from "@/app/hooks/usePeriodFilter";
+import { getLeaseTermMonths, usePeriodFilter } from "@/app/hooks/usePeriodFilter";
 
 type PropertyFinancials = {
   id: string;
@@ -63,7 +63,7 @@ export default function PropertyFinancialSummaryPage() {
   const currentYear = new Date().getFullYear();
 
   // Period filter hook for YTD vs Lease Term toggle
-  const { periodType, setPeriodType, monthsInPeriod, label: periodLabel } = usePeriodFilter({
+  const { periodType, setPeriodType, label: periodLabel } = usePeriodFilter({
     leaseStart: property?.lease_start,
     leaseEnd: property?.lease_end,
     currentYear
@@ -71,7 +71,20 @@ export default function PropertyFinancialSummaryPage() {
 
   useEffect(() => {
     loadAllData();
-  }, [propertyId]);
+  }, [propertyId, periodType]);
+
+  const periodLabelShort = useMemo(() => {
+    if (periodType === "ytd") return `YTD ${currentYear}`;
+    if (periodType === "alltime") return "All Time";
+    return "Lease Term";
+  }, [periodType, currentYear]);
+
+  const parseDateOnly = (dateStr: string | null | undefined) => {
+    if (!dateStr) return null;
+    const [year, month, day] = dateStr.split("-").map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day);
+  };
 
   const loadAllData = async () => {
     try {
@@ -91,11 +104,56 @@ export default function PropertyFinancialSummaryPage() {
         setYeTarget(targetData.ye_target);
       }
 
-      // Load all 12 months of performance
+      // Load monthly performance based on selected period
       const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-      const promises = monthNames.map(async (name, idx) => {
-        const month = idx + 1;
-        const res = await fetch(`/api/admin/financials/monthly?propertyId=${propertyId}&year=${currentYear}&month=${month}`);
+      const leaseStartDate = propData?.lease_start ? parseDateOnly(propData.lease_start) : null;
+      const leaseEndDate = propData?.lease_end ? parseDateOnly(propData.lease_end) : null;
+      const purchaseDate = propData?.purchase_date ? parseDateOnly(propData.purchase_date) : null;
+
+      const buildMonthsInRange = (startDate: Date, endDate: Date, includeYear: boolean) => {
+        if (endDate < startDate) return [];
+        const months: { month: number; year: number; month_name: string }[] = [];
+        const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        const endKey = endDate.getFullYear() * 12 + endDate.getMonth();
+        while (current.getFullYear() * 12 + current.getMonth() <= endKey) {
+          const year = current.getFullYear();
+          const monthIndex = current.getMonth();
+          const label = includeYear ? `${monthNames[monthIndex]} ${year}` : monthNames[monthIndex];
+          months.push({
+            month: monthIndex + 1,
+            year,
+            month_name: label,
+          });
+          current.setMonth(current.getMonth() + 1);
+        }
+        return months;
+      };
+
+      let monthsToLoad: { month: number; year: number; month_name: string }[] = [];
+
+      if (periodType === "lease" && leaseStartDate && leaseEndDate) {
+        monthsToLoad = buildMonthsInRange(leaseStartDate, leaseEndDate, true);
+      } else if (periodType === "alltime") {
+        const start = purchaseDate || leaseStartDate || new Date(currentYear, 0, 1);
+        const now = new Date();
+        const end = new Date(now.getFullYear(), now.getMonth(), 1);
+        monthsToLoad = buildMonthsInRange(start, end, true);
+      } else {
+        const start = new Date(currentYear, 0, 1);
+        const end = new Date(currentYear, 11, 1);
+        monthsToLoad = buildMonthsInRange(start, end, false);
+      }
+
+      if (monthsToLoad.length === 0) {
+        monthsToLoad = monthNames.map((name, idx) => ({
+          month: idx + 1,
+          year: currentYear,
+          month_name: periodType === "ytd" ? name : `${name} ${currentYear}`,
+        }));
+      }
+
+      const promises = monthsToLoad.map(async ({ month, year, month_name }) => {
+        const res = await fetch(`/api/admin/financials/monthly?propertyId=${propertyId}&year=${year}&month=${month}`);
         const data = await res.json();
 
         if (res.ok && data && data.rent_income !== undefined) {
@@ -105,8 +163,8 @@ export default function PropertyFinancialSummaryPage() {
           const netInc = (data.rent_income || 0) - totalExp;
           return {
             month,
-            year: currentYear,
-            month_name: name,
+            year,
+            month_name,
             rent_income: data.rent_income || 0,
             maintenance: data.maintenance || 0,
             pool: data.pool || 0,
@@ -117,22 +175,22 @@ export default function PropertyFinancialSummaryPage() {
             total_expenses: totalExp,
             net_income: netInc,
           };
-        } else {
-          return {
-            month,
-            year: currentYear,
-            month_name: name,
-            rent_income: 0,
-            maintenance: 0,
-            pool: 0,
-            garden: 0,
-            hoa_payments: 0,
-            property_tax: 0,
-            property_market_estimate: null,
-            total_expenses: 0,
-            net_income: 0,
-          };
         }
+
+        return {
+          month,
+          year,
+          month_name,
+          rent_income: 0,
+          maintenance: 0,
+          pool: 0,
+          garden: 0,
+          hoa_payments: 0,
+          property_tax: 0,
+          property_market_estimate: null,
+          total_expenses: 0,
+          net_income: 0,
+        };
       });
 
       const results = await Promise.all(promises);
@@ -160,6 +218,41 @@ export default function PropertyFinancialSummaryPage() {
     return new Date(dateStr).toLocaleDateString();
   };
 
+  const sortedMonthlyData = useMemo(() => {
+    return [...monthlyData].sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return a.month - b.month;
+    });
+  }, [monthlyData]);
+
+  const displayMonthlyData = useMemo(() => {
+    if (!sortedMonthlyData.length) return [];
+
+    if (periodType === "lease" && property?.lease_start && property?.lease_end) {
+      const leaseMonths = getLeaseTermMonths(property.lease_start, property.lease_end);
+      const leaseKeys = new Set(leaseMonths.map(m => `${m.year}-${m.month}`));
+      return sortedMonthlyData.filter(row => leaseKeys.has(`${row.year}-${row.month}`));
+    }
+
+    if (periodType === "alltime") {
+      const lastPaidIndex = sortedMonthlyData.reduce((idx, row, i) => {
+        return row.rent_income > 0 ? i : idx;
+      }, -1);
+      if (lastPaidIndex >= 0) {
+        return sortedMonthlyData.slice(0, lastPaidIndex + 1);
+      }
+      return sortedMonthlyData;
+    }
+
+    return sortedMonthlyData.filter(row => row.year === currentYear);
+  }, [
+    sortedMonthlyData,
+    periodType,
+    currentYear,
+    property?.lease_start,
+    property?.lease_end,
+  ]);
+
   const canonicalMetrics = useMemo(() => {
     if (!property) return null;
 
@@ -179,7 +272,7 @@ export default function PropertyFinancialSummaryPage() {
         deposit: property.deposit || 0,
         last_month_rent_collected: !!property.last_month_rent_collected,
       },
-      monthlyData.map(m => ({
+      displayMonthlyData.map(m => ({
         month: m.month,
         year: m.year,
         rent_income: m.rent_income,
@@ -192,10 +285,11 @@ export default function PropertyFinancialSummaryPage() {
       })),
       {
         estimatedAnnualPropertyTax,
-        monthsFilter: periodType === 'lease' ? monthsInPeriod : undefined
+        // Data is pre-filtered; multiYear prevents year-only filtering for lease/all-time.
+        multiYear: periodType !== "ytd"
       }
     );
-  }, [property, monthlyData, yeTarget, periodType, monthsInPeriod]);
+  }, [property, displayMonthlyData, yeTarget, periodType]);
 
   if (loading) {
     return (
@@ -371,7 +465,7 @@ export default function PropertyFinancialSummaryPage() {
 
       {/* Month-by-Month Summary */}
       <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Monthly Performance Summary - {currentYear}</h2>
+        <h2 className="text-xl font-semibold mb-4">Monthly Performance Summary - {periodLabelShort}</h2>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse border border-slate-300 text-sm">
             <thead>
@@ -388,8 +482,8 @@ export default function PropertyFinancialSummaryPage() {
               </tr>
             </thead>
             <tbody>
-              {monthlyData.map((monthData) => (
-                <tr key={monthData.month} className={monthData.rent_income > 0 ? "bg-white" : "bg-gray-50"}>
+              {displayMonthlyData.map((monthData) => (
+                <tr key={`${monthData.year}-${monthData.month}`} className={monthData.rent_income > 0 ? "bg-white" : "bg-gray-50"}>
                   <td className="border border-slate-300 px-3 py-2 font-medium">{monthData.month_name}</td>
                   <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(monthData.rent_income)}</td>
                   <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(monthData.maintenance)}</td>
@@ -405,7 +499,9 @@ export default function PropertyFinancialSummaryPage() {
               ))}
               {/* YTD Totals Row */}
               <tr className="bg-slate-200 font-bold">
-                <td className="border border-slate-300 px-3 py-2">YTD Total</td>
+                <td className="border border-slate-300 px-3 py-2">
+                  {periodType === "ytd" ? "YTD Total" : "Period Total"}
+                </td>
                 <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(ytdTotals.rent_income)}</td>
                 <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(ytdTotals.maintenance)}</td>
                 <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(ytdTotals.pool)}</td>
@@ -523,16 +619,16 @@ export default function PropertyFinancialSummaryPage() {
 
       {/* Performance Metrics */}
       <div className="bg-white rounded-lg border border-slate-200 p-6">
-        <h2 className="text-xl font-semibold mb-4">Performance Metrics (YTD {currentYear})</h2>
+        <h2 className="text-xl font-semibold mb-4">Performance Metrics ({periodLabelShort})</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="border border-slate-300 rounded-lg p-4">
-            <div className="text-sm text-gray-600 mb-1">Actual ROI (YTD)</div>
+            <div className="text-sm text-gray-600 mb-1">Actual ROI ({periodLabelShort})</div>
             <div className="text-2xl font-bold text-green-700">
               {roiActual.toFixed(2)}%
             </div>
           </div>
           <div className="border border-slate-300 rounded-lg p-4">
-            <div className="text-sm text-gray-600 mb-1">YTD Net Income</div>
+            <div className="text-sm text-gray-600 mb-1">Net Income ({periodLabelShort})</div>
             <div className="text-2xl font-bold text-blue-600">
               {formatCurrency(ytdTotals.net_income)}
             </div>

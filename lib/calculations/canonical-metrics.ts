@@ -61,6 +61,11 @@ export type CanonicalMetricsOptions = {
    * If not provided, defaults to all months up to asOf date (standard YTD behavior)
    */
   monthsFilter?: number[];
+  /**
+   * When true, calculates across ALL years in the data (for "All Time" mode)
+   * When false/undefined, filters to a single year (standard YTD behavior)
+   */
+  multiYear?: boolean;
 };
 
 /**
@@ -106,6 +111,11 @@ function getMetricsYear(monthly: MonthlyDataRow[], fallback: Date): number {
   return typeof year === 'number' ? year : fallback.getFullYear();
 }
 
+function getLatestYear(monthly: MonthlyDataRow[], fallback: Date): number {
+  const years = monthly.map(m => m.year).filter(year => Number.isFinite(year));
+  if (!years.length) return fallback.getFullYear();
+  return Math.max(...years);
+}
 function shouldApplyLastMonthRentBonus(property: PropertyData, metricsYear: number): boolean {
   if (!property.last_month_rent_collected) return false;
 
@@ -138,15 +148,17 @@ function getLastMonthRentBonusAmount(property: PropertyData): number {
  * Calculate YTD totals from monthly performance data
  * Year-to-date is limited to months <= the asOf month for the current year.
  * Can be filtered to specific months via monthsFilter option (e.g., for lease term filtering).
+ * When multiYear is true, calculates across ALL years in the data (for All Time mode).
  */
 function calculateYTDTotals(
   monthly: MonthlyDataRow[],
   metricsYear: number,
   asOf: Date,
-  monthsFilter?: number[]
+  monthsFilter?: number[],
+  multiYear?: boolean
 ): YTDTotals {
   const monthsElapsed = getMonthsElapsedInYear(metricsYear, asOf);
-  if (monthsElapsed <= 0) {
+  if (!multiYear && monthsElapsed <= 0) {
     return {
       rent_income: 0,
       maintenance: 0,
@@ -159,10 +171,15 @@ function calculateYTDTotals(
     };
   }
 
-  const maxMonth = Math.min(12, monthsElapsed);
-
-  // Filter by year and month range
-  let scoped = monthly.filter(m => m.year === metricsYear && m.month >= 1 && m.month <= maxMonth);
+  let scoped;
+  if (multiYear) {
+    // For All Time: include ALL years, no year filtering
+    scoped = monthly.filter(m => m.month >= 1 && m.month <= 12);
+  } else {
+    // For YTD/Lease Term: filter to specific year and month range
+    const maxMonth = Math.min(12, monthsElapsed);
+    scoped = monthly.filter(m => m.year === metricsYear && m.month >= 1 && m.month <= maxMonth);
+  }
 
   // Apply additional month filter if provided (for lease term filtering)
   if (monthsFilter && monthsFilter.length > 0) {
@@ -267,10 +284,18 @@ export function calculateCanonicalMetrics(
   options: CanonicalMetricsOptions = {}
 ): CanonicalMetrics {
   const asOf = options.asOf ?? new Date();
-  const metricsYear = getMetricsYear(monthly, asOf);
+  const metricsYear = options.multiYear
+    ? getLatestYear(monthly, asOf)
+    : getMetricsYear(monthly, asOf);
 
   // Step 1: Calculate YTD totals (with optional month filtering for lease term)
-  const ytd = calculateYTDTotals(monthly, metricsYear, asOf, options.monthsFilter);
+  const ytd = calculateYTDTotals(
+    monthly,
+    metricsYear,
+    asOf,
+    options.monthsFilter,
+    options.multiYear
+  );
 
   // Excel deposit / last-month rent rule: add 1 month of rent if collected upfront
   if (shouldApplyLastMonthRentBonus(property, metricsYear)) {
