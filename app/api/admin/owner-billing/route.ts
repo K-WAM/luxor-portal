@@ -46,11 +46,19 @@ export async function GET() {
       if (u.id) userEmailMap.set(u.id, u.email || "");
     });
 
+    const getPropertyAddress = (properties: any) => {
+      if (!properties) return "";
+      if (Array.isArray(properties)) {
+        return properties[0]?.address || "";
+      }
+      return properties.address || "";
+    };
+
     const rows = (data || []).map((row) => ({
       userId: row.user_id,
       ownerEmail: userEmailMap.get(row.user_id) || "",
       propertyId: row.property_id,
-      propertyAddress: row.properties?.address || "",
+      propertyAddress: getPropertyAddress(row.properties),
       ownershipPercentage: row.ownership_percentage ?? null,
       zelleEmail: row.zelle_email || null,
       zellePhone: row.zelle_phone || null,
