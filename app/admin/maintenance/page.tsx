@@ -176,11 +176,9 @@ export default function MaintenanceRequestsPage() {
         propertyId: createForm.propertyId,
         tenantName: createForm.tenantName,
         tenantEmail: createForm.tenantEmail,
-        category: createForm.category || null,
+        category: createForm.category,
         description: createForm.description,
       };
-      if (createForm.cost) payload.cost = parseFloat(createForm.cost);
-      if (createForm.internalComments) payload.internalComments = createForm.internalComments;
       const res = await fetch("/api/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -188,6 +186,21 @@ export default function MaintenanceRequestsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create request");
+      const createdId = data?.id;
+      if (createdId && (createForm.cost || createForm.internalComments)) {
+        const patchPayload: any = { id: createdId };
+        if (createForm.cost) patchPayload.cost = parseFloat(createForm.cost);
+        if (createForm.internalComments) patchPayload.internalComments = createForm.internalComments;
+        const patchRes = await fetch("/api/maintenance", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patchPayload),
+        });
+        if (!patchRes.ok) {
+          const patchData = await patchRes.json().catch(() => ({}));
+          setError(patchData.error || "Created request, but failed to save internal notes.");
+        }
+      }
       setCreateForm({
         propertyId: "",
         tenantName: "",
@@ -240,7 +253,7 @@ export default function MaintenanceRequestsPage() {
         propertyId: editForm.propertyId,
         tenantName: editForm.tenantName,
         tenantEmail: editForm.tenantEmail,
-        category: editForm.category || null,
+        category: editForm.category,
         description: editForm.description,
         status: editForm.status,
       };
@@ -588,6 +601,36 @@ export default function MaintenanceRequestsPage() {
                                 <button type="button" onClick={cancelEdit} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300">Cancel</button>
                               </div>
                             </form>
+                          </td>
+                        </tr>
+                      )}
+                      {editingNotes === req.id && (
+                        <tr>
+                          <td colSpan={9} className="bg-slate-50 px-4 py-3">
+                            <textarea
+                              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              rows={3}
+                              placeholder="Add notes, cost details, or comments..."
+                              value={notesText}
+                              onChange={(e) => setNotesText(e.target.value)}
+                              disabled={savingId === req.id}
+                            />
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                onClick={() => saveNotes(req.id, req.cost)}
+                                disabled={savingId === req.id}
+                                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {savingId === req.id ? "Saving..." : "Save"}
+                              </button>
+                              <button
+                                onClick={() => { setEditingNotes(null); setNotesText(""); }}
+                                disabled={savingId === req.id}
+                                className="px-4 py-2 bg-slate-200 text-slate-700 text-sm rounded-md hover:bg-slate-300 disabled:bg-slate-100 disabled:cursor-not-allowed transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       )}

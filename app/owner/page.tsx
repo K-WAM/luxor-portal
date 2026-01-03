@@ -159,6 +159,28 @@ export default function OwnerDashboard() {
     return monthly;
   }, [monthly, monthsInPeriod, periodType, property, selectedYear]);
 
+  const incomeChartData = useMemo(() => {
+    const trimmed = filteredMonthly.filter((m) => {
+      const hasIncome = (m.rent_income || 0) !== 0;
+      const hasExpenses =
+        (m.maintenance || 0) !== 0 ||
+        (m.pool || 0) !== 0 ||
+        (m.garden || 0) !== 0 ||
+        (m.hoa_payments || 0) !== 0;
+      const hasTotals =
+        (m.total_expenses || 0) !== 0 ||
+        (m.net_income || 0) !== 0;
+      return hasIncome || hasExpenses || hasTotals;
+    });
+    return trimmed.length > 0 ? trimmed : filteredMonthly;
+  }, [filteredMonthly]);
+
+  const marketEstimateData = useMemo(() => {
+    return filteredMonthly.filter(
+      (m) => (m.property_market_estimate || 0) > 0
+    );
+  }, [filteredMonthly]);
+
   // Recalculate metrics when period type or data changes
   const metrics = useMemo(() => {
     if (!property || !monthly || monthly.length === 0) return rawMetrics;
@@ -801,12 +823,12 @@ Use the provided property and document context from the server; do not guess.`;
             </h3>
             <Bar
               data={{
-                labels: filteredMonthly.map(m => m.month_name),
+                labels: incomeChartData.map(m => m.month_name),
                 datasets: [
-                  { label: "Maintenance", data: filteredMonthly.map(m => m.maintenance), backgroundColor: "#ed7d31" },
-                  { label: "Pool", data: filteredMonthly.map(m => m.pool), backgroundColor: "#5b9bd5" },
-                  { label: "Garden", data: filteredMonthly.map(m => m.garden), backgroundColor: "#a5a5a5" },
-                  { label: "HOA Payments", data: filteredMonthly.map(m => m.hoa_payments), backgroundColor: "#ffc000" },
+                  { label: "Maintenance", data: incomeChartData.map(m => m.maintenance), backgroundColor: "#ed7d31" },
+                  { label: "Pool", data: incomeChartData.map(m => m.pool), backgroundColor: "#5b9bd5" },
+                  { label: "Garden", data: incomeChartData.map(m => m.garden), backgroundColor: "#a5a5a5" },
+                  { label: "HOA Payments", data: incomeChartData.map(m => m.hoa_payments), backgroundColor: "#ffc000" },
                 ]
               }}
               options={{
@@ -849,11 +871,11 @@ Use the provided property and document context from the server; do not guess.`;
           <div className="bg-white border border-slate-200 p-6 mb-6 rounded-xl shadow-sm">
             <Bar
               data={{
-                labels: filteredMonthly.map(m => m.month_name),
+                labels: incomeChartData.map(m => m.month_name),
                 datasets: [
-                  { label: "Rent Income", data: filteredMonthly.map(m => m.rent_income), backgroundColor: "#a9d18e" },
-                  { label: "Total Expenses", data: filteredMonthly.map(m => m.total_expenses), backgroundColor: "#e17055" },
-                  { label: "Net Income", data: filteredMonthly.map(m => m.net_income), backgroundColor: "#70ad47" },
+                  { label: "Rent Income", data: incomeChartData.map(m => m.rent_income), backgroundColor: "#a9d18e" },
+                  { label: "Total Expenses", data: incomeChartData.map(m => m.total_expenses), backgroundColor: "#e17055" },
+                  { label: "Net Income", data: incomeChartData.map(m => m.net_income), backgroundColor: "#70ad47" },
                 ]
               }}
               options={{
@@ -885,10 +907,10 @@ Use the provided property and document context from the server; do not guess.`;
           <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
             <Line
               data={{
-                labels: filteredMonthly.map(m => m.month_name),
+                labels: marketEstimateData.map(m => m.month_name),
                 datasets: [{
                   label: "Property Market Estimate",
-                  data: filteredMonthly.map(m => m.property_market_estimate || 0),
+                  data: marketEstimateData.map(m => m.property_market_estimate || 0),
                   borderColor: "#4472c4",
                   backgroundColor: "rgba(68, 114, 196, 0.1)",
                   tension: 0.4,
