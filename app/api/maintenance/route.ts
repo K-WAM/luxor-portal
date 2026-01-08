@@ -29,7 +29,7 @@ export async function GET(request: Request) {
       const propertyIds = await getAccessiblePropertyIds(user.id, role)
       if (!propertyIds.length) return NextResponse.json([])
 
-      const result = await supabaseAdmin
+      let query = supabaseAdmin
         .from('maintenance_requests')
         .select(`
           *,
@@ -40,6 +40,14 @@ export async function GET(request: Request) {
         .in('property_id', propertyIds)
         .order('created_at', { ascending: false })
 
+      if (role === "tenant") {
+        const tenantEmail = user.email || ""
+        if (tenantEmail) {
+          query = query.eq("tenant_email", tenantEmail)
+        }
+      }
+
+      const result = await query
       data = result.data
       error = result.error
     }
@@ -91,10 +99,21 @@ export async function POST(request: Request) {
       }
     }
 
+    const tenantEmail =
+      role === "tenant" ? user.email || "" : body.tenantEmail
+    const tenantName =
+      role === "tenant"
+        ? user.user_metadata?.name || body.tenantName || "Tenant"
+        : body.tenantName
+
+    if (role === "tenant" && !tenantEmail) {
+      return NextResponse.json({ error: "Tenant email is required" }, { status: 400 })
+    }
+
     const insertData: any = {
       property_id: body.propertyId,
-      tenant_name: body.tenantName,
-      tenant_email: body.tenantEmail,
+      tenant_name: tenantName,
+      tenant_email: tenantEmail,
       category: body.category,
       description: body.description,
       status: 'open',
