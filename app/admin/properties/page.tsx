@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatDateOnly } from "@/lib/date-only";
 
 type Property = {
   id: string;
@@ -216,13 +217,13 @@ export default function PropertiesPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {property.lease_start
-                        ? new Date(property.lease_start).toLocaleDateString()
-                        : "—"}
+                        ? formatDateOnly(property.lease_start)
+                        : "--"}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {property.lease_end
-                        ? new Date(property.lease_end).toLocaleDateString()
-                        : "—"}
+                        ? formatDateOnly(property.lease_end)
+                        : "--"}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {new Date(property.created_at).toLocaleDateString()}

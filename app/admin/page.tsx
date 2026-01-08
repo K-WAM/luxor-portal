@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ROISpeedometer from "@/app/components/ROISpeedometer";
+import { formatDateOnly } from "@/lib/date-only";
 
 type PropertyMetrics = {
   id: string;
@@ -131,11 +132,10 @@ export default function AdminDashboard() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return (
+      formatDateOnly(dateString, { month: "short", day: "numeric", year: "numeric" }) ||
+      "-"
+    );
   };
 
   const calculateAverageROI = () => {

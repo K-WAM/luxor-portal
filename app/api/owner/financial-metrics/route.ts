@@ -152,7 +152,11 @@ export async function GET(request: Request) {
         total_expenses: parseFloat(m.total_expenses || 0),
         net_income: parseFloat(m.net_income || 0),
         property_tax: parseFloat(m.property_tax || 0),
-        property_market_estimate: parseFloat(m.property_market_estimate || property.current_market_estimate || 0),
+        property_market_estimate:
+          m.property_market_estimate !== null
+            ? parseFloat(m.property_market_estimate || 0)
+            : null,
+        updated_at: m.updated_at || null,
         year: parseInt(year),
       };
     });

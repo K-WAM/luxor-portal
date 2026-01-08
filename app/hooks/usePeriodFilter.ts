@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { PeriodType } from "../components/ui/PeriodToggle";
+import { formatMonthYear, getDateOnlyParts } from "@/lib/date-only";
 
 interface PeriodFilterResult {
   periodType: PeriodType;
@@ -22,19 +23,25 @@ interface UsePeriodFilterOptions {
  * Get all years and months for a lease term
  * Returns array of {year, month} objects spanning the entire lease
  */
-export function getLeaseTermMonths(leaseStart: string, leaseEnd: string): Array<{year: number; month: number}> {
-  const start = new Date(leaseStart);
-  const end = new Date(leaseEnd);
+export function getLeaseTermMonths(
+  leaseStart: string,
+  leaseEnd: string
+): Array<{ year: number; month: number }> {
+  const start = getDateOnlyParts(leaseStart);
+  const end = getDateOnlyParts(leaseEnd);
+  if (!start || !end) return [];
 
-  const months: Array<{year: number; month: number}> = [];
-  const current = new Date(start);
+  const months: Array<{ year: number; month: number }> = [];
+  let year = start.year;
+  let month = start.month;
 
-  while (current <= end) {
-    months.push({
-      year: current.getFullYear(),
-      month: current.getMonth() + 1
-    });
-    current.setMonth(current.getMonth() + 1);
+  while (year < end.year || (year === end.year && month <= end.month)) {
+    months.push({ year, month });
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
   }
 
   return months;
@@ -50,7 +57,7 @@ export function getLeaseTermMonths(leaseStart: string, leaseEnd: string): Array<
 export function usePeriodFilter({
   leaseStart,
   leaseEnd,
-  currentYear
+  currentYear,
 }: UsePeriodFilterOptions): PeriodFilterResult {
   const [periodType, setPeriodType] = useState<PeriodType>("ytd");
 
@@ -62,7 +69,7 @@ export function usePeriodFilter({
         startMonth: 1,
         endMonth: 12,
         monthsInPeriod: months,
-        label: `Year-to-Date ${currentYear}`
+        label: `Year-to-Date ${currentYear}`,
       };
     }
 
@@ -73,7 +80,7 @@ export function usePeriodFilter({
         startMonth: 1,
         endMonth: 12,
         monthsInPeriod: months,
-        label: `All Time`
+        label: "All Time",
       };
     }
 
@@ -86,24 +93,22 @@ export function usePeriodFilter({
         startMonth: 1,
         endMonth: 12,
         monthsInPeriod: months,
-        label: `Year-to-Date ${currentYear} (No lease dates)`
+        label: `Year-to-Date ${currentYear} (No lease dates)`,
       };
     }
 
-    const startDate = new Date(leaseStart);
-    const endDate = new Date(leaseEnd);
     const leaseMonths = getLeaseTermMonths(leaseStart, leaseEnd);
 
     // Extract just the month numbers for the filter (will be used with year matching)
-    const monthNumbers = Array.from(new Set(leaseMonths.map(m => m.month)));
-
-    const formatDate = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    const monthNumbers = Array.from(new Set(leaseMonths.map((m) => m.month)));
 
     return {
-      startMonth: startDate.getMonth() + 1,
-      endMonth: endDate.getMonth() + 1,
+      startMonth: leaseMonths[0]?.month || 1,
+      endMonth: leaseMonths[leaseMonths.length - 1]?.month || 12,
       monthsInPeriod: monthNumbers,
-      label: `Lease Term (${formatDate(startDate)} - ${formatDate(endDate)}) • ${leaseMonths.length} months`
+      label: `Lease Term (${formatMonthYear(leaseStart)} - ${formatMonthYear(
+        leaseEnd
+      )}) - ${leaseMonths.length} months`,
     };
   }, [periodType, leaseStart, leaseEnd, currentYear]);
 
@@ -113,6 +118,6 @@ export function usePeriodFilter({
     startMonth,
     endMonth,
     monthsInPeriod,
-    label
+    label,
   };
 }

@@ -18,6 +18,8 @@
  * - maintenance_pct = (ytd_maintenance / ytd_rent_income) * 100
  */
 
+import { getDateOnlyParts, parseDateOnly } from "../date-only";
+
 /**
  * Monthly performance data shape (from property_monthly_performance table)
  */
@@ -121,14 +123,14 @@ function shouldApplyLastMonthRentBonus(property: PropertyData, metricsYear: numb
 
   // Apply in or after the lease start year (covers mid-lease changes and avoids missing the bonus).
   if (property.lease_start) {
-    const leaseStartYear = new Date(property.lease_start).getFullYear();
-    if (metricsYear >= leaseStartYear) return true;
+    const leaseStart = getDateOnlyParts(property.lease_start);
+    if (leaseStart && metricsYear >= leaseStart.year) return true;
   }
 
   // Fallback: if no start, use lease end year or current metrics year.
   if (!property.lease_start && property.lease_end) {
-    const leaseEndYear = new Date(property.lease_end).getFullYear();
-    if (metricsYear >= leaseEndYear) return true;
+    const leaseEnd = getDateOnlyParts(property.lease_end);
+    if (leaseEnd && metricsYear >= leaseEnd.year) return true;
   }
 
   // Final fallback: apply in the current metrics year
@@ -258,12 +260,13 @@ function getCurrentMarketValue(
 function calculateMonthsOwned(purchaseDate: string | null): number {
   if (!purchaseDate) return 1;
 
-  const purchase = new Date(purchaseDate);
+  const purchase = parseDateOnly(purchaseDate);
+  if (!purchase) return 1;
   const now = new Date();
 
   const months =
-    (now.getFullYear() - purchase.getFullYear()) * 12 +
-    (now.getMonth() - purchase.getMonth());
+    (now.getUTCFullYear() - purchase.getUTCFullYear()) * 12 +
+    (now.getUTCMonth() - purchase.getUTCMonth());
 
   return Math.max(1, months);
 }

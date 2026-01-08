@@ -7,6 +7,7 @@ import GaugeChart from "@/app/components/charts/GaugeChart";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
 import { usePeriodFilter } from "@/app/hooks/usePeriodFilter";
+import { getDateOnlyParts } from "@/lib/date-only";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -43,6 +44,9 @@ type PropertyFinancials = {
   total_cost: number;
   current_market_estimate: number;
   target_monthly_rent: number;
+  planned_garden_cost?: number;
+  planned_pool_cost?: number;
+  planned_hoa_cost?: number;
   purchase_date: string;
   lease_start?: string;
   lease_end?: string;
@@ -62,6 +66,7 @@ type MonthlyPerformance = {
   net_income: number;
   property_tax: number;
   property_market_estimate: number | null;
+  updated_at?: string | null;
 };
 
 type CalculatedMetrics = {
@@ -380,21 +385,23 @@ Use the provided property and document context from the server; do not guess.`;
       if (data.property) {
         // For lease term: fetch lease years
         if (data.property.lease_start && data.property.lease_end) {
-          const leaseStartYear = new Date(data.property.lease_start).getFullYear();
-          const leaseEndYear = new Date(data.property.lease_end).getFullYear();
-
-          for (let year = leaseStartYear; year <= leaseEndYear; year++) {
-            yearsToFetch.add(year);
+          const leaseStart = getDateOnlyParts(data.property.lease_start);
+          const leaseEnd = getDateOnlyParts(data.property.lease_end);
+          if (leaseStart && leaseEnd) {
+            for (let year = leaseStart.year; year <= leaseEnd.year; year++) {
+              yearsToFetch.add(year);
+            }
           }
         }
 
         // For all time: fetch from purchase date to current year
         if (data.property.purchase_date) {
-          const purchaseYear = new Date(data.property.purchase_date).getFullYear();
+          const purchase = getDateOnlyParts(data.property.purchase_date);
           const currentYear = new Date().getFullYear();
-
-          for (let year = purchaseYear; year <= currentYear; year++) {
-            yearsToFetch.add(year);
+          if (purchase) {
+            for (let year = purchase.year; year <= currentYear; year++) {
+              yearsToFetch.add(year);
+            }
           }
         }
       }
@@ -502,6 +509,14 @@ Use the provided property and document context from the server; do not guess.`;
   const gaugeRoiPre = metrics.roi_pre_tax;
   const gaugeRoiPost = metrics.roi_post_tax;
   const gaugeRoiTotal = metrics.roi_with_appreciation;
+  const expectedAnnualRent = (property.target_monthly_rent || 0) * 12;
+  const expectedMaintenance = expectedAnnualRent * 0.05;
+  const expectedPool = (property.planned_pool_cost || 0) * 12;
+  const expectedGarden = (property.planned_garden_cost || 0) * 12;
+  const expectedHoa = (property.planned_hoa_cost || 0) * 12;
+  const expectedNet =
+    expectedAnnualRent - (expectedMaintenance + expectedPool + expectedGarden + expectedHoa);
+  const expectedRoi = metrics.cost_basis > 0 ? (expectedNet / metrics.cost_basis) * 100 : 0;
   const activeRole = (meInfo?.role || role || "unknown") as string;
   const roleBadgeClass =
     activeRole === "admin"
@@ -526,7 +541,7 @@ Use the provided property and document context from the server; do not guess.`;
                   Investment Performance
                 </h1>
                 <p className="text-sm text-slate-600">
-                  {property?.address || "Select a property"} • {periodLabel}
+                  {property?.address || "Select a property"} - {periodLabel}
                 </p>
               </div>
             </div>
@@ -634,7 +649,7 @@ Use the provided property and document context from the server; do not guess.`;
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">
             Return on Investment
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div
               className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
               title="Formula: Net Income / Cost Basis × 100"
@@ -673,6 +688,20 @@ Use the provided property and document context from the server; do not guess.`;
                 label="Total ROI (with Appreciation)"
                 unit="%"
                 maxValue={40}
+                colorThresholds={{ green: 80, yellow: 60 }}
+                showTarget={false}
+              />
+            </div>
+            <div
+              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
+              title="Formula: (Expected Rent - Expected HOA/Maintenance/Pool/Garden) / Cost Basis A- 100"
+            >
+              <GaugeChart
+                value={expectedRoi}
+                target={0}
+                label="Expected ROI"
+                unit="%"
+                maxValue={15}
                 colorThresholds={{ green: 80, yellow: 60 }}
                 showTarget={false}
               />

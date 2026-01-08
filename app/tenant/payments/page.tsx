@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
+import { getDateOnlyParts } from "@/lib/date-only";
 
 type Property = {
   id: string;
@@ -141,18 +142,14 @@ export default function TenantPayments() {
     const sorted = [...monthly].sort((a, b) =>
       a.year !== b.year ? a.year - b.year : a.month - b.month
     );
-    const leaseStartYear = property?.lease_start
-      ? new Date(property.lease_start).getFullYear()
+    const leaseStart = property?.lease_start
+      ? getDateOnlyParts(property.lease_start)
       : null;
-    const leaseStartMonth = property?.lease_start
-      ? new Date(property.lease_start).getMonth() + 1
-      : null;
-    const leaseEndYear = property?.lease_end
-      ? new Date(property.lease_end).getFullYear()
-      : null;
-    const leaseEndMonth = property?.lease_end
-      ? new Date(property.lease_end).getMonth() + 1
-      : null;
+    const leaseEnd = property?.lease_end ? getDateOnlyParts(property.lease_end) : null;
+    const leaseStartYear = leaseStart?.year ?? null;
+    const leaseStartMonth = leaseStart?.month ?? null;
+    const leaseEndYear = leaseEnd?.year ?? null;
+    const leaseEndMonth = leaseEnd?.month ?? null;
 
     const toIndex = (y: number, m: number) => y * 12 + m; // m is 1-based
 
@@ -171,7 +168,7 @@ export default function TenantPayments() {
       ...m,
       status: m.rent_income > 0 ? "Paid" : "Unpaid",
     }));
-  }, [monthly, property?.lease_start]);
+  }, [monthly, property?.lease_start, property?.lease_end]);
 
   const currentMonthIndex = new Date().getMonth() + 1;
   const currentMonthRow = monthRows.find((m) => m.month === currentMonthIndex);

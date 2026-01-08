@@ -46,22 +46,24 @@ export default function TenantDocuments() {
           return;
         }
 
-        // Fetch documents for each property (server enforces visibility)
-        const docPromises = (propsData || []).map(async (p: Property) => {
-          const res = await fetch(
-            `/api/documents?propertyId=${p.id}`,
-            { cache: "no-store" }
-          );
-          if (!res.ok) return [];
-          const docs = await res.json();
-          return docs as DocumentRecord[];
-        });
+        const primaryPropertyId = propsData[0]?.id;
+        if (!primaryPropertyId) {
+          setDocuments([]);
+          setError("No properties available.");
+          setLoading(false);
+          return;
+        }
 
-        const docResults = await Promise.all(docPromises);
-        const merged = docResults.flat().sort((a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        const res = await fetch(
+          `/api/documents?propertyId=${primaryPropertyId}`,
+          { cache: "no-store" }
         );
-        setDocuments(merged);
+        if (!res.ok) throw new Error("Failed to load documents");
+        const docs = (await res.json()) as DocumentRecord[];
+        const sorted = (docs || []).sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setDocuments(sorted);
       } catch (err: any) {
         console.error(err);
         setError(err.message || "Failed to load documents.");
@@ -87,7 +89,7 @@ export default function TenantDocuments() {
 
       <div className="bg-white rounded-lg border p-6">
         {authLoading || loading ? (
-          <p className="text-gray-600">Loading documents…</p>
+          <p className="text-gray-600">Loading documents...</p>
         ) : error ? (
           <p className="text-red-600">{error}</p>
         ) : documents.length === 0 ? (

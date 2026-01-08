@@ -1,5 +1,7 @@
 // Shared financial calculation utilities
 
+import { getDateOnlyParts, parseDateOnly } from "./date-only";
+
 /**
  * Calculate proration factor for first month if lease starts mid-month
  * @param leaseStart - Lease start date string
@@ -9,11 +11,11 @@
 export function getFirstMonthProration(leaseStart: string | null | undefined, year: number): number {
   if (!leaseStart) return 1;
 
-  const startDate = new Date(leaseStart);
-  if (startDate.getFullYear() !== year) return 1;
+  const startParts = getDateOnlyParts(leaseStart);
+  if (!startParts || startParts.year !== year) return 1;
 
-  const startDay = startDate.getDate();
-  const startMonth = startDate.getMonth();
+  const startDay = startParts.day;
+  const startMonth = startParts.month - 1;
   const daysInMonth = new Date(year, startMonth + 1, 0).getDate();
 
   // If start day is 1, no proration needed
@@ -179,7 +181,8 @@ export function calculatePlannedYTD({
     };
   }
 
-  const startInYear = !!leaseStart && new Date(leaseStart).getFullYear() === performanceYear;
+  const startParts = leaseStart ? getDateOnlyParts(leaseStart) : null;
+  const startInYear = !!startParts && startParts.year === performanceYear;
   const proration = startInYear ? getFirstMonthProration(leaseStart, performanceYear) : 1;
 
   const firstMonthRent = targetMonthlyRent * proration;
@@ -263,16 +266,20 @@ export function calculateLeaseAppreciation(
     return { value: 0, pct: 0 };
   }
 
-  const startDate = new Date(leaseStart);
+  const startDate = parseDateOnly(leaseStart);
+  if (!startDate) {
+    return { value: 0, pct: 0 };
+  }
   const today = new Date();
-  const endDate = leaseEnd ? new Date(leaseEnd) : null;
-  const effectiveEnd = endDate && endDate < today ? endDate : today;
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const endDate = leaseEnd ? parseDateOnly(leaseEnd) : null;
+  const effectiveEnd = endDate && endDate < todayUtc ? endDate : todayUtc;
 
   // Filter market values within lease window
   const leaseValues = marketValues.filter(mv => {
     if (!mv.value) return false;
 
-    const mvDate = new Date(mv.year, mv.month - 1, 1);
+    const mvDate = new Date(Date.UTC(mv.year, mv.month - 1, 1));
     return mvDate >= startDate && mvDate <= effectiveEnd;
   });
 
@@ -283,8 +290,8 @@ export function calculateLeaseAppreciation(
   if (leaseValues.length > 0) {
     // Sort by date
     leaseValues.sort((a, b) => {
-      const dateA = new Date(a.year, a.month - 1, 1);
-      const dateB = new Date(b.year, b.month - 1, 1);
+      const dateA = new Date(Date.UTC(a.year, a.month - 1, 1));
+      const dateB = new Date(Date.UTC(b.year, b.month - 1, 1));
       return dateA.getTime() - dateB.getTime();
     });
 
@@ -314,15 +321,19 @@ export function calculatePurchaseAppreciation(
     return { value: 0, pct: 0 };
   }
 
-  const startDate = new Date(purchaseDate);
+  const startDate = parseDateOnly(purchaseDate);
+  if (!startDate) {
+    return { value: 0, pct: 0 };
+  }
   const today = new Date();
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
   // Filter market values from purchase to today
   const purchaseValues = marketValues.filter(mv => {
     if (!mv.value) return false;
 
-    const mvDate = new Date(mv.year, mv.month - 1, 1);
-    return mvDate >= startDate && mvDate <= today;
+    const mvDate = new Date(Date.UTC(mv.year, mv.month - 1, 1));
+    return mvDate >= startDate && mvDate <= todayUtc;
   });
 
   // Get earliest and latest values
@@ -331,8 +342,8 @@ export function calculatePurchaseAppreciation(
 
   if (purchaseValues.length > 0) {
     purchaseValues.sort((a, b) => {
-      const dateA = new Date(a.year, a.month - 1, 1);
-      const dateB = new Date(b.year, b.month - 1, 1);
+      const dateA = new Date(Date.UTC(a.year, a.month - 1, 1));
+      const dateB = new Date(Date.UTC(b.year, b.month - 1, 1));
       return dateA.getTime() - dateB.getTime();
     });
 
@@ -364,23 +375,28 @@ export function calculateAppreciationDuringLeaseTerm(
     return { value: 0, pct: 0 };
   }
 
-  const startDate = new Date(leaseStart);
+  const startDate = parseDateOnly(leaseStart);
+  if (!startDate) {
+    return { value: 0, pct: 0 };
+  }
   const today = new Date();
-  const endDate = leaseEnd ? new Date(leaseEnd) : today;
-  const effectiveEnd = endDate < today ? endDate : today;
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const endDate = leaseEnd ? parseDateOnly(leaseEnd) : null;
+  const resolvedEndDate = endDate ?? todayUtc;
+  const effectiveEnd = resolvedEndDate < todayUtc ? resolvedEndDate : todayUtc;
 
   // Filter market values during lease period
   const leaseValues = marketValues.filter(mv => {
     if (!mv.value) return false;
 
-    const mvDate = new Date(mv.year, mv.month - 1, 1);
+    const mvDate = new Date(Date.UTC(mv.year, mv.month - 1, 1));
     return mvDate >= startDate && mvDate <= effectiveEnd;
   });
 
   // Sort by date
   leaseValues.sort((a, b) => {
-    const dateA = new Date(a.year, a.month - 1, 1);
-    const dateB = new Date(b.year, b.month - 1, 1);
+    const dateA = new Date(Date.UTC(a.year, a.month - 1, 1));
+    const dateB = new Date(Date.UTC(b.year, b.month - 1, 1));
     return dateA.getTime() - dateB.getTime();
   });
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
+import { getDateOnlyParts } from "@/lib/date-only";
 
 export async function GET(request: Request) {
   try {
@@ -123,14 +124,17 @@ export async function GET(request: Request) {
           : "Never";
 
         // Build pending payments list (only months within lease term, up to current month)
-        const leaseStart = property.lease_start ? new Date(property.lease_start) : null;
-        const leaseEnd = property.lease_end ? new Date(property.lease_end) : null;
+        const leaseStart = property.lease_start ? getDateOnlyParts(property.lease_start) : null;
+        const leaseEnd = property.lease_end ? getDateOnlyParts(property.lease_end) : null;
         for (let m = 1; m <= currentMonth; m++) {
           const monthDate = new Date(Date.UTC(currentYear, m - 1, 1));
+          const monthIndex = currentYear * 12 + m;
+          const leaseStartIndex = leaseStart ? leaseStart.year * 12 + leaseStart.month : null;
+          const leaseEndIndex = leaseEnd ? leaseEnd.year * 12 + leaseEnd.month : null;
           // Only consider if within lease range and not beyond current month
           const withinLease =
-            (!leaseStart || monthDate >= new Date(Date.UTC(leaseStart.getFullYear(), leaseStart.getMonth(), 1))) &&
-            (!leaseEnd || monthDate <= new Date(Date.UTC(leaseEnd.getFullYear(), leaseEnd.getMonth(), 1)));
+            (!leaseStartIndex || monthIndex >= leaseStartIndex) &&
+            (!leaseEndIndex || monthIndex <= leaseEndIndex);
           const notFuture = monthDate <= startOfTodayMonth;
           if (!withinLease || !notFuture) continue;
 

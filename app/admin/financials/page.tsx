@@ -11,6 +11,7 @@ import {
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
 import { getLeaseTermMonths, usePeriodFilter } from "@/app/hooks/usePeriodFilter";
+import { formatDateOnly, getDateOnlyParts, parseDateOnly } from "@/lib/date-only";
 
 type Property = {
   id: string;
@@ -150,11 +151,6 @@ export default function FinancialsPage() {
     return "Lease Term";
   }, [periodType, performanceYear]);
 
-  const parseDateOnly = (dateStr: string) => {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    return new Date(y, (m || 1) - 1, d || 1);
-  };
-
   const daysInMonth = (year: number, monthIndex0: number) => {
     return new Date(year, monthIndex0 + 1, 0).getDate();
   };
@@ -172,9 +168,14 @@ export default function FinancialsPage() {
       return currentMonth + 1; // include the current month
     }
 
-    const startDate = parseDateOnly(startStr);
-    const startYear = startDate.getFullYear();
-    const startMonth = startDate.getMonth(); // 0-based
+    const startParts = getDateOnlyParts(startStr);
+    if (!startParts) {
+      if (performanceYear > currentYear) return 0;
+      if (performanceYear < currentYear) return 12;
+      return currentMonth + 1;
+    }
+    const startYear = startParts.year;
+    const startMonth = startParts.month - 1; // 0-based
 
     // If the performance year is before the lease start year, nothing elapsed
     if (performanceYear < startYear) return 0;
@@ -203,7 +204,9 @@ export default function FinancialsPage() {
     const poolMonthly = parseFloat(propertyFinancials.planned_pool_cost) || 0;
     const gardenMonthly = parseFloat(propertyFinancials.planned_garden_cost) || 0;
     const hoaAnnual = calculatedAnnualHoa || 0;
-    const leaseStart = propertyFinancials.lease_start ? parseDateOnly(propertyFinancials.lease_start) : null;
+    const leaseStart = propertyFinancials.lease_start
+      ? getDateOnlyParts(propertyFinancials.lease_start)
+      : null;
 
     const today = new Date();
     const refYear = today.getFullYear();
@@ -226,9 +229,9 @@ export default function FinancialsPage() {
     // Start month: lease start month if in/before this year, else Jan
     let startMonth = 0;
     if (leaseStart) {
-      const startYear = leaseStart.getFullYear();
+      const startYear = leaseStart.year;
       if (startYear > performanceYear) return zeroPlan;
-      startMonth = startYear < performanceYear ? 0 : leaseStart.getMonth();
+      startMonth = startYear < performanceYear ? 0 : leaseStart.month - 1;
     }
 
     const effectiveCurrentMonth = performanceYear === refYear ? refMonth : 11; // inclusive of current month
@@ -262,9 +265,9 @@ export default function FinancialsPage() {
       }
 
       // Otherwise use plan rent (prorate first month if lease starts this year and this is the start month)
-      if (leaseStart && leaseStart.getFullYear() === performanceYear && monthIndex === leaseStart.getMonth()) {
+      if (leaseStart && leaseStart.year === performanceYear && monthIndex === leaseStart.month - 1) {
         const dim = daysInMonth(performanceYear, monthIndex);
-        const daysRemaining = dim - leaseStart.getDate() + 1;
+        const daysRemaining = dim - leaseStart.day + 1;
         rent_income += rentMonthly * (daysRemaining / dim);
       } else {
         rent_income += rentMonthly;
@@ -306,11 +309,13 @@ export default function FinancialsPage() {
   const monthsElapsedPurchase = useMemo(() => {
     if (!propertyFinancials.purchase_date) return 0;
     const start = parseDateOnly(propertyFinancials.purchase_date);
-    const today = new Date();
+    if (!start) return 0;
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     if (today < start) return 0;
-    let months = (today.getFullYear() - start.getFullYear()) * 12;
-    months += today.getMonth() - start.getMonth();
-    if (today.getDate() >= start.getDate()) months += 1;
+    let months = (today.getUTCFullYear() - start.getUTCFullYear()) * 12;
+    months += today.getUTCMonth() - start.getUTCMonth();
+    if (today.getUTCDate() >= start.getUTCDate()) months += 1;
     return Math.max(0, months);
   }, [propertyFinancials.purchase_date]);
 
@@ -571,40 +576,53 @@ export default function FinancialsPage() {
     try {
       setLoadingMonthly(true);
       const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-      const leaseStartDate = propertyFinancials.lease_start ? parseDateOnly(propertyFinancials.lease_start) : null;
-      const leaseEndDate = propertyFinancials.lease_end ? parseDateOnly(propertyFinancials.lease_end) : null;
-      const purchaseDate = propertyFinancials.purchase_date ? parseDateOnly(propertyFinancials.purchase_date) : null;
+      const leaseStartParts = propertyFinancials.lease_start
+        ? getDateOnlyParts(propertyFinancials.lease_start)
+        : null;
+      const leaseEndParts = propertyFinancials.lease_end
+        ? getDateOnlyParts(propertyFinancials.lease_end)
+        : null;
+      const purchaseParts = propertyFinancials.purchase_date
+        ? getDateOnlyParts(propertyFinancials.purchase_date)
+        : null;
 
-      const buildMonthsInRange = (startDate: Date, endDate: Date) => {
-        if (endDate < startDate) return [];
+      const buildMonthsInRange = (
+        start: { year: number; month: number },
+        end: { year: number; month: number }
+      ) => {
+        if (end.year < start.year || (end.year === start.year && end.month < start.month)) {
+          return [];
+        }
         const months: { month: number; year: number; month_name: string }[] = [];
-        const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-        const endKey = endDate.getFullYear() * 12 + endDate.getMonth();
-        while (current.getFullYear() * 12 + current.getMonth() <= endKey) {
-          const year = current.getFullYear();
-          const monthIndex = current.getMonth();
+        let year = start.year;
+        let month = start.month;
+        while (year < end.year || (year === end.year && month <= end.month)) {
           months.push({
-            month: monthIndex + 1,
+            month,
             year,
-            month_name: `${monthNames[monthIndex]} ${year}`,
+            month_name: `${monthNames[month - 1]} ${year}`,
           });
-          current.setMonth(current.getMonth() + 1);
+          month += 1;
+          if (month > 12) {
+            month = 1;
+            year += 1;
+          }
         }
         return months;
       };
 
       let monthsToLoad: { month: number; year: number; month_name: string }[] = [];
 
-      if (periodType === "lease" && leaseStartDate && leaseEndDate) {
-        monthsToLoad = buildMonthsInRange(leaseStartDate, leaseEndDate);
+      if (periodType === "lease" && leaseStartParts && leaseEndParts) {
+        monthsToLoad = buildMonthsInRange(leaseStartParts, leaseEndParts);
       } else if (periodType === "alltime") {
-        const start = purchaseDate || leaseStartDate || new Date(performanceYear, 0, 1);
+        const start = purchaseParts || leaseStartParts || { year: performanceYear, month: 1 };
         const now = new Date();
-        const end = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
         monthsToLoad = buildMonthsInRange(start, end);
       } else {
-        const start = new Date(performanceYear, 0, 1);
-        const end = new Date(performanceYear, 11, 1);
+        const start = { year: performanceYear, month: 1 };
+        const end = { year: performanceYear, month: 12 };
         monthsToLoad = buildMonthsInRange(start, end);
       }
 
@@ -822,21 +840,6 @@ export default function FinancialsPage() {
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return "Never";
     return new Date(dateStr).toLocaleString();
-  };
-
-  // Format date without timezone shifts (treat as date-only)
-  const formatDateOnly = (dateStr: string | null | undefined) => {
-    if (!dateStr) return "Unknown";
-    // Parse YYYY-MM-DD and format with UTC to avoid timezone shifts
-    const [year, month, day] = dateStr.split('-').map(Number);
-    if (!year || !month || !day) return dateStr;
-    const date = new Date(Date.UTC(year, month - 1, day));
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      timeZone: "UTC"
-    });
   };
 
   // Copy previous row's values to current row
@@ -1422,11 +1425,11 @@ export default function FinancialsPage() {
                 <div className="font-semibold text-blue-900 mb-2">Lease Timeline</div>
                 <div className="mb-1">
                   <span className="font-medium">Start:</span>{" "}
-                  {formatDateOnly(propertyFinancials.lease_start)}
+                  {formatDateOnly(propertyFinancials.lease_start) || "Unknown"}
                 </div>
                 <div className="mb-1">
                   <span className="font-medium">End:</span>{" "}
-                  {formatDateOnly(propertyFinancials.lease_end)}
+                  {formatDateOnly(propertyFinancials.lease_end) || "Unknown"}
                 </div>
                 <div className="mb-1">
                   <span className="font-medium">Months Elapsed:</span> {monthsElapsedLease}
@@ -1448,7 +1451,7 @@ export default function FinancialsPage() {
                 <div className="font-semibold text-blue-900 mb-2">Purchase Timeline</div>
                 <div className="mb-1">
                   <span className="font-medium">Date:</span>{" "}
-                  {formatDateOnly(propertyFinancials.purchase_date)}
+                  {formatDateOnly(propertyFinancials.purchase_date) || "Unknown"}
                 </div>
                 <div className="mb-1">
                   <span className="font-medium">Months Elapsed:</span> {monthsElapsedPurchase}
