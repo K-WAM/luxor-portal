@@ -63,3 +63,34 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
   }
 }
+
+// DELETE: remove a user completely (auth + associations)
+export async function DELETE(request: Request) {
+  try {
+    const { user, role } = await getAuthContext();
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+
+    if (!userId) {
+      return NextResponse.json({ error: "userId is required" }, { status: 400 });
+    }
+
+    // Clean up related records first
+    await supabaseAdmin.from("user_properties").delete().eq("user_id", userId);
+    await supabaseAdmin.from("tenant_bills").delete().eq("tenant_id", userId);
+
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting user", error);
+    return NextResponse.json({ error: "Failed to delete user" }, { status: 500 });
+  }
+}

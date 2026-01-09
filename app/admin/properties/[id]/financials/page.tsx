@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
+import { calculateExpectedAnnualNet, calculateExpectedRoi } from "@/lib/financial-calculations";
 import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
 import { getLeaseTermMonths, usePeriodFilter } from "@/app/hooks/usePeriodFilter";
 import { formatDateOnly, getDateOnlyParts } from "@/lib/date-only";
@@ -16,6 +17,9 @@ type PropertyFinancials = {
   total_cost?: number;
   current_market_estimate?: number;
   target_monthly_rent?: number;
+  planned_garden_cost?: number;
+  planned_pool_cost?: number;
+  planned_hoa_cost?: number;
   purchase_date?: string;
   lease_start?: string;
   lease_end?: string;
@@ -33,6 +37,7 @@ type MonthlyPerformance = {
   pool: number;
   garden: number;
   hoa_payments: number;
+  pm_fee?: number;
   property_tax: number;
   property_market_estimate?: number | null;
   total_expenses: number;
@@ -159,8 +164,13 @@ export default function PropertyFinancialSummaryPage() {
         const data = await res.json();
 
         if (res.ok && data && data.rent_income !== undefined) {
-          // Excel formula: total_expenses = maintenance + pool + garden + hoa (EXCLUDES property_tax)
-          const totalExp = (data.maintenance || 0) + (data.pool || 0) + (data.garden || 0) + (data.hoa_payments || 0);
+          // Excel formula: total_expenses = maintenance + pool + garden + hoa + pm_fee (EXCLUDES property_tax)
+          const totalExp =
+            (data.maintenance || 0) +
+            (data.pool || 0) +
+            (data.garden || 0) +
+            (data.hoa_payments || 0) +
+            (data.pm_fee || 0);
           // Excel formula: net_income = rent_income - total_expenses (EXCLUDES property_tax)
           const netInc = (data.rent_income || 0) - totalExp;
           return {
@@ -172,6 +182,7 @@ export default function PropertyFinancialSummaryPage() {
             pool: data.pool || 0,
             garden: data.garden || 0,
             hoa_payments: data.hoa_payments || 0,
+            pm_fee: data.pm_fee || 0,
             property_tax: data.property_tax || 0,
             property_market_estimate: data.property_market_estimate ?? null,
             total_expenses: totalExp,
@@ -188,6 +199,7 @@ export default function PropertyFinancialSummaryPage() {
           pool: 0,
           garden: 0,
           hoa_payments: 0,
+          pm_fee: 0,
           property_tax: 0,
           property_market_estimate: null,
           total_expenses: 0,
@@ -282,6 +294,7 @@ export default function PropertyFinancialSummaryPage() {
         pool: m.pool,
         garden: m.garden,
         hoa_payments: m.hoa_payments,
+        pm_fee: m.pm_fee || 0,
         property_tax: m.property_tax,
         property_market_estimate: m.property_market_estimate ?? null,
       })),
@@ -317,6 +330,7 @@ export default function PropertyFinancialSummaryPage() {
     pool: 0,
     garden: 0,
     hoa_payments: 0,
+    pm_fee: 0,
     property_tax: 0,
     total_expenses: 0,
     net_income: 0,
@@ -328,6 +342,21 @@ export default function PropertyFinancialSummaryPage() {
   const roiActual = canonicalMetrics?.roi_pre_tax || 0;
   const appreciation = canonicalMetrics?.appreciation_pct
     ?? (costBasis > 0 ? (((property.current_market_estimate || 0) - costBasis) / costBasis) * 100 : 0);
+  const expectedAnnualRent = (property.target_monthly_rent || 0) * 12;
+  const expectedNet = calculateExpectedAnnualNet({
+    targetMonthlyRent: property.target_monthly_rent || 0,
+    plannedPoolMonthly: property.planned_pool_cost || 0,
+    plannedGardenMonthly: property.planned_garden_cost || 0,
+    plannedHoaMonthly: property.planned_hoa_cost || 0,
+  });
+  const expectedExpenses = expectedAnnualRent - expectedNet;
+  const expectedRoi = calculateExpectedRoi({
+    targetMonthlyRent: property.target_monthly_rent || 0,
+    plannedPoolMonthly: property.planned_pool_cost || 0,
+    plannedGardenMonthly: property.planned_garden_cost || 0,
+    plannedHoaMonthly: property.planned_hoa_cost || 0,
+    costBasis,
+  });
 
   return (
     <div className="p-8 max-w-[1400px] mx-auto">
@@ -478,6 +507,7 @@ export default function PropertyFinancialSummaryPage() {
                 <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Pool</th>
                 <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Garden</th>
                 <th className="border border-slate-300 px-3 py-2 text-right font-semibold">HOA</th>
+                <th className="border border-slate-300 px-3 py-2 text-right font-semibold">PM Fee</th>
                 <th className="border border-slate-300 px-3 py-2 text-right font-semibold">Property Tax</th>
                 <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-blue-50">Total Expenses</th>
                 <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-green-50">Net Income</th>
@@ -492,6 +522,7 @@ export default function PropertyFinancialSummaryPage() {
                   <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(monthData.pool)}</td>
                   <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(monthData.garden)}</td>
                   <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(monthData.hoa_payments)}</td>
+                  <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(monthData.pm_fee || 0)}</td>
                   <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(monthData.property_tax)}</td>
                   <td className="border border-slate-300 px-3 py-2 text-right bg-blue-50 font-semibold">{formatCurrency(monthData.total_expenses)}</td>
                   <td className={`border border-slate-300 px-3 py-2 text-right font-semibold ${monthData.net_income >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
@@ -509,6 +540,7 @@ export default function PropertyFinancialSummaryPage() {
                 <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(ytdTotals.pool)}</td>
                 <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(ytdTotals.garden)}</td>
                 <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(ytdTotals.hoa_payments)}</td>
+                <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(ytdTotals.pm_fee || 0)}</td>
                 <td className="border border-slate-300 px-3 py-2 text-right">{formatCurrency(ytdTotals.property_tax)}</td>
                 <td className="border border-slate-300 px-3 py-2 text-right bg-blue-100">{formatCurrency(ytdTotals.total_expenses)}</td>
                 <td className={`border border-slate-300 px-3 py-2 text-right ${ytdTotals.net_income >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -577,40 +609,27 @@ export default function PropertyFinancialSummaryPage() {
             </div>
           </div>
 
-          {/* Projected ROI based on financials */}
+          {/* Projected ROI based on expected inputs */}
           <div className="border border-slate-300 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Projected ROI (Based on Financials)</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Projected ROI (Expected)</h3>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Projected Annual Rent:</span>
-                <span className="font-medium">{formatCurrency((property.target_monthly_rent || 0) * 12)}</span>
+                <span className="font-medium">{formatCurrency(expectedAnnualRent)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Projected Annual Expenses:</span>
-                <span className="font-medium">
-                  {yeTarget ? formatCurrency(yeTarget.total_expenses) : '$0'}
-                </span>
+                <span className="font-medium">{formatCurrency(expectedExpenses)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Projected Net Income:</span>
-                <span className="font-medium">
-                  {yeTarget
-                    ? formatCurrency((property.target_monthly_rent || 0) * 12 - yeTarget.total_expenses)
-                    : formatCurrency((property.target_monthly_rent || 0) * 12)
-                  }
-                </span>
+                <span className="font-medium">{formatCurrency(expectedNet)}</span>
               </div>
               <div className="pt-2 border-t border-gray-200">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-semibold">Projected ROI:</span>
                   <span className="text-lg font-bold text-blue-600">
-                    {costBasis > 0
-                      ? (yeTarget
-                        ? (((property.target_monthly_rent || 0) * 12 - yeTarget.total_expenses) / costBasis * 100).toFixed(2)
-                        : (((property.target_monthly_rent || 0) * 12) / costBasis * 100).toFixed(2)
-                      )
-                      : '0.00'
-                    }%
+                    {expectedRoi.toFixed(2)}%
                   </span>
                 </div>
               </div>

@@ -11,6 +11,7 @@ type Property = {
 type Invite = {
   id: string;
   email: string;
+  phone?: string | null;
   role: string;
   ownership_percentage?: number;
   token: string;
@@ -62,12 +63,15 @@ export default function TenantInvitesPage() {
 
   const [formData, setFormData] = useState({
     email: "",
+    phone: "",
     propertyId: "",
     role: "tenant",
     ownershipPercentage: "",
   });
 
+  const [latestInviteUrl, setLatestInviteUrl] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [copiedLatest, setCopiedLatest] = useState(false);
   const [accessForm, setAccessForm] = useState<Record<string, { propertyId: string; role: string; ownershipPercentage?: string }>>({});
   const [ownershipEdits, setOwnershipEdits] = useState<Record<string, string>>({});
 
@@ -133,8 +137,9 @@ export default function TenantInvitesPage() {
 
       if (!res.ok) throw new Error(data.error || "Failed to create invite");
 
-      setSuccess(`Invite created! Share this link: ${data.inviteUrl}`);
-      setFormData({ email: "", propertyId: "", role: "tenant", ownershipPercentage: "" });
+      setSuccess("Invite created!");
+      setLatestInviteUrl(data.inviteUrl || null);
+      setFormData({ email: "", phone: "", propertyId: "", role: "tenant", ownershipPercentage: "" });
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to create invite");
@@ -260,6 +265,24 @@ export default function TenantInvitesPage() {
     }
   };
 
+  const handleDeleteUser = async (userId: string, email?: string | null) => {
+    if (!confirm(`Delete ${email || "this user"} permanently? This cannot be undone.`)) return;
+    try {
+      setSavingUserId(userId);
+      const res = await fetch(`/api/admin/users?userId=${userId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete user");
+      setSuccess(`Deleted ${email || "user"}.`);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "Failed to delete user");
+    } finally {
+      setSavingUserId(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this invite?")) return;
 
@@ -281,6 +304,13 @@ export default function TenantInvitesPage() {
     navigator.clipboard.writeText(inviteUrl);
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 2000);
+  };
+
+  const copyLatestLink = () => {
+    if (!latestInviteUrl) return;
+    navigator.clipboard.writeText(latestInviteUrl);
+    setCopiedLatest(true);
+    setTimeout(() => setCopiedLatest(false), 2000);
   };
 
   const getStatusBadge = (status: string) => {
@@ -327,7 +357,21 @@ export default function TenantInvitesPage() {
 
       {success && (
         <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-          {success}
+          <div className="flex flex-wrap items-center gap-3">
+            <span>{success}</span>
+            {latestInviteUrl && (
+              <>
+                <span className="text-xs text-green-700 break-all">{latestInviteUrl}</span>
+                <button
+                  type="button"
+                  onClick={copyLatestLink}
+                  className="text-xs px-3 py-1 rounded bg-green-700 text-white hover:bg-green-800"
+                >
+                  {copiedLatest ? "Copied!" : "Copy Link"}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -335,7 +379,7 @@ export default function TenantInvitesPage() {
       <div className="bg-white rounded-lg border border-slate-200 p-6 mb-8">
         <h2 className="text-xl font-semibold mb-4">Create New Invite</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">
                 Email <span className="text-red-500">*</span>
@@ -349,6 +393,21 @@ export default function TenantInvitesPage() {
                 className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="user@example.com"
                 required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Phone
+              </label>
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+                className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="(555) 555-5555"
               />
             </div>
 
@@ -475,7 +534,10 @@ export default function TenantInvitesPage() {
                 {visibleInvites.map((invite) => (
                   <tr key={invite.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 text-sm text-slate-900">
-                      {invite.email}
+                      <div>{invite.email}</div>
+                      {invite.phone && (
+                        <div className="text-xs text-slate-500">{invite.phone}</div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-900">
                       {invite.properties?.address || "-"}
@@ -671,6 +733,14 @@ export default function TenantInvitesPage() {
                           {savingUserId === user.id && " Saving..."}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => handleDeleteUser(user.id, user.email)}
+                            className="text-xs px-3 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50"
+                            disabled={savingUserId === user.id}
+                            type="button"
+                          >
+                            Delete user
+                          </button>
                           <select
                             className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
                             value={accessForm[user.id]?.propertyId || ""}

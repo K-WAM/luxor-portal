@@ -94,6 +94,7 @@ export async function POST(
 
     // Use role from invite (tenant or owner)
     const userRole = invite.role || 'tenant'
+    const invitePhone = invite.phone ? String(invite.phone).trim() : null
 
     // Create the user account
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -102,7 +103,9 @@ export async function POST(
       email_confirm: true,
       user_metadata: {
         role: userRole,
+        phone: invitePhone || undefined,
       },
+      ...(invitePhone ? { phone: invitePhone } : {}),
     })
 
     if (authError) {
@@ -113,6 +116,16 @@ export async function POST(
         const user = existingUser.users.find(u => u.email === invite.email)
 
         if (user) {
+          // Update metadata if we have a phone on the invite
+          if (invitePhone) {
+            await supabaseAdmin.auth.admin.updateUserById(user.id, {
+              user_metadata: {
+                ...(user.user_metadata || {}),
+                phone: invitePhone,
+              },
+            });
+          }
+
           // Create user-property association with the role from invite
           const userPropertyData: any = {
             user_id: user.id,

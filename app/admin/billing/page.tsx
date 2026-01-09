@@ -17,17 +17,36 @@ type BillRow = {
   propertyId?: string;
 };
 
+type TenantOption = {
+  userId: string;
+  email: string;
+  propertyId: string;
+  propertyAddress: string;
+};
+
 export default function AdminBilling() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editAmounts, setEditAmounts] = useState<Record<string, { feePercent?: string; feeAmount?: string; status?: string }>>({});
   const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
+  const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([]);
+  const [tenantBillError, setTenantBillError] = useState<string | null>(null);
+  const [tenantBillSuccess, setTenantBillSuccess] = useState<string | null>(null);
   const [newBill, setNewBill] = useState<{ propertyId: string; month: number; year: number; feePercent: string }>({
     propertyId: "",
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
     feePercent: "10",
+  });
+  const [tenantBill, setTenantBill] = useState({
+    propertyId: "",
+    tenantId: "",
+    amount: "",
+    dueDate: "",
+    billType: "rent",
+    description: "",
+    notifyTenant: true,
   });
 
   const totals = useMemo(() => {
@@ -62,6 +81,39 @@ export default function AdminBilling() {
     }
   };
 
+  const loadTenantOptions = async () => {
+    try {
+      setTenantBillError(null);
+      const [usersRes, propsRes] = await Promise.all([
+        fetch("/api/admin/users", { cache: "no-store" }),
+        fetch("/api/admin/user-properties", { cache: "no-store" }),
+      ]);
+      const usersData = await usersRes.json();
+      const propsData = await propsRes.json();
+
+      if (!usersRes.ok) throw new Error(usersData.error || "Failed to load users");
+      if (!propsRes.ok) throw new Error(propsData.error || "Failed to load user properties");
+
+      const emailMap = new Map<string, string>();
+      (usersData || []).forEach((u: any) => {
+        if (u?.id) emailMap.set(u.id, u.email || "");
+      });
+
+      const options: TenantOption[] = (propsData || [])
+        .filter((row: any) => row.role === "tenant")
+        .map((row: any) => ({
+          userId: row.user_id,
+          email: emailMap.get(row.user_id) || "",
+          propertyId: row.property_id,
+          propertyAddress: row.properties?.address || "",
+        }));
+
+      setTenantOptions(options);
+    } catch (err: any) {
+      setTenantBillError(err.message || "Failed to load tenant options");
+    }
+  };
+
   const handleCreate = async () => {
     if (!newBill.propertyId) {
       setError("Select a property for the bill");
@@ -92,10 +144,64 @@ export default function AdminBilling() {
 
   useEffect(() => {
     const load = async () => {
-      await Promise.all([loadBills(), loadProperties()]);
+      await Promise.all([loadBills(), loadProperties(), loadTenantOptions()]);
     };
     load();
   }, []);
+
+  const filteredTenants = useMemo(() => {
+    if (!tenantBill.propertyId) return tenantOptions;
+    return tenantOptions.filter((t) => t.propertyId === tenantBill.propertyId);
+  }, [tenantOptions, tenantBill.propertyId]);
+
+  useEffect(() => {
+    if (!tenantBill.propertyId) return;
+    const stillValid = filteredTenants.some((t) => t.userId === tenantBill.tenantId);
+    if (!stillValid && tenantBill.tenantId) {
+      setTenantBill((prev) => ({ ...prev, tenantId: "" }));
+    }
+  }, [filteredTenants, tenantBill.propertyId, tenantBill.tenantId]);
+
+  const handleCreateTenantBill = async () => {
+    if (!tenantBill.propertyId || !tenantBill.tenantId) {
+      setTenantBillError("Select a property and tenant.");
+      return;
+    }
+    if (!tenantBill.amount || !tenantBill.dueDate) {
+      setTenantBillError("Amount and due date are required.");
+      return;
+    }
+    try {
+      setLoading(true);
+      setTenantBillError(null);
+      setTenantBillSuccess(null);
+      const res = await fetch("/api/admin/tenant-billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: tenantBill.propertyId,
+          tenantId: tenantBill.tenantId,
+          billType: tenantBill.billType,
+          amount: tenantBill.amount,
+          dueDate: tenantBill.dueDate,
+          description: tenantBill.description,
+          notifyTenant: tenantBill.notifyTenant,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create tenant bill");
+      setTenantBillSuccess("Tenant bill created.");
+      setTenantBill((prev) => ({
+        ...prev,
+        amount: "",
+        description: "",
+      }));
+    } catch (err: any) {
+      setTenantBillError(err.message || "Failed to create tenant bill");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSave = async (bill: BillRow) => {
     const edits = editAmounts[bill.id] || {};
@@ -319,6 +425,125 @@ export default function AdminBilling() {
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mt-8">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Tenant Bills</h2>
+            <p className="text-xs text-slate-500">
+              Create one-time charges that appear in the tenant Payments tab.
+            </p>
+          </div>
+        </div>
+        <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Property</label>
+            <select
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={tenantBill.propertyId}
+              onChange={(e) =>
+                setTenantBill((prev) => ({ ...prev, propertyId: e.target.value }))
+              }
+            >
+              <option value="">Select property...</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.address}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Tenant</label>
+            <select
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={tenantBill.tenantId}
+              onChange={(e) =>
+                setTenantBill((prev) => ({ ...prev, tenantId: e.target.value }))
+              }
+            >
+              <option value="">Select tenant...</option>
+              {filteredTenants.map((t) => (
+                <option key={`${t.userId}-${t.propertyId}`} value={t.userId}>
+                  {t.email || "Tenant"} {t.propertyAddress ? `• ${t.propertyAddress}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Amount</label>
+            <input
+              type="number"
+              step="0.01"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={tenantBill.amount}
+              onChange={(e) => setTenantBill((prev) => ({ ...prev, amount: e.target.value }))}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Due Date</label>
+            <input
+              type="date"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={tenantBill.dueDate}
+              onChange={(e) => setTenantBill((prev) => ({ ...prev, dueDate: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">For</label>
+            <select
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={tenantBill.billType}
+              onChange={(e) =>
+                setTenantBill((prev) => ({ ...prev, billType: e.target.value }))
+              }
+            >
+              <option value="rent">Rent</option>
+              <option value="fee">Fee</option>
+              <option value="late_fee">Late Fee</option>
+              <option value="security_deposit">Security Deposit</option>
+            </select>
+          </div>
+          <div className="flex flex-col text-sm md:col-span-2">
+            <label className="text-slate-600 mb-1">Description</label>
+            <input
+              type="text"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={tenantBill.description}
+              onChange={(e) =>
+                setTenantBill((prev) => ({ ...prev, description: e.target.value }))
+              }
+              placeholder="Optional details for the tenant."
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={tenantBill.notifyTenant}
+              onChange={(e) =>
+                setTenantBill((prev) => ({ ...prev, notifyTenant: e.target.checked }))
+              }
+            />
+            Notify tenant by email
+          </label>
+        </div>
+        {tenantBillError && (
+          <div className="px-4 pb-3 text-sm text-red-600">{tenantBillError}</div>
+        )}
+        {tenantBillSuccess && (
+          <div className="px-4 pb-3 text-sm text-emerald-700">{tenantBillSuccess}</div>
+        )}
+        <div className="px-4 pb-4">
+          <button
+            onClick={handleCreateTenantBill}
+            disabled={loading}
+            className="h-10 px-4 rounded bg-slate-900 text-white text-sm hover:bg-slate-800 disabled:opacity-60"
+          >
+            {loading ? "Saving..." : "Create tenant bill"}
+          </button>
         </div>
       </div>
     </div>

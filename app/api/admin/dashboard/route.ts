@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import { getDateOnlyParts } from "@/lib/date-only";
+import { calculateExpectedAnnualNet, calculateExpectedRoi } from "@/lib/financial-calculations";
 
 export async function GET(request: Request) {
   try {
@@ -27,6 +28,9 @@ export async function GET(request: Request) {
         lease_end,
         purchase_date,
         current_market_estimate,
+        planned_garden_cost,
+        planned_pool_cost,
+        planned_hoa_cost,
         total_cost,
         home_cost,
         home_repair_cost,
@@ -101,21 +105,24 @@ export async function GET(request: Request) {
           { estimatedAnnualPropertyTax: ye_target_property_tax }
         );
 
-        // Projected ROI = YE target net income (excluding property tax) / cost_basis
-        const ye_target_rent = parseFloat(yeTarget?.rent_income || "0") || 0;
-        const ye_target_expenses = parseFloat(yeTarget?.total_expenses || "0") || 0;
-        const ye_target_net_income = ye_target_rent - ye_target_expenses;
+        const expectedNet = calculateExpectedAnnualNet({
+          targetMonthlyRent: property.target_monthly_rent || 0,
+          plannedPoolMonthly: property.planned_pool_cost || 0,
+          plannedGardenMonthly: property.planned_garden_cost || 0,
+          plannedHoaMonthly: property.planned_hoa_cost || 0,
+        });
 
-        // Excel formula: Pre-tax ROI = net_income / cost_basis
-        const projected_roi =
-          metrics.cost_basis > 0
-            ? (ye_target_net_income / metrics.cost_basis) * 100
-            : 0;
+        const projected_roi = calculateExpectedRoi({
+          targetMonthlyRent: property.target_monthly_rent || 0,
+          plannedPoolMonthly: property.planned_pool_cost || 0,
+          plannedGardenMonthly: property.planned_garden_cost || 0,
+          plannedHoaMonthly: property.planned_hoa_cost || 0,
+          costBasis: metrics.cost_basis || 0,
+        });
 
-        // Excel formula: Post-tax ROI = (net_income - property_tax) / cost_basis
         const projected_roi_post_tax =
           metrics.cost_basis > 0
-            ? ((ye_target_net_income - ye_target_property_tax) / metrics.cost_basis) * 100
+            ? ((expectedNet - ye_target_property_tax) / metrics.cost_basis) * 100
             : 0;
 
         const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -163,7 +170,7 @@ export async function GET(request: Request) {
           current_value: metrics.current_market_value || 0,
           projected_roi: projected_roi.toFixed(2),
           projected_roi_post_tax: projected_roi_post_tax.toFixed(2),
-          projected_net_income: ye_target_net_income,
+          projected_net_income: expectedNet,
         };
       })
     );

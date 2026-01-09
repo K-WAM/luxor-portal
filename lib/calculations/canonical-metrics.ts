@@ -5,7 +5,7 @@
  * All other calculation logic should be removed or refactored to use this module.
  *
  * Formulas match the Excel workbook (legacy html/calcs adjusted.xlsx):
- * - total_expenses = maintenance + pool + garden + hoa_payments (NOT including property_tax)
+ * - total_expenses = maintenance + pool + garden + hoa_payments + pm_fee (NOT including property_tax)
  * - net_income = rent_income - total_expenses
  * - pre_tax_roi = (ytd_net_income / cost_basis) * 100
  * - post_tax_roi = ((ytd_net_income - ytd_property_tax) / cost_basis) * 100
@@ -31,6 +31,7 @@ export type MonthlyDataRow = {
   pool: number;
   garden: number;
   hoa_payments: number;
+  pm_fee?: number;
   property_tax: number;
   total_expenses?: number;
   net_income?: number;
@@ -79,6 +80,7 @@ export type YTDTotals = {
   pool: number;
   garden: number;
   hoa_payments: number;
+  pm_fee: number;
   property_tax: number;
   total_expenses: number;
   net_income: number;
@@ -167,6 +169,7 @@ function calculateYTDTotals(
       pool: 0,
       garden: 0,
       hoa_payments: 0,
+      pm_fee: 0,
       property_tax: 0,
       total_expenses: 0,
       net_income: 0,
@@ -195,10 +198,11 @@ function calculateYTDTotals(
       const pool = month.pool || 0;
       const garden = month.garden || 0;
       const hoa_payments = month.hoa_payments || 0;
+      const pm_fee = month.pm_fee || 0;
       const property_tax = month.property_tax || 0;
 
-      // Excel formula: total_expenses = maintenance + pool + garden + hoa_payments (EXCLUDES property_tax)
-      const total_expenses = maintenance + pool + garden + hoa_payments;
+      // Excel formula: total_expenses = maintenance + pool + garden + hoa_payments + pm_fee (EXCLUDES property_tax)
+      const total_expenses = maintenance + pool + garden + hoa_payments + pm_fee;
       // Excel formula: net_income = rent_income - total_expenses (EXCLUDES property_tax)
       const net_income = rent_income - total_expenses;
 
@@ -208,6 +212,7 @@ function calculateYTDTotals(
         pool: acc.pool + pool,
         garden: acc.garden + garden,
         hoa_payments: acc.hoa_payments + hoa_payments,
+        pm_fee: acc.pm_fee + pm_fee,
         property_tax: acc.property_tax + property_tax,
         total_expenses: acc.total_expenses + total_expenses,
         net_income: acc.net_income + net_income,
@@ -219,6 +224,7 @@ function calculateYTDTotals(
       pool: 0,
       garden: 0,
       hoa_payments: 0,
+      pm_fee: 0,
       property_tax: 0,
       total_expenses: 0,
       net_income: 0,

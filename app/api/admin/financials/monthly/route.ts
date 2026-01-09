@@ -68,6 +68,7 @@ export async function PUT(request: Request) {
       pool,
       garden,
       hoa_payments,
+      pm_fee,
       property_tax,
       property_market_estimate,
     } = body;
@@ -89,6 +90,7 @@ export async function PUT(request: Request) {
       pool: pool || 0,
       garden: garden || 0,
       hoa_payments: hoa_payments || 0,
+      pm_fee: pm_fee || 0,
       property_tax: property_tax || 0,
       property_market_estimate: property_market_estimate || null,
       updated_at: new Date().toISOString(),

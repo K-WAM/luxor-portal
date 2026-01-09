@@ -100,32 +100,37 @@ export function calculateYTD(
     pool: number;
     garden: number;
     hoa_payments: number;
+    pm_fee?: number;
     property_tax: number;
     total_expenses: number;
     net_income: number;
   }>
 ) {
-  return monthlyData.reduce(
+  const initial = {
+    rent_income: 0,
+    maintenance: 0,
+    pool: 0,
+    garden: 0,
+    hoa_payments: 0,
+    pm_fee: 0,
+    property_tax: 0,
+    total_expenses: 0,
+    net_income: 0,
+  };
+
+  return monthlyData.reduce<typeof initial>(
     (acc, month) => ({
       rent_income: acc.rent_income + (month.rent_income || 0),
       maintenance: acc.maintenance + (month.maintenance || 0),
       pool: acc.pool + (month.pool || 0),
       garden: acc.garden + (month.garden || 0),
       hoa_payments: acc.hoa_payments + (month.hoa_payments || 0),
+      pm_fee: acc.pm_fee + (month.pm_fee || 0),
       property_tax: acc.property_tax + (month.property_tax || 0),
       total_expenses: acc.total_expenses + (month.total_expenses || 0),
       net_income: acc.net_income + (month.net_income || 0),
     }),
-    {
-      rent_income: 0,
-      maintenance: 0,
-      pool: 0,
-      garden: 0,
-      hoa_payments: 0,
-      property_tax: 0,
-      total_expenses: 0,
-      net_income: 0,
-    }
+    initial
   );
 }
 
@@ -447,6 +452,37 @@ export function calculateProjectedPostTaxROI(
 ): number {
   if (costBasis === 0) return 0;
   return ((yeTargetNetIncome + yeTargetPropertyTax) / costBasis) * 100;
+}
+
+export type ExpectedRoiInputs = {
+  targetMonthlyRent: number;
+  plannedPoolMonthly?: number;
+  plannedGardenMonthly?: number;
+  plannedHoaMonthly?: number;
+  maintenanceRate?: number;
+};
+
+export function calculateExpectedAnnualNet({
+  targetMonthlyRent,
+  plannedPoolMonthly = 0,
+  plannedGardenMonthly = 0,
+  plannedHoaMonthly = 0,
+  maintenanceRate = 0.05,
+}: ExpectedRoiInputs): number {
+  const annualRent = (targetMonthlyRent || 0) * 12;
+  const expectedMaintenance = annualRent * maintenanceRate;
+  const expectedPool = (plannedPoolMonthly || 0) * 12;
+  const expectedGarden = (plannedGardenMonthly || 0) * 12;
+  const expectedHoa = (plannedHoaMonthly || 0) * 12;
+  return annualRent - (expectedMaintenance + expectedPool + expectedGarden + expectedHoa);
+}
+
+export function calculateExpectedRoi(
+  inputs: ExpectedRoiInputs & { costBasis: number }
+): number {
+  const expectedNet = calculateExpectedAnnualNet(inputs);
+  if (!inputs.costBasis) return 0;
+  return (expectedNet / inputs.costBasis) * 100;
 }
 
 /**

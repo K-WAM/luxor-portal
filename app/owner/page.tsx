@@ -5,6 +5,7 @@ import { useAuth } from "@/app/context/AuthContext";
 import Image from "next/image";
 import GaugeChart from "@/app/components/charts/GaugeChart";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
+import { calculateExpectedRoi } from "@/lib/financial-calculations";
 import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
 import { usePeriodFilter } from "@/app/hooks/usePeriodFilter";
 import { getDateOnlyParts } from "@/lib/date-only";
@@ -62,6 +63,7 @@ type MonthlyPerformance = {
   pool: number;
   garden: number;
   hoa_payments: number;
+  pm_fee?: number;
   total_expenses: number;
   net_income: number;
   property_tax: number;
@@ -164,27 +166,41 @@ export default function OwnerDashboard() {
     return monthly;
   }, [monthly, monthsInPeriod, periodType, property, selectedYear]);
 
-  const incomeChartData = useMemo(() => {
-    const trimmed = filteredMonthly.filter((m) => {
+  const chronologicalMonthly = useMemo(() => {
+    return [...filteredMonthly].sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return a.month - b.month;
+    });
+  }, [filteredMonthly]);
+
+  const chartMonthlyData = useMemo(() => {
+    const trimmed = chronologicalMonthly.filter((m) => {
       const hasIncome = (m.rent_income || 0) !== 0;
       const hasExpenses =
         (m.maintenance || 0) !== 0 ||
         (m.pool || 0) !== 0 ||
         (m.garden || 0) !== 0 ||
-        (m.hoa_payments || 0) !== 0;
+        (m.hoa_payments || 0) !== 0 ||
+        (m.pm_fee || 0) !== 0;
       const hasTotals =
         (m.total_expenses || 0) !== 0 ||
         (m.net_income || 0) !== 0;
       return hasIncome || hasExpenses || hasTotals;
     });
-    return trimmed.length > 0 ? trimmed : filteredMonthly;
-  }, [filteredMonthly]);
+    return trimmed.length > 0 ? trimmed : chronologicalMonthly;
+  }, [chronologicalMonthly]);
 
   const marketEstimateData = useMemo(() => {
-    return filteredMonthly.filter(
-      (m) => (m.property_market_estimate || 0) > 0
-    );
-  }, [filteredMonthly]);
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    return chronologicalMonthly.filter((m) => {
+      const hasValue = (m.property_market_estimate || 0) > 0;
+      const notFuture =
+        m.year < currentYear || (m.year === currentYear && m.month <= currentMonth);
+      return hasValue && notFuture;
+    });
+  }, [chronologicalMonthly]);
 
   // Recalculate metrics when period type or data changes
   const metrics = useMemo(() => {
@@ -213,6 +229,7 @@ export default function OwnerDashboard() {
       pool: m.pool || 0,
       garden: m.garden || 0,
       hoa_payments: m.hoa_payments || 0,
+      pm_fee: m.pm_fee || 0,
       property_tax: m.property_tax || 0,
       property_market_estimate: m.property_market_estimate
     }));
@@ -509,14 +526,13 @@ Use the provided property and document context from the server; do not guess.`;
   const gaugeRoiPre = metrics.roi_pre_tax;
   const gaugeRoiPost = metrics.roi_post_tax;
   const gaugeRoiTotal = metrics.roi_with_appreciation;
-  const expectedAnnualRent = (property.target_monthly_rent || 0) * 12;
-  const expectedMaintenance = expectedAnnualRent * 0.05;
-  const expectedPool = (property.planned_pool_cost || 0) * 12;
-  const expectedGarden = (property.planned_garden_cost || 0) * 12;
-  const expectedHoa = (property.planned_hoa_cost || 0) * 12;
-  const expectedNet =
-    expectedAnnualRent - (expectedMaintenance + expectedPool + expectedGarden + expectedHoa);
-  const expectedRoi = metrics.cost_basis > 0 ? (expectedNet / metrics.cost_basis) * 100 : 0;
+  const expectedRoi = calculateExpectedRoi({
+    targetMonthlyRent: property.target_monthly_rent || 0,
+    plannedPoolMonthly: property.planned_pool_cost || 0,
+    plannedGardenMonthly: property.planned_garden_cost || 0,
+    plannedHoaMonthly: property.planned_hoa_cost || 0,
+    costBasis: metrics.cost_basis || 0,
+  });
   const activeRole = (meInfo?.role || role || "unknown") as string;
   const roleBadgeClass =
     activeRole === "admin"
@@ -852,12 +868,13 @@ Use the provided property and document context from the server; do not guess.`;
             </h3>
             <Bar
               data={{
-                labels: incomeChartData.map(m => m.month_name),
+                labels: chartMonthlyData.map(m => m.month_name),
                 datasets: [
-                  { label: "Maintenance", data: incomeChartData.map(m => m.maintenance), backgroundColor: "#ed7d31" },
-                  { label: "Pool", data: incomeChartData.map(m => m.pool), backgroundColor: "#5b9bd5" },
-                  { label: "Garden", data: incomeChartData.map(m => m.garden), backgroundColor: "#a5a5a5" },
-                  { label: "HOA Payments", data: incomeChartData.map(m => m.hoa_payments), backgroundColor: "#ffc000" },
+                  { label: "Maintenance", data: chartMonthlyData.map(m => m.maintenance), backgroundColor: "#ed7d31" },
+                  { label: "Pool", data: chartMonthlyData.map(m => m.pool), backgroundColor: "#5b9bd5" },
+                  { label: "Garden", data: chartMonthlyData.map(m => m.garden), backgroundColor: "#a5a5a5" },
+                  { label: "HOA Payments", data: chartMonthlyData.map(m => m.hoa_payments), backgroundColor: "#ffc000" },
+                  { label: "PM Fee", data: chartMonthlyData.map(m => m.pm_fee || 0), backgroundColor: "#14b8a6" },
                 ]
               }}
               options={{
@@ -900,11 +917,11 @@ Use the provided property and document context from the server; do not guess.`;
           <div className="bg-white border border-slate-200 p-6 mb-6 rounded-xl shadow-sm">
             <Bar
               data={{
-                labels: incomeChartData.map(m => m.month_name),
+                labels: chartMonthlyData.map(m => m.month_name),
                 datasets: [
-                  { label: "Rent Income", data: incomeChartData.map(m => m.rent_income), backgroundColor: "#a9d18e" },
-                  { label: "Total Expenses", data: incomeChartData.map(m => m.total_expenses), backgroundColor: "#e17055" },
-                  { label: "Net Income", data: incomeChartData.map(m => m.net_income), backgroundColor: "#70ad47" },
+                  { label: "Rent Income", data: chartMonthlyData.map(m => m.rent_income), backgroundColor: "#a9d18e" },
+                  { label: "Total Expenses", data: chartMonthlyData.map(m => m.total_expenses), backgroundColor: "#e17055" },
+                  { label: "Net Income", data: chartMonthlyData.map(m => m.net_income), backgroundColor: "#70ad47" },
                 ]
               }}
               options={{

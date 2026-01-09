@@ -39,6 +39,7 @@ type MonthlyPerformance = {
   pool: number;
   garden: number;
   hoa_payments: number;
+  pm_fee?: number;
   property_tax: number;
   total_expenses: number;
   net_income: number;
@@ -219,6 +220,7 @@ export default function FinancialsPage() {
       pool: 0,
       garden: 0,
       hoa_payments: 0,
+      pm_fee: 0,
       property_tax: 0,
       total_expenses: 0,
       net_income: 0,
@@ -292,6 +294,7 @@ export default function FinancialsPage() {
       pool,
       garden,
       hoa_payments,
+      pm_fee: 0,
       property_tax,
       total_expenses,
       net_income,
@@ -641,8 +644,13 @@ export default function FinancialsPage() {
         const data = await res.json();
 
         if (res.ok && data && data.rent_income !== undefined) {
-          // Excel formula: total_expenses = maintenance + pool + garden + hoa (EXCLUDES property_tax)
-          const totalExp = (data.maintenance || 0) + (data.pool || 0) + (data.garden || 0) + (data.hoa_payments || 0);
+          // Excel formula: total_expenses = maintenance + pool + garden + hoa + pm_fee (EXCLUDES property_tax)
+          const totalExp =
+            (data.maintenance || 0) +
+            (data.pool || 0) +
+            (data.garden || 0) +
+            (data.hoa_payments || 0) +
+            (data.pm_fee || 0);
           // Excel formula: net_income = rent_income - total_expenses (EXCLUDES property_tax)
           const netInc = (data.rent_income || 0) - totalExp;
           return {
@@ -654,6 +662,7 @@ export default function FinancialsPage() {
             pool: data.pool || 0,
             garden: data.garden || 0,
             hoa_payments: data.hoa_payments || 0,
+            pm_fee: data.pm_fee || 0,
             property_tax: data.property_tax || 0,
             total_expenses: totalExp,
             net_income: netInc,
@@ -670,6 +679,7 @@ export default function FinancialsPage() {
             pool: 0,
             garden: 0,
             hoa_payments: 0,
+            pm_fee: 0,
             property_tax: 0,
             total_expenses: 0,
             net_income: 0,
@@ -790,6 +800,7 @@ export default function FinancialsPage() {
           pool: field === 'pool' ? parseFloat(value) || 0 : updatedData.pool,
           garden: field === 'garden' ? parseFloat(value) || 0 : updatedData.garden,
           hoa_payments: field === 'hoa_payments' ? parseFloat(value) || 0 : updatedData.hoa_payments,
+          pm_fee: field === 'pm_fee' ? parseFloat(value) || 0 : updatedData.pm_fee || 0,
           property_tax: field === 'property_tax' ? parseFloat(value) || 0 : updatedData.property_tax,
           property_market_estimate: field === 'property_market_estimate' ? parseFloat(value) || 0 : (updatedData as any).property_market_estimate || null,
         }),
@@ -1510,6 +1521,7 @@ export default function FinancialsPage() {
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Pool</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Garden</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">HOA</th>
+                    <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">PM Fee</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Property Tax</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Market Value</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-blue-50">Total Expenses</th>
@@ -1532,7 +1544,12 @@ export default function FinancialsPage() {
                           setAllMonthlyData(prev => prev.map((m) => {
                             if (m.year === monthData.year && m.month === monthData.month) {
                               // Excel: total_expenses EXCLUDES property_tax
-                              const totalExp = (m.maintenance || 0) + (m.pool || 0) + (m.garden || 0) + (m.hoa_payments || 0);
+                              const totalExp =
+                                (m.maintenance || 0) +
+                                (m.pool || 0) +
+                                (m.garden || 0) +
+                                (m.hoa_payments || 0) +
+                                (m.pm_fee || 0);
                               return { ...m, rent_income: value, total_expenses: totalExp, net_income: value - totalExp };
                             }
                             return m;
@@ -1552,7 +1569,12 @@ export default function FinancialsPage() {
                           const value = parseFloat(e.target.value) || 0;
                           setAllMonthlyData(prev => prev.map((m) => {
                             if (m.year === monthData.year && m.month === monthData.month) {
-                              const totalExp = value + (m.pool || 0) + (m.garden || 0) + (m.hoa_payments || 0);
+                              const totalExp =
+                                value +
+                                (m.pool || 0) +
+                                (m.garden || 0) +
+                                (m.hoa_payments || 0) +
+                                (m.pm_fee || 0);
                               return { ...m, maintenance: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
                             }
                             return m;
@@ -1572,7 +1594,12 @@ export default function FinancialsPage() {
                           const value = parseFloat(e.target.value) || 0;
                           setAllMonthlyData(prev => prev.map((m) => {
                             if (m.year === monthData.year && m.month === monthData.month) {
-                              const totalExp = (m.maintenance || 0) + value + (m.garden || 0) + (m.hoa_payments || 0);
+                              const totalExp =
+                                (m.maintenance || 0) +
+                                value +
+                                (m.garden || 0) +
+                                (m.hoa_payments || 0) +
+                                (m.pm_fee || 0);
                               return { ...m, pool: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
                             }
                             return m;
@@ -1592,7 +1619,12 @@ export default function FinancialsPage() {
                           const value = parseFloat(e.target.value) || 0;
                           setAllMonthlyData(prev => prev.map((m) => {
                             if (m.year === monthData.year && m.month === monthData.month) {
-                              const totalExp = (m.maintenance || 0) + (m.pool || 0) + value + (m.hoa_payments || 0);
+                              const totalExp =
+                                (m.maintenance || 0) +
+                                (m.pool || 0) +
+                                value +
+                                (m.hoa_payments || 0) +
+                                (m.pm_fee || 0);
                               return { ...m, garden: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
                             }
                             return m;
@@ -1612,13 +1644,43 @@ export default function FinancialsPage() {
                           const value = parseFloat(e.target.value) || 0;
                           setAllMonthlyData(prev => prev.map((m) => {
                             if (m.year === monthData.year && m.month === monthData.month) {
-                              const totalExp = (m.maintenance || 0) + (m.pool || 0) + (m.garden || 0) + value;
+                              const totalExp =
+                                (m.maintenance || 0) +
+                                (m.pool || 0) +
+                                (m.garden || 0) +
+                                value +
+                                (m.pm_fee || 0);
                               return { ...m, hoa_payments: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
                             }
                             return m;
                           }));
                         }}
                         onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'hoa_payments', e.target.value)}
+                        className="w-full border border-slate-300 rounded px-2 py-1 text-right"
+                        placeholder="0"
+                      />
+                    </td>
+                    <td className="border border-slate-300 px-3 py-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={monthData.pm_fee || ""}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value) || 0;
+                          setAllMonthlyData(prev => prev.map((m) => {
+                            if (m.year === monthData.year && m.month === monthData.month) {
+                              const totalExp =
+                                (m.maintenance || 0) +
+                                (m.pool || 0) +
+                                (m.garden || 0) +
+                                (m.hoa_payments || 0) +
+                                value;
+                              return { ...m, pm_fee: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
+                            }
+                            return m;
+                          }));
+                        }}
+                        onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'pm_fee', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
                         placeholder="0"
                       />
@@ -1691,6 +1753,9 @@ export default function FinancialsPage() {
                     {formatCurrency(actualYtd.hoa_payments)}
                   </td>
                   <td className="border border-slate-300 px-3 py-2 text-right">
+                    {formatCurrency(actualYtd.pm_fee || 0)}
+                  </td>
+                  <td className="border border-slate-300 px-3 py-2 text-right">
                     {formatCurrency(actualYtd.property_tax)}
                   </td>
                   <td className="border border-slate-300 px-3 py-2 text-right">
@@ -1723,6 +1788,9 @@ export default function FinancialsPage() {
                   </td>
                   <td className="border border-slate-300 px-3 py-2 text-right">
                     {formatCurrency(plannedYtd.hoa_payments)}
+                  </td>
+                  <td className="border border-slate-300 px-3 py-2 text-right">
+                    {formatCurrency(plannedYtd.pm_fee || 0)}
                   </td>
                   <td className="border border-slate-300 px-3 py-2 text-right">
                     {formatCurrency(plannedYtd.property_tax)}
@@ -1776,6 +1844,9 @@ export default function FinancialsPage() {
                       </td>
                     <td className="border border-slate-300 px-3 py-2 text-right">
                       {formatCurrency(yearEndTarget.hoa)}
+                    </td>
+                    <td className="border border-slate-300 px-3 py-2 text-right">
+                      {formatCurrency(0)}
                     </td>
                     <td className="border border-slate-300 px-3 py-2 text-right">
                       {formatCurrency(yearEndTarget.property_tax)}

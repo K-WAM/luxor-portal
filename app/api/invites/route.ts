@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { email, propertyId, role: requestedRole = 'tenant', ownershipPercentage } = body
+    const { email, propertyId, role: requestedRole = 'tenant', ownershipPercentage, phone } = body
 
     const allowedRoles = ['tenant', 'owner', 'admin', 'viewer']
 
@@ -114,6 +114,10 @@ export async function POST(request: Request) {
       status: 'pending',
     }
 
+    if (phone) {
+      insertData.phone = String(phone).trim();
+    }
+
     // Add ownership percentage only for owners
     if (requestedRole === 'owner' && ownershipPercentage) {
       insertData.ownership_percentage = parseFloat(ownershipPercentage)
@@ -139,6 +143,7 @@ export async function POST(request: Request) {
           role: requestedRole,
           token,
           ownership_percentage: requestedRole === 'owner' && ownershipPercentage ? parseFloat(ownershipPercentage) : null,
+          phone: phone ? String(phone).trim() : null,
           status: 'pending',
           expires_at: expiresAt.toISOString(),
         })

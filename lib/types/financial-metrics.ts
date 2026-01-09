@@ -25,6 +25,7 @@ export type MonthlyPerformance = {
   pool: number;
   garden: number;
   hoa_payments: number;
+  pm_fee?: number;
   total_expenses: number;
   net_income: number;
   property_tax: number;

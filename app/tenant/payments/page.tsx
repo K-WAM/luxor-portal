@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
-import { getDateOnlyParts } from "@/lib/date-only";
+import { formatMonthYearFromParts, getDateOnlyParts } from "@/lib/date-only";
 
 type Property = {
   id: string;
@@ -13,10 +13,14 @@ type Property = {
   lease_end?: string | null;
 };
 
-type MonthlyRow = {
+type TenantBill = {
+  id: string;
+  bill_type: string;
+  description: string | null;
+  amount: number;
+  due_date: string;
+  status: string;
   month: number;
-  month_name: string;
-  rent_income: number;
   year: number;
 };
 
@@ -31,13 +35,14 @@ export default function TenantPayments() {
   const { user, role, loading: authLoading } = useAuth();
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
-  const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
-  const [property, setProperty] = useState<Property | null>(null);
+  const [bills, setBills] = useState<TenantBill[]>([]);
+  const [billsError, setBillsError] = useState<string | null>(null);
   const [ownerBilling, setOwnerBilling] = useState<OwnerBilling[]>([]);
   const [ownerBillingError, setOwnerBillingError] = useState<string | null>(null);
   const [ownerBillingWarning, setOwnerBillingWarning] = useState<string | null>(null);
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
+  const [billsLoading, setBillsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,47 +63,9 @@ export default function TenantPayments() {
         setSelectedPropertyId(propId);
 
         if (!propId) {
-          setMonthly([]);
-          setProperty(null);
+          setBills([]);
           setError("No properties available.");
-          setLoading(false);
-          return;
         }
-
-        // Fetch financial metrics for the selected year and the next year (to cover leases crossing years)
-        const yearsToFetch = Array.from(new Set([year, year + 1]));
-
-        const fetchYear = async (yr: number) => {
-          const res = await fetch(
-            `/api/owner/financial-metrics?propertyId=${propId}&year=${yr}`,
-            { cache: "no-store" }
-          );
-          if (!res.ok) throw new Error("Failed to load payment data");
-          return res.json();
-        };
-
-        const results = await Promise.all(yearsToFetch.map(fetchYear));
-
-        // Use the first result's property details
-        const finData = results[0];
-        setProperty({
-          id: finData.property.id,
-          address: finData.property.address,
-          target_monthly_rent: finData.property.target_monthly_rent,
-          lease_start: finData.property.lease_start || null,
-          lease_end: finData.property.lease_end || null,
-        });
-
-        // Combine monthly data across fetched years
-        const combinedMonthly: MonthlyRow[] = results.flatMap((data) =>
-          (data.monthly || []).map((m: any) => ({
-            month: m.month,
-            month_name: m.month_name,
-            rent_income: m.rent_income || 0,
-            year: m.year || year,
-          }))
-        );
-        setMonthly(combinedMonthly);
       } catch (err: any) {
         console.error(err);
         setError(err.message || "Failed to load payments.");
@@ -108,7 +75,7 @@ export default function TenantPayments() {
     };
 
     load();
-  }, [authLoading, user?.id, role, selectedPropertyId, year]);
+  }, [authLoading, user?.id, role]);
 
   useEffect(() => {
     const loadBilling = async () => {
@@ -132,48 +99,123 @@ export default function TenantPayments() {
     loadBilling();
   }, [authLoading, selectedPropertyId]);
 
+  useEffect(() => {
+    const loadBills = async () => {
+      if (authLoading || !selectedPropertyId) return;
+      try {
+        setBillsLoading(true);
+        setBillsError(null);
+        const res = await fetch(`/api/tenant/billing?propertyId=${selectedPropertyId}`, {
+          cache: "no-store",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load tenant bills");
+        setBills(data.rows || []);
+      } catch (err: any) {
+        setBills([]);
+        setBillsError(err.message || "Failed to load tenant bills.");
+      } finally {
+        setBillsLoading(false);
+      }
+    };
+
+    loadBills();
+  }, [authLoading, selectedPropertyId]);
+
   const zelleRecipient = useMemo(() => {
     if (!ownerBilling.length) return null;
     const withZelle = ownerBilling.find((o) => o.zelleEmail || o.zellePhone);
     return withZelle || ownerBilling[0];
   }, [ownerBilling]);
 
-  const monthRows = useMemo(() => {
-    const sorted = [...monthly].sort((a, b) =>
-      a.year !== b.year ? a.year - b.year : a.month - b.month
-    );
-    const leaseStart = property?.lease_start
-      ? getDateOnlyParts(property.lease_start)
-      : null;
-    const leaseEnd = property?.lease_end ? getDateOnlyParts(property.lease_end) : null;
-    const leaseStartYear = leaseStart?.year ?? null;
-    const leaseStartMonth = leaseStart?.month ?? null;
-    const leaseEndYear = leaseEnd?.year ?? null;
-    const leaseEndMonth = leaseEnd?.month ?? null;
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    bills.forEach((b) => {
+      if (Number.isFinite(b.year)) years.add(b.year);
+    });
+    if (years.size === 0) years.add(year);
+    return Array.from(years).sort((a, b) => a - b);
+  }, [bills, year]);
 
-    const toIndex = (y: number, m: number) => y * 12 + m; // m is 1-based
+  useEffect(() => {
+    if (availableYears.length > 0 && !availableYears.includes(year)) {
+      setYear(availableYears[availableYears.length - 1]);
+    }
+  }, [availableYears, year]);
 
-    const filtered = sorted.filter((m) => {
-      if (!leaseStartYear || !leaseStartMonth) return true;
-      const idx = toIndex(m.year, m.month);
-      const startIdx = toIndex(leaseStartYear, leaseStartMonth);
-      const endIdx = leaseEndYear && leaseEndMonth ? toIndex(leaseEndYear, leaseEndMonth) : null;
-      if (endIdx) {
-        return idx >= startIdx && idx <= endIdx;
-      }
-      return idx >= startIdx;
+  const BILL_TYPE_LABELS: Record<string, string> = {
+    rent: "Rent",
+    fee: "Fee",
+    late_fee: "Late Fee",
+    security_deposit: "Security Deposit",
+  };
+
+  const billRows = useMemo(() => {
+    const filtered = bills.filter((b) => b.year === year);
+    const grouped = new Map<string, { year: number; month: number; bills: TenantBill[] }>();
+
+    filtered.forEach((bill) => {
+      const key = `${bill.year}-${bill.month}`;
+      const entry = grouped.get(key) || { year: bill.year, month: bill.month, bills: [] };
+      entry.bills.push(bill);
+      grouped.set(key, entry);
     });
 
-    return filtered.map((m) => ({
-      ...m,
-      status: m.rent_income > 0 ? "Paid" : "Unpaid",
-    }));
-  }, [monthly, property?.lease_start, property?.lease_end]);
+    return Array.from(grouped.values())
+      .sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month))
+      .map((group) => {
+        const total = group.bills.reduce((sum, bill) => sum + (bill.amount || 0), 0);
+        const breakdown = group.bills.map((bill) => {
+          const label = BILL_TYPE_LABELS[bill.bill_type] || bill.bill_type;
+          const detail = bill.description ? ` - ${bill.description}` : "";
+          return {
+            label,
+            detail,
+            amount: bill.amount || 0,
+            status: bill.status || "due",
+          };
+        });
+        const allPaid = group.bills.every((bill) => bill.status === "paid");
 
-  const currentMonthIndex = new Date().getMonth() + 1;
-  const currentMonthRow = monthRows.find((m) => m.month === currentMonthIndex);
-  const paymentDue = property?.target_monthly_rent || 0;
-  const paidThisMonth = currentMonthRow?.rent_income || 0;
+        return {
+          year: group.year,
+          month: group.month,
+          monthLabel: formatMonthYearFromParts(group.year, group.month),
+          total,
+          breakdown,
+          status: allPaid ? "Paid" : "Unpaid",
+        };
+      });
+  }, [bills, year]);
+
+  const now = new Date();
+  const currentMonthIndex = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const currentMonthBills = bills.filter(
+    (bill) => bill.year === currentYear && bill.month === currentMonthIndex
+  );
+  const paymentDue = currentMonthBills.reduce((sum, bill) => sum + (bill.amount || 0), 0);
+  const paidThisMonth = currentMonthBills
+    .filter((bill) => bill.status === "paid")
+    .reduce((sum, bill) => sum + (bill.amount || 0), 0);
+
+  const outstanding = bills.reduce((sum, bill) => {
+    const parts = getDateOnlyParts(bill.due_date);
+    if (!parts) return sum;
+    const dueDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+    const today = new Date(Date.UTC(currentYear, currentMonthIndex - 1, now.getDate()));
+    const isDue = dueDate <= today;
+    if (!isDue || bill.status === "paid") return sum;
+    return sum + (bill.amount || 0);
+  }, 0);
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
 
   return (
     <div className="p-8 max-w-5xl">
@@ -202,7 +244,7 @@ export default function TenantPayments() {
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
           >
-            {[year - 1, year, year + 1].map((y) => (
+            {availableYears.map((y) => (
               <option key={y} value={y}>
                 {y}
               </option>
@@ -218,26 +260,26 @@ export default function TenantPayments() {
       ) : (
         <>
           <div className="bg-white border rounded-lg p-6 mb-6">
-            {loading || authLoading ? (
+            {loading || billsLoading || authLoading ? (
               <p className="text-gray-600">Loading payments...</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 border rounded-lg bg-gray-50">
                   <div className="text-sm text-gray-600">Payment Due (This Month)</div>
                   <div className="text-2xl font-bold text-gray-900">
-                    ${paymentDue.toLocaleString()}
+                    {formatCurrency(paymentDue)}
                   </div>
                 </div>
                 <div className="p-4 border rounded-lg bg-gray-50">
                   <div className="text-sm text-gray-600">Paid This Month</div>
                   <div className="text-2xl font-bold text-green-700">
-                    ${paidThisMonth.toLocaleString()}
+                    {formatCurrency(paidThisMonth)}
                   </div>
                 </div>
                 <div className="p-4 border rounded-lg bg-gray-50">
                   <div className="text-sm text-gray-600">Outstanding</div>
                   <div className="text-2xl font-bold text-orange-700">
-                    ${(Math.max(paymentDue - paidThisMonth, 0)).toLocaleString()}
+                    {formatCurrency(outstanding)}
                   </div>
                 </div>
               </div>
@@ -284,9 +326,11 @@ export default function TenantPayments() {
           </div>
 
           <div className="bg-white rounded-lg border p-6">
-            {loading || authLoading ? (
-              <p className="text-gray-600">Loading history…</p>
-            ) : monthRows.length === 0 ? (
+            {loading || billsLoading || authLoading ? (
+              <p className="text-gray-600">Loading history...</p>
+            ) : billsError ? (
+              <p className="text-red-600">{billsError}</p>
+            ) : billRows.length === 0 ? (
               <p className="text-gray-500">No payment history available yet.</p>
             ) : (
               <div className="overflow-x-auto">
@@ -294,27 +338,28 @@ export default function TenantPayments() {
                   <thead>
                     <tr className="bg-gray-50 text-left text-sm text-gray-600">
                       <th className="py-2 px-3">Month</th>
-                      <th className="py-2 px-3 text-right">Amount</th>
-                      <th className="py-2 px-3 text-right">Status</th>
+                      <th className="py-2 px-3">Description</th>
+                      <th className="py-2 px-3 text-right">Rent</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {monthRows.map((row) => (
-                      <tr key={row.month} className="border-t text-sm">
-                        <td className="py-2 px-3">{row.month_name}</td>
-                        <td className="py-2 px-3 text-right">
-                          ${row.rent_income.toLocaleString()}
+                    {billRows.map((row) => (
+                      <tr key={`${row.year}-${row.month}`} className="border-t text-sm">
+                        <td className="py-2 px-3 font-medium">{row.monthLabel}</td>
+                        <td className="py-2 px-3">
+                          <div className="text-sm text-gray-900">
+                            {row.breakdown
+                              .map((item) => `${item.label}${item.detail}`)
+                              .join(", ")}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {row.breakdown
+                              .map((item) => `${item.label}: ${formatCurrency(item.amount)}`)
+                              .join(" | ")}
+                          </div>
                         </td>
-                        <td className="py-2 px-3 text-right">
-                          <span
-                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
-                              row.status === "Paid"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-orange-100 text-orange-700"
-                            }`}
-                          >
-                            {row.status}
-                          </span>
+                        <td className="py-2 px-3 text-right font-semibold">
+                          {formatCurrency(row.total)}
                         </td>
                       </tr>
                     ))}
