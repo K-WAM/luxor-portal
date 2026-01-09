@@ -45,4 +45,11 @@ join user_properties up
   and up.role = 'tenant'
 where pmp.year >= 2023
   and pmp.rent_income > 0
+  and (
+    date_part('year', up.created_at) < pmp.year
+    or (
+      date_part('year', up.created_at) = pmp.year
+      and date_part('month', up.created_at) <= pmp.month
+    )
+  )
 on conflict (tenant_id, property_id, year, month, bill_type) do nothing;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
-import { getDateOnlyParts } from "@/lib/date-only";
+import { getDateOnlyParts, toDateOnlyString } from "@/lib/date-only";
 
 const BILL_TYPES = ["rent", "fee", "late_fee", "security_deposit"];
 const BILL_STATUSES = ["due", "paid", "overdue", "pending"];
@@ -131,8 +131,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const parts = getDateOnlyParts(dueDate);
-    if (!parts) {
+    const normalizedDueDate = toDateOnlyString(dueDate);
+    const parts = getDateOnlyParts(normalizedDueDate);
+    if (!normalizedDueDate || !parts) {
       return NextResponse.json(
         { error: "dueDate must be a valid date" },
         { status: 400 }
@@ -147,7 +148,7 @@ export async function POST(request: Request) {
         bill_type: billType,
         description: description ? String(description).trim() : null,
         amount: parsedAmount,
-        due_date: dueDate,
+        due_date: normalizedDueDate,
         status: "due",
         notify_tenant: !!notifyTenant,
         month: parts.month,

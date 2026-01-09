@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
+import { toDateOnlyString } from "@/lib/date-only";
 
 // GET: list all invoices (admin only)
 export async function GET() {
@@ -110,6 +111,7 @@ export async function POST(request: NextRequest) {
     const override = feeAmount !== undefined && feeAmount !== null ? parseFloat(String(feeAmount)) : null;
     const computed = override !== null ? override : percent !== null ? (baseRent || 0) * (percent / 100) : 0;
 
+    const normalizedDueDate = toDateOnlyString(dueDate);
     const { data, error } = await supabaseAdmin
       .from("billing_invoices")
       .upsert(
@@ -123,7 +125,7 @@ export async function POST(request: NextRequest) {
           fee_amount: override,
           total_due: computed,
           description: description || "",
-          due_date: dueDate || null,
+          due_date: normalizedDueDate,
           status: "due",
         },
         { onConflict: "property_id,owner_id,month,year" }
@@ -171,8 +173,12 @@ export async function PATCH(request: NextRequest) {
     if (status) updates.status = status;
     if (description !== undefined) updates.description = description;
     if (invoiceUrl !== undefined) updates.invoice_url = invoiceUrl;
-    if (dueDate !== undefined) updates.due_date = dueDate || null;
-    if (paidDate !== undefined) updates.paid_date = paidDate || null;
+    if (dueDate !== undefined) {
+      updates.due_date = toDateOnlyString(dueDate);
+    }
+    if (paidDate !== undefined) {
+      updates.paid_date = toDateOnlyString(paidDate);
+    }
     if (feePercent !== undefined) updates.fee_percent = feePercent === null ? null : parseFloat(String(feePercent));
     if (feeAmount !== undefined) updates.fee_amount = feeAmount === null ? null : parseFloat(String(feeAmount));
 

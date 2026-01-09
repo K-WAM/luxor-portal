@@ -24,7 +24,8 @@ export async function GET(request: Request) {
     }
 
     try {
-      await backfillRentBillsForProperty(propertyId);
+      const backfillTenantId = isAdmin(role) ? undefined : user.id;
+      await backfillRentBillsForProperty(propertyId, 2023, backfillTenantId);
     } catch (backfillError) {
       console.error("Tenant bill backfill failed:", backfillError);
     }

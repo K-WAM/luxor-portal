@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers'
+import { toDateOnlyString } from '@/lib/date-only'
 
 export async function GET(request: Request) {
   try {
@@ -51,12 +52,15 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     
+    const leaseStart = toDateOnlyString(body.leaseStart)
+    const leaseEnd = toDateOnlyString(body.leaseEnd)
+
     const { data, error } = await supabaseAdmin
       .from('properties')
       .insert({
         address: body.address,
-        lease_start: body.leaseStart,
-        lease_end: body.leaseEnd,
+        lease_start: leaseStart,
+        lease_end: leaseEnd,
       })
       .select()
       .single()

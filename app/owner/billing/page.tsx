@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
+import { formatDateOnly } from "@/lib/date-only";
 
 type Bill = {
   id: string;
@@ -149,7 +150,7 @@ export default function OwnerBilling() {
                   <td className="px-4 py-3 text-slate-700">{bill.description}</td>
                   <td className="px-4 py-3 text-right text-slate-900">${bill.amount.toFixed(2)}</td>
                   <td className="px-4 py-3 text-slate-700">
-                    {new Date(bill.dueDate).toLocaleDateString()}
+                    {formatDateOnly(bill.dueDate) || "-"}
                   </td>
                   <td className="px-4 py-3">
                     <span

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useEffect, useState } from "react";
+import { formatDateOnly } from "@/lib/date-only";
 
 type BillRow = {
   id: string;
@@ -414,7 +415,9 @@ export default function AdminBilling() {
                         />
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{new Date(bill.dueDate).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {formatDateOnly(bill.dueDate) || "-"}
+                    </td>
                     <td className="px-4 py-3">
                       <select
                         className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
@@ -647,7 +650,7 @@ export default function AdminBilling() {
                     <td className="px-4 py-3 text-slate-900">{bill.tenantEmail || "Tenant"}</td>
                     <td className="px-4 py-3 text-slate-700">{bill.propertyAddress || bill.propertyId}</td>
                     <td className="px-4 py-3 text-slate-700">
-                      {bill.due_date ? new Date(bill.due_date).toLocaleDateString() : "—"}
+                      {formatDateOnly(bill.due_date) || "—"}
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {bill.bill_type}

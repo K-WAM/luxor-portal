@@ -11,7 +11,7 @@ import {
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
 import { getLeaseTermMonths, usePeriodFilter } from "@/app/hooks/usePeriodFilter";
-import { formatDateOnly, getDateOnlyParts, parseDateOnly } from "@/lib/date-only";
+import { formatDateOnly, getDateOnlyParts, parseDateOnly, toDateOnlyString } from "@/lib/date-only";
 
 type Property = {
   id: string;
@@ -156,49 +156,41 @@ export default function FinancialsPage() {
     return new Date(year, monthIndex0 + 1, 0).getDate();
   };
 
-  // Helper: months elapsed in performanceYear (counts current month if we're in it)
-  const monthsElapsedInYear = (startStr: string | null | undefined): number => {
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth(); // 0-based
+  const toUtcDateOnly = (date: Date) =>
+    new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 
-    // If we have no start date, fall back to calendar months elapsed for the performance year
-    if (!startStr) {
-      if (performanceYear > currentYear) return 0;
-      if (performanceYear < currentYear) return 12;
-      return currentMonth + 1; // include the current month
-    }
-
-    const startParts = getDateOnlyParts(startStr);
-    if (!startParts) {
-      if (performanceYear > currentYear) return 0;
-      if (performanceYear < currentYear) return 12;
-      return currentMonth + 1;
-    }
-    const startYear = startParts.year;
-    const startMonth = startParts.month - 1; // 0-based
-
-    // If the performance year is before the lease start year, nothing elapsed
-    if (performanceYear < startYear) return 0;
-
-    // Effective start month within the performance year
-    const effectiveStartMonth = performanceYear > startYear ? 0 : startMonth;
-
-    // If performance year is in the future, no months elapsed yet
-    if (performanceYear > currentYear) return 0;
-
-    const effectiveCurrentMonth = performanceYear === currentYear ? currentMonth : 11; // Dec if past years
-    if (effectiveCurrentMonth < effectiveStartMonth) return 0;
-
-    return Math.min(12, effectiveCurrentMonth - effectiveStartMonth + 1);
+  const diffMonthsInclusive = (start: Date, end: Date) => {
+    let months =
+      (end.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+      (end.getUTCMonth() - start.getUTCMonth()) +
+      1;
+    if (end.getUTCDate() < start.getUTCDate()) months -= 1;
+    return Math.max(0, months);
   };
 
-  const monthsElapsedLease = useMemo(
-    () => monthsElapsedInYear(propertyFinancials.lease_start),
-    [performanceYear, propertyFinancials.lease_start]
-  );
+  const getLeaseTimelineStats = (startStr?: string, endStr?: string) => {
+    const start = parseDateOnly(startStr);
+    const end = parseDateOnly(endStr);
+    if (!start || !end) {
+      return { monthsElapsed: 0, monthsRemaining: 0, totalMonths: 0 };
+    }
 
-  const monthsRemaining = useMemo(() => Math.max(0, 12 - monthsElapsedLease), [monthsElapsedLease]);
+    const today = toUtcDateOnly(new Date());
+    const effective = today < start ? start : today > end ? end : today;
+    const totalMonths = diffMonthsInclusive(start, end);
+    const elapsedMonths = diffMonthsInclusive(start, effective);
+
+    return {
+      monthsElapsed: Math.min(totalMonths, elapsedMonths),
+      monthsRemaining: Math.max(0, totalMonths - elapsedMonths),
+      totalMonths,
+    };
+  };
+
+  const { monthsElapsed: monthsElapsedLease, monthsRemaining } = useMemo(
+    () => getLeaseTimelineStats(propertyFinancials.lease_start, propertyFinancials.lease_end),
+    [propertyFinancials.lease_start, propertyFinancials.lease_end]
+  );
 
   const plannedYtd = useMemo(() => {
     const rentMonthly = parseFloat(propertyFinancials.target_monthly_rent) || 0;
@@ -543,9 +535,9 @@ export default function FinancialsPage() {
           planned_hoa_cost_2: data.planned_hoa_cost_2?.toString() || "",
           hoa_frequency: (data.hoa_frequency as "monthly" | "quarterly") || "monthly",
           hoa_frequency_2: (data.hoa_frequency_2 as "monthly" | "quarterly") || "monthly",
-          purchase_date: data.purchase_date || "",
-          lease_start: data.lease_start || "",
-          lease_end: data.lease_end || "",
+          purchase_date: toDateOnlyString(data.purchase_date) || "",
+          lease_start: toDateOnlyString(data.lease_start) || "",
+          lease_end: toDateOnlyString(data.lease_end) || "",
           deposit: data.deposit?.toString() || "",
           last_month_rent_collected: !!data.last_month_rent_collected,
         });

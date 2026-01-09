@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
+import { toDateOnlyString } from "@/lib/date-only";
 
 // GET - Fetch property financial data
 export async function GET(request: Request) {
@@ -98,7 +99,7 @@ export async function PUT(request: Request) {
     // Helper function to safely parse date values
     const parseDate = (value: any): string | null => {
       if (value === undefined || value === null || value === "") return null;
-      return value;
+      return toDateOnlyString(value);
     };
 
     // Helper function to safely parse text values

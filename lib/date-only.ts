@@ -54,3 +54,11 @@ export function formatMonthYearFromParts(year: number, month: number): string {
     timeZone: "UTC",
   });
 }
+
+export function toDateOnlyString(dateStr?: string | null): string | null {
+  const parts = getDateOnlyParts(dateStr);
+  if (!parts) return null;
+  const month = String(parts.month).padStart(2, "0");
+  const day = String(parts.day).padStart(2, "0");
+  return `${parts.year}-${month}-${day}`;
+}
