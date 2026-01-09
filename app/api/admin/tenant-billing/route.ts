@@ -4,6 +4,7 @@ import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import { getDateOnlyParts } from "@/lib/date-only";
 
 const BILL_TYPES = ["rent", "fee", "late_fee", "security_deposit"];
+const BILL_STATUSES = ["due", "paid", "overdue", "pending"];
 
 const getPropertyAddress = (properties: any) => {
   if (!properties) return "";
@@ -13,14 +14,17 @@ const getPropertyAddress = (properties: any) => {
   return properties.address || "";
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { user, role } = await getAuthContext();
     if (!user || !isAdmin(role)) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const { data: bills, error } = await supabaseAdmin
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get("status");
+
+    let query = supabaseAdmin
       .from("tenant_bills")
       .select(
         `
@@ -41,8 +45,13 @@ export async function GET() {
           address
         )
       `
-      )
-      .order("due_date", { ascending: false });
+      );
+
+    if (status && BILL_STATUSES.includes(status)) {
+      query = query.eq("status", status);
+    }
+
+    const { data: bills, error } = await query.order("due_date", { ascending: false });
 
     if (error) throw error;
 
@@ -154,6 +163,52 @@ export async function POST(request: Request) {
     console.error("Error creating tenant bill:", error);
     return NextResponse.json(
       { error: "Failed to create tenant bill" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const { user, role } = await getAuthContext();
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { id, status } = body || {};
+
+    if (!id || !status) {
+      return NextResponse.json(
+        { error: "id and status are required" },
+        { status: 400 }
+      );
+    }
+
+    if (!BILL_STATUSES.includes(status)) {
+      return NextResponse.json(
+        { error: `status must be one of ${BILL_STATUSES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("tenant_bills")
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({ bill: data });
+  } catch (error) {
+    console.error("Error updating tenant bill:", error);
+    return NextResponse.json(
+      { error: "Failed to update tenant bill" },
       { status: 500 }
     );
   }

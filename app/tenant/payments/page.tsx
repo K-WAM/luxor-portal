@@ -194,7 +194,40 @@ export default function TenantPayments() {
   const currentMonthBills = bills.filter(
     (bill) => bill.year === currentYear && bill.month === currentMonthIndex
   );
-  const paymentDue = currentMonthBills.reduce((sum, bill) => sum + (bill.amount || 0), 0);
+
+  const nextDueSummary = useMemo(() => {
+    const unpaid = bills.filter((bill) => bill.status !== "paid");
+    if (unpaid.length === 0) {
+      return { label: "No upcoming dues", amount: 0 };
+    }
+
+    const sorted = [...unpaid].sort((a, b) => {
+      const aParts = getDateOnlyParts(a.due_date);
+      const bParts = getDateOnlyParts(b.due_date);
+      const aYear = aParts?.year ?? a.year;
+      const aMonth = aParts?.month ?? a.month;
+      const bYear = bParts?.year ?? b.year;
+      const bMonth = bParts?.month ?? b.month;
+      if (aYear !== bYear) return aYear - bYear;
+      return aMonth - bMonth;
+    });
+
+    const first = sorted[0];
+    const firstParts = getDateOnlyParts(first.due_date);
+    const dueYear = firstParts?.year ?? first.year;
+    const dueMonth = firstParts?.month ?? first.month;
+    const sameMonthBills = unpaid.filter(
+      (bill) => bill.year === dueYear && bill.month === dueMonth
+    );
+    const amount = sameMonthBills.reduce((sum, bill) => sum + (bill.amount || 0), 0);
+
+    return {
+      label: formatMonthYearFromParts(dueYear, dueMonth),
+      amount,
+    };
+  }, [bills]);
+
+  const paymentDue = nextDueSummary.amount;
   const paidThisMonth = currentMonthBills
     .filter((bill) => bill.status === "paid")
     .reduce((sum, bill) => sum + (bill.amount || 0), 0);
@@ -265,7 +298,7 @@ export default function TenantPayments() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 border rounded-lg bg-gray-50">
-                  <div className="text-sm text-gray-600">Payment Due (This Month)</div>
+                  <div className="text-sm text-gray-600">Payment Due ({nextDueSummary.label})</div>
                   <div className="text-2xl font-bold text-gray-900">
                     {formatCurrency(paymentDue)}
                   </div>
@@ -339,6 +372,7 @@ export default function TenantPayments() {
                     <tr className="bg-gray-50 text-left text-sm text-gray-600">
                       <th className="py-2 px-3">Month</th>
                       <th className="py-2 px-3">Description</th>
+                      <th className="py-2 px-3">Status</th>
                       <th className="py-2 px-3 text-right">Rent</th>
                     </tr>
                   </thead>
@@ -357,6 +391,17 @@ export default function TenantPayments() {
                               .map((item) => `${item.label}: ${formatCurrency(item.amount)}`)
                               .join(" | ")}
                           </div>
+                        </td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              row.status === "Paid"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-orange-100 text-orange-700"
+                            }`}
+                          >
+                            {row.status}
+                          </span>
                         </td>
                         <td className="py-2 px-3 text-right font-semibold">
                           {formatCurrency(row.total)}

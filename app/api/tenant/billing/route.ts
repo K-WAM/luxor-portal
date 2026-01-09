@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from "@/lib/auth/route-helpers";
+import { backfillRentBillsForProperty } from "@/lib/billing/tenant-bills";
 
 export async function GET(request: Request) {
   try {
@@ -20,6 +21,12 @@ export async function GET(request: Request) {
       if (!allowed.includes(propertyId)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
+    }
+
+    try {
+      await backfillRentBillsForProperty(propertyId);
+    } catch (backfillError) {
+      console.error("Tenant bill backfill failed:", backfillError);
     }
 
     let query = supabaseAdmin

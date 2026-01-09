@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
+import { upsertPaidRentBillForMonth } from "@/lib/billing/tenant-bills";
 
 // GET - Fetch monthly performance data
 export async function GET(request: Request) {
@@ -80,11 +81,15 @@ export async function PUT(request: Request) {
       );
     }
 
+    const parsedYear = parseInt(year);
+    const parsedMonth = parseInt(month);
+    const parsedRentIncome = Number(rent_income) || 0;
+
     const performanceData = {
       property_id: propertyId,
-      year: parseInt(year),
-      month: parseInt(month),
-      rent_income: rent_income || 0,
+      year: parsedYear,
+      month: parsedMonth,
+      rent_income: parsedRentIncome,
       rent_paid: rent_paid || false,
       maintenance: maintenance || 0,
       pool: pool || 0,
@@ -108,6 +113,19 @@ export async function PUT(request: Request) {
         { error: "Failed to save monthly performance" },
         { status: 500 }
       );
+    }
+
+    if (parsedRentIncome > 0) {
+      try {
+        await upsertPaidRentBillForMonth({
+          propertyId,
+          year: parsedYear,
+          month: parsedMonth,
+          amount: parsedRentIncome,
+        });
+      } catch (billError) {
+        console.error("Error syncing paid rent bill:", billError);
+      }
     }
 
     return NextResponse.json({ success: true });

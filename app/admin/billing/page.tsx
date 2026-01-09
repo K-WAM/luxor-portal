@@ -24,6 +24,21 @@ type TenantOption = {
   propertyAddress: string;
 };
 
+type TenantBillRow = {
+  id: string;
+  tenantId: string;
+  tenantEmail: string;
+  propertyId: string;
+  propertyAddress: string;
+  bill_type: string;
+  description: string | null;
+  amount: number;
+  due_date: string;
+  status: string;
+  month: number;
+  year: number;
+};
+
 export default function AdminBilling() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,6 +48,9 @@ export default function AdminBilling() {
   const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([]);
   const [tenantBillError, setTenantBillError] = useState<string | null>(null);
   const [tenantBillSuccess, setTenantBillSuccess] = useState<string | null>(null);
+  const [tenantBills, setTenantBills] = useState<TenantBillRow[]>([]);
+  const [tenantBillsLoading, setTenantBillsLoading] = useState(false);
+  const [tenantBillsError, setTenantBillsError] = useState<string | null>(null);
   const [newBill, setNewBill] = useState<{ propertyId: string; month: number; year: number; feePercent: string }>({
     propertyId: "",
     month: new Date().getMonth() + 1,
@@ -114,6 +132,21 @@ export default function AdminBilling() {
     }
   };
 
+  const loadTenantBills = async () => {
+    try {
+      setTenantBillsLoading(true);
+      setTenantBillsError(null);
+      const res = await fetch("/api/admin/tenant-billing", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load tenant bills");
+      setTenantBills(data.rows || []);
+    } catch (err: any) {
+      setTenantBillsError(err.message || "Failed to load tenant bills");
+    } finally {
+      setTenantBillsLoading(false);
+    }
+  };
+
   const handleCreate = async () => {
     if (!newBill.propertyId) {
       setError("Select a property for the bill");
@@ -144,7 +177,7 @@ export default function AdminBilling() {
 
   useEffect(() => {
     const load = async () => {
-      await Promise.all([loadBills(), loadProperties(), loadTenantOptions()]);
+      await Promise.all([loadBills(), loadProperties(), loadTenantOptions(), loadTenantBills()]);
     };
     load();
   }, []);
@@ -153,6 +186,11 @@ export default function AdminBilling() {
     if (!tenantBill.propertyId) return tenantOptions;
     return tenantOptions.filter((t) => t.propertyId === tenantBill.propertyId);
   }, [tenantOptions, tenantBill.propertyId]);
+
+  const pendingTenantBills = useMemo(
+    () => tenantBills.filter((bill) => bill.status !== "paid"),
+    [tenantBills]
+  );
 
   useEffect(() => {
     if (!tenantBill.propertyId) return;
@@ -196,6 +234,7 @@ export default function AdminBilling() {
         amount: "",
         description: "",
       }));
+      await loadTenantBills();
     } catch (err: any) {
       setTenantBillError(err.message || "Failed to create tenant bill");
     } finally {
@@ -225,6 +264,22 @@ export default function AdminBilling() {
       setError(err.message || "Failed to update billing");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMarkTenantBillPaid = async (billId: string) => {
+    try {
+      setTenantBillsError(null);
+      const res = await fetch("/api/admin/tenant-billing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: billId, status: "paid" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update tenant bill");
+      await loadTenantBills();
+    } catch (err: any) {
+      setTenantBillsError(err.message || "Failed to update tenant bill");
     }
   };
 
@@ -544,6 +599,77 @@ export default function AdminBilling() {
           >
             {loading ? "Saving..." : "Create tenant bill"}
           </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mt-8">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Pending Tenant Bills</h2>
+            <p className="text-xs text-slate-500">
+              Review unpaid tenant charges and mark them as paid.
+            </p>
+          </div>
+          <button
+            onClick={loadTenantBills}
+            disabled={tenantBillsLoading}
+            className="text-xs px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+          >
+            {tenantBillsLoading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+        {tenantBillsError && (
+          <div className="px-4 py-3 text-sm text-red-600">{tenantBillsError}</div>
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
+              <tr>
+                <th className="px-4 py-3 text-left">Tenant</th>
+                <th className="px-4 py-3 text-left">Property</th>
+                <th className="px-4 py-3 text-left">Due</th>
+                <th className="px-4 py-3 text-left">For</th>
+                <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {pendingTenantBills.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-4 text-slate-500" colSpan={7}>
+                    No pending tenant bills.
+                  </td>
+                </tr>
+              ) : (
+                pendingTenantBills.map((bill) => (
+                  <tr key={bill.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 text-slate-900">{bill.tenantEmail || "Tenant"}</td>
+                    <td className="px-4 py-3 text-slate-700">{bill.propertyAddress || bill.propertyId}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {bill.due_date ? new Date(bill.due_date).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {bill.bill_type}
+                      {bill.description ? ` - ${bill.description}` : ""}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-900">
+                      ${Number(bill.amount || 0).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{bill.status}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleMarkTenantBillPaid(bill.id)}
+                        className="text-xs px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                      >
+                        Mark Paid
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
