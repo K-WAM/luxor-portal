@@ -235,9 +235,10 @@ export default function AdminBilling() {
     return tenantOptions.filter((t) => t.propertyId === tenantBill.propertyId);
   }, [tenantOptions, tenantBill.propertyId]);
 
-  // Show all non-paid bills (including voided if toggle is on)
-  const pendingTenantBills = useMemo(
-    () => tenantBills.filter((bill) => bill.status !== "paid" && (showVoidedTenantBills || bill.status !== "voided")),
+  // Show ALL bills (including paid) so admin can void/delete any bill
+  // Only filter voided bills if toggle is off
+  const displayedTenantBills = useMemo(
+    () => tenantBills.filter((bill) => showVoidedTenantBills || bill.status !== "voided"),
     [tenantBills, showVoidedTenantBills]
   );
 
@@ -864,14 +865,14 @@ export default function AdminBilling() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {pendingTenantBills.length === 0 ? (
+              {displayedTenantBills.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-slate-500" colSpan={7}>
-                    No pending tenant bills.
+                    No tenant bills found.
                   </td>
                 </tr>
               ) : (
-                pendingTenantBills.map((bill) => {
+                displayedTenantBills.map((bill) => {
                   const isVoided = bill.status === "voided";
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
