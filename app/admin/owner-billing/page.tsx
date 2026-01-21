@@ -12,6 +12,13 @@ type OwnerBillingRow = {
   zellePhone: string | null;
 };
 
+type PropertyGroup = {
+  propertyId: string;
+  propertyAddress: string;
+  owners: OwnerBillingRow[];
+  activeOwner: OwnerBillingRow | null; // Owner with Zelle set
+};
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^[+()\d\s.-]{7,}$/;
 
@@ -27,6 +34,7 @@ export default function OwnerBillingDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
   const [form, setForm] = useState<{ type: "email" | "phone"; value: string }>({
     type: "email",
     value: "",
@@ -54,12 +62,41 @@ export default function OwnerBillingDetailsPage() {
     loadData();
   }, []);
 
+  // Group rows by property - show only ONE row per property
+  const propertyGroups: PropertyGroup[] = (() => {
+    const groupMap = new Map<string, PropertyGroup>();
+
+    rows.forEach((row) => {
+      if (!groupMap.has(row.propertyId)) {
+        groupMap.set(row.propertyId, {
+          propertyId: row.propertyId,
+          propertyAddress: row.propertyAddress,
+          owners: [],
+          activeOwner: null,
+        });
+      }
+      const group = groupMap.get(row.propertyId)!;
+      group.owners.push(row);
+
+      // If this owner has Zelle set, mark as active
+      if (row.zelleEmail || row.zellePhone) {
+        group.activeOwner = row;
+      }
+    });
+
+    return Array.from(groupMap.values()).sort((a, b) =>
+      a.propertyAddress.localeCompare(b.propertyAddress)
+    );
+  })();
+
   const getKey = (row: OwnerBillingRow) => `${row.userId}-${row.propertyId}`;
 
-  const startEdit = (row: OwnerBillingRow) => {
+  const startEdit = (group: PropertyGroup) => {
+    const row = group.activeOwner || group.owners[0];
     const type = row.zelleEmail ? "email" : row.zellePhone ? "phone" : "email";
     const value = row.zelleEmail || row.zellePhone || "";
-    setEditingKey(getKey(row));
+    setEditingKey(group.propertyId);
+    setSelectedOwner(row.userId);
     setForm({ type, value });
     setError(null);
     setSuccess(null);
@@ -67,11 +104,14 @@ export default function OwnerBillingDetailsPage() {
 
   const cancelEdit = () => {
     setEditingKey(null);
+    setSelectedOwner(null);
     setForm({ type: "email", value: "" });
   };
 
-  const saveZelle = async (row: OwnerBillingRow) => {
-    const key = getKey(row);
+  const saveZelle = async (group: PropertyGroup) => {
+    const ownerUserId = selectedOwner || group.owners[0]?.userId;
+    if (!ownerUserId) return;
+
     const trimmed = form.value.trim();
     if (trimmed) {
       if (form.type === "email" && !EMAIL_REGEX.test(trimmed)) {
@@ -85,23 +125,24 @@ export default function OwnerBillingDetailsPage() {
     }
 
     try {
-      setSavingKey(key);
+      setSavingKey(group.propertyId);
       setError(null);
       setSuccess(null);
       const res = await fetch("/api/admin/owner-billing", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: row.userId,
-          propertyId: row.propertyId,
+          userId: ownerUserId,
+          propertyId: group.propertyId,
           zelleType: form.type,
           zelleValue: trimmed,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save Zelle details");
-      setSuccess("Owner billing details updated. (Only one Zelle per property is allowed.)");
+      setSuccess("Zelle recipient updated for this property.");
       setEditingKey(null);
+      setSelectedOwner(null);
       setForm({ type: "email", value: "" });
       await loadData();
     } catch (err: any) {
@@ -111,23 +152,24 @@ export default function OwnerBillingDetailsPage() {
     }
   };
 
-  const deleteZelle = async (row: OwnerBillingRow) => {
-    const key = getKey(row);
-    if (!confirm(`Clear Zelle details for ${row.propertyAddress || row.propertyId}?`)) {
+  const deleteZelle = async (group: PropertyGroup) => {
+    if (!group.activeOwner) return;
+
+    if (!confirm(`Clear Zelle details for ${group.propertyAddress}?`)) {
       return;
     }
 
     try {
-      setSavingKey(key);
+      setSavingKey(group.propertyId);
       setError(null);
       setSuccess(null);
       const res = await fetch(
-        `/api/admin/owner-billing?userId=${row.userId}&propertyId=${row.propertyId}`,
+        `/api/admin/owner-billing?userId=${group.activeOwner.userId}&propertyId=${group.propertyId}`,
         { method: "DELETE" }
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete Zelle details");
-      setSuccess("Owner billing details cleared.");
+      setSuccess("Zelle details cleared for this property.");
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to delete Zelle details");
@@ -149,8 +191,7 @@ export default function OwnerBillingDetailsPage() {
     <div className="p-8 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold mb-2">Owner Billing Details</h1>
       <p className="text-slate-600 mb-6">
-        Configure Zelle payment details for each property. Only <strong>one Zelle recipient per property</strong> is allowed.
-        Setting Zelle for one owner will clear it from others on the same property.
+        Configure Zelle payment details for each property. Only <strong>one Zelle recipient per property</strong> is shown to tenants.
       </p>
 
       {error && (
@@ -169,9 +210,9 @@ export default function OwnerBillingDetailsPage() {
         </div>
       )}
 
-      {rows.length === 0 ? (
+      {propertyGroups.length === 0 ? (
         <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-gray-500">
-          No owner/property associations found.
+          No properties found.
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
@@ -180,27 +221,46 @@ export default function OwnerBillingDetailsPage() {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Property</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Owner Email</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Zelle Recipient</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Zelle Details</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {rows.map((row) => {
-                  const key = getKey(row);
-                  const isEditing = editingKey === key;
-                  const zelleLabel = row.zelleEmail
-                    ? `Email: ${row.zelleEmail}`
-                    : row.zellePhone
-                      ? `Phone: ${row.zellePhone}`
+                {propertyGroups.map((group) => {
+                  const isEditing = editingKey === group.propertyId;
+                  const isSaving = savingKey === group.propertyId;
+                  const activeOwner = group.activeOwner;
+
+                  const zelleLabel = activeOwner?.zelleEmail
+                    ? `Email: ${activeOwner.zelleEmail}`
+                    : activeOwner?.zellePhone
+                      ? `Phone: ${activeOwner.zellePhone}`
                       : "Not set";
+
                   return (
-                    <tr key={key} className="hover:bg-slate-50 transition-colors">
+                    <tr key={group.propertyId} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-sm text-slate-900">
-                        {row.propertyAddress || row.propertyId}
+                        {group.propertyAddress || group.propertyId}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-900">
-                        {row.ownerEmail || row.userId}
+                        {isEditing ? (
+                          <select
+                            value={selectedOwner || ""}
+                            onChange={(e) => setSelectedOwner(e.target.value)}
+                            className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white min-w-[200px]"
+                          >
+                            {group.owners.map((owner) => (
+                              <option key={owner.userId} value={owner.userId}>
+                                {owner.ownerEmail || owner.userId}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          activeOwner?.ownerEmail || (
+                            <span className="text-slate-400 italic">None selected</span>
+                          )
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {isEditing ? (
@@ -236,15 +296,15 @@ export default function OwnerBillingDetailsPage() {
                         {isEditing ? (
                           <div className="flex gap-2">
                             <button
-                              onClick={() => saveZelle(row)}
-                              disabled={savingKey === key}
+                              onClick={() => saveZelle(group)}
+                              disabled={isSaving}
                               className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs hover:bg-blue-700 disabled:bg-blue-300"
                             >
-                              {savingKey === key ? "Saving..." : "Save"}
+                              {isSaving ? "Saving..." : "Save"}
                             </button>
                             <button
                               onClick={cancelEdit}
-                              disabled={savingKey === key}
+                              disabled={isSaving}
                               className="px-3 py-1.5 rounded-md bg-slate-200 text-slate-700 text-xs hover:bg-slate-300"
                             >
                               Cancel
@@ -253,15 +313,15 @@ export default function OwnerBillingDetailsPage() {
                         ) : (
                           <div className="flex gap-2">
                             <button
-                              onClick={() => startEdit(row)}
+                              onClick={() => startEdit(group)}
                               className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-700 text-xs hover:bg-slate-100"
                             >
-                              {row.zelleEmail || row.zellePhone ? "Edit" : "Add"}
+                              {activeOwner ? "Edit" : "Add"}
                             </button>
-                            {(row.zelleEmail || row.zellePhone) && (
+                            {activeOwner && (
                               <button
-                                onClick={() => deleteZelle(row)}
-                                disabled={savingKey === key}
+                                onClick={() => deleteZelle(group)}
+                                disabled={isSaving}
                                 className="px-3 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs hover:bg-red-100 disabled:opacity-50"
                               >
                                 Delete
