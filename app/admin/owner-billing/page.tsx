@@ -100,12 +100,37 @@ export default function OwnerBillingDetailsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save Zelle details");
-      setSuccess("Owner billing details updated.");
+      setSuccess("Owner billing details updated. (Only one Zelle per property is allowed.)");
       setEditingKey(null);
       setForm({ type: "email", value: "" });
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to save Zelle details");
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const deleteZelle = async (row: OwnerBillingRow) => {
+    const key = getKey(row);
+    if (!confirm(`Clear Zelle details for ${row.propertyAddress || row.propertyId}?`)) {
+      return;
+    }
+
+    try {
+      setSavingKey(key);
+      setError(null);
+      setSuccess(null);
+      const res = await fetch(
+        `/api/admin/owner-billing?userId=${row.userId}&propertyId=${row.propertyId}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete Zelle details");
+      setSuccess("Owner billing details cleared.");
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "Failed to delete Zelle details");
     } finally {
       setSavingKey(null);
     }
@@ -124,7 +149,8 @@ export default function OwnerBillingDetailsPage() {
     <div className="p-8 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold mb-2">Owner Billing Details</h1>
       <p className="text-slate-600 mb-6">
-        Track Zelle recipients per owner and property. Use email or phone (one value per owner).
+        Configure Zelle payment details for each property. Only <strong>one Zelle recipient per property</strong> is allowed.
+        Setting Zelle for one owner will clear it from others on the same property.
       </p>
 
       {error && (
@@ -225,12 +251,23 @@ export default function OwnerBillingDetailsPage() {
                             </button>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => startEdit(row)}
-                            className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-700 text-xs hover:bg-slate-100"
-                          >
-                            {row.zelleEmail || row.zellePhone ? "Edit" : "Add"}
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => startEdit(row)}
+                              className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-700 text-xs hover:bg-slate-100"
+                            >
+                              {row.zelleEmail || row.zellePhone ? "Edit" : "Add"}
+                            </button>
+                            {(row.zelleEmail || row.zellePhone) && (
+                              <button
+                                onClick={() => deleteZelle(row)}
+                                disabled={savingKey === key}
+                                className="px-3 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs hover:bg-red-100 disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>

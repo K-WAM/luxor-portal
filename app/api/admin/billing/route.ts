@@ -3,15 +3,31 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import { toDateOnlyString } from "@/lib/date-only";
 
+const OWNER_BILL_CATEGORIES = [
+  "maintenance",
+  "pm_fee",
+  "hoa",
+  "pool",
+  "garden",
+  "insurance",
+  "property_tax",
+  "repairs",
+  "other",
+];
+
 // GET: list all invoices (admin only)
-export async function GET() {
+// Query params: includeVoided=true to include voided bills
+export async function GET(request: NextRequest) {
   try {
     const { user, role } = await getAuthContext();
     if (!user || !isAdmin(role)) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const { data, error } = await supabaseAdmin
+    const { searchParams } = new URL(request.url);
+    const includeVoided = searchParams.get("includeVoided") === "true";
+
+    let query = supabaseAdmin
       .from("billing_invoices")
       .select(
         `
@@ -21,6 +37,13 @@ export async function GET() {
       )
       .order("year", { ascending: false })
       .order("month", { ascending: false });
+
+    // By default, exclude voided bills unless explicitly requested
+    if (!includeVoided) {
+      query = query.neq("status", "voided");
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
@@ -53,6 +76,10 @@ export async function GET() {
         dueDate: row.due_date,
         paidDate: row.paid_date,
         invoiceUrl: row.invoice_url,
+        category: row.category,
+        voidedAt: row.voided_at,
+        voidedBy: row.voided_by,
+        voidedReason: row.voided_reason,
       })) || [];
 
     return NextResponse.json(mapped);
@@ -79,10 +106,19 @@ export async function POST(request: NextRequest) {
       feeAmount,
       description,
       dueDate,
+      category,
     } = body || {};
 
     if (!propertyId || !month || !year) {
       return NextResponse.json({ error: "propertyId, month, and year are required" }, { status: 400 });
+    }
+
+    // Validate category if provided
+    if (category && !OWNER_BILL_CATEGORIES.includes(category)) {
+      return NextResponse.json(
+        { error: `category must be one of: ${OWNER_BILL_CATEGORIES.join(", ")}` },
+        { status: 400 }
+      );
     }
 
     // Infer owner from user_properties (owner role)
@@ -127,6 +163,7 @@ export async function POST(request: NextRequest) {
           description: description || "",
           due_date: normalizedDueDate,
           status: "due",
+          category: category || "pm_fee",
         },
         { onConflict: "property_id,owner_id,month,year" }
       )
@@ -155,6 +192,7 @@ export async function POST(request: NextRequest) {
 }
 
 // PATCH: update fields like status, fee_percent, fee_amount, due_date, paid_date
+// Also supports explicit void action and auto-voids when amount becomes $0
 export async function PATCH(request: NextRequest) {
   try {
     const { user, role } = await getAuthContext();
@@ -163,16 +201,55 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, status, feePercent, feeAmount, dueDate, paidDate, description, invoiceUrl } = body || {};
+    const {
+      id,
+      status,
+      feePercent,
+      feeAmount,
+      dueDate,
+      paidDate,
+      description,
+      invoiceUrl,
+      category,
+      action,
+      voidReason,
+    } = body || {};
 
     if (!id) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    // Handle explicit VOID action
+    if (action === "void") {
+      const { data, error } = await supabaseAdmin
+        .from("billing_invoices")
+        .update({
+          status: "voided",
+          voided_at: new Date().toISOString(),
+          voided_by: user.id,
+          voided_reason: voidReason || "Voided by admin",
+        })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return NextResponse.json({ ...data, action: "voided" });
+    }
+
+    // Validate category if provided
+    if (category && !OWNER_BILL_CATEGORIES.includes(category)) {
+      return NextResponse.json(
+        { error: `category must be one of: ${OWNER_BILL_CATEGORIES.join(", ")}` },
+        { status: 400 }
+      );
     }
 
     const updates: any = {};
     if (status) updates.status = status;
     if (description !== undefined) updates.description = description;
     if (invoiceUrl !== undefined) updates.invoice_url = invoiceUrl;
+    if (category !== undefined) updates.category = category;
     if (dueDate !== undefined) {
       updates.due_date = toDateOnlyString(dueDate);
     }
@@ -194,6 +271,14 @@ export async function PATCH(request: NextRequest) {
       const override = updates.fee_amount ?? existing?.fee_amount ?? null;
       updates.total_due =
         override !== null && override !== undefined ? override : percent !== null ? baseRent * (percent / 100) : 0;
+
+      // AUTO-VOID: If total_due becomes $0, automatically void the bill
+      if (updates.total_due === 0) {
+        updates.status = "voided";
+        updates.voided_at = new Date().toISOString();
+        updates.voided_by = user.id;
+        updates.voided_reason = "Auto-voided: amount set to $0";
+      }
     }
 
     const { data, error } = await supabaseAdmin

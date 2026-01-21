@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
         properties ( address )
       `
       )
+      // CRITICAL: Exclude voided bills from owner view
+      .neq("status", "voided")
       .order("year", { ascending: false })
       .order("month", { ascending: false });
 

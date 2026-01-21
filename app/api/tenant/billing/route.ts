@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from "@/lib/auth/route-helpers";
-import { backfillRentBillsForProperty } from "@/lib/billing/tenant-bills";
+// NOTE: Auto-backfill disabled - billing is now fully manual (admin-controlled)
+// import { backfillRentBillsForProperty } from "@/lib/billing/tenant-bills";
 
 export async function GET(request: Request) {
   try {
@@ -23,17 +24,16 @@ export async function GET(request: Request) {
       }
     }
 
-    try {
-      const backfillTenantId = isAdmin(role) ? undefined : user.id;
-      await backfillRentBillsForProperty(propertyId, 2023, backfillTenantId);
-    } catch (backfillError) {
-      console.error("Tenant bill backfill failed:", backfillError);
-    }
+    // AUTO-BACKFILL DISABLED: Billing is now fully manual (admin-controlled)
+    // The backfillRentBillsForProperty function is preserved but no longer called
+    // Admin creates all bills manually via Admin Billing page
 
     let query = supabaseAdmin
       .from("tenant_bills")
       .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status, month, year")
-      .eq("property_id", propertyId);
+      .eq("property_id", propertyId)
+      // CRITICAL: Exclude voided bills from tenant view
+      .neq("status", "voided");
 
     if (!isAdmin(role)) {
       query = query.eq("tenant_id", user.id);

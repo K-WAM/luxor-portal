@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
-import { upsertPaidRentBillForMonth } from "@/lib/billing/tenant-bills";
+// NOTE: Auto-billing disabled - billing is now fully manual (admin-controlled)
+// import { upsertPaidRentBillForMonth } from "@/lib/billing/tenant-bills";
 
 // GET - Fetch monthly performance data
 export async function GET(request: Request) {
@@ -115,18 +116,22 @@ export async function PUT(request: Request) {
       );
     }
 
-    if (parsedRentIncome > 0) {
-      try {
-        await upsertPaidRentBillForMonth({
-          propertyId,
-          year: parsedYear,
-          month: parsedMonth,
-          amount: parsedRentIncome,
-        });
-      } catch (billError) {
-        console.error("Error syncing paid rent bill:", billError);
-      }
-    }
+    // AUTO-BILLING DISABLED: Billing is now fully manual (admin-controlled)
+    // Admin must create rent bills manually via Admin Billing page
+    // The upsertPaidRentBillForMonth function is preserved but no longer called
+    //
+    // if (parsedRentIncome > 0) {
+    //   try {
+    //     await upsertPaidRentBillForMonth({
+    //       propertyId,
+    //       year: parsedYear,
+    //       month: parsedMonth,
+    //       amount: parsedRentIncome,
+    //     });
+    //   } catch (billError) {
+    //     console.error("Error syncing paid rent bill:", billError);
+    //   }
+    // }
 
     return NextResponse.json({ success: true });
   } catch (error) {
