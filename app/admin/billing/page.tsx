@@ -81,7 +81,7 @@ export default function AdminBilling() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editAmounts, setEditAmounts] = useState<Record<string, { feePercent?: string; feeAmount?: string; status?: string; ownerId?: string }>>({});
+  const [editAmounts, setEditAmounts] = useState<Record<string, { feePercent?: string; feeAmount?: string; status?: string; ownerId?: string; dueDate?: string }>>({});
   const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
   const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([]);
@@ -394,6 +394,7 @@ export default function AdminBilling() {
           feeAmount: edits.feeAmount ?? bill.feeAmount,
           status: edits.status ?? bill.status,
           ownerId: edits.ownerId,
+          dueDate: edits.dueDate,
         }),
       });
       const data = await res.json();
@@ -832,7 +833,21 @@ export default function AdminBilling() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-slate-700">
-                        {formatDateOnly(bill.dueDate) || "-"}
+                        {isVoided ? (
+                          formatDateOnly(bill.dueDate) || "-"
+                        ) : (
+                          <input
+                            type="date"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-32"
+                            value={edits.dueDate ?? (bill.dueDate ? bill.dueDate.split("T")[0] : "")}
+                            onChange={(e) =>
+                              setEditAmounts((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], dueDate: e.target.value },
+                              }))
+                            }
+                          />
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {isVoided ? (
