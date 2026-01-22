@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       propertyId,
+      ownerId: providedOwnerId,
       month,
       year,
       feePercent,
@@ -121,20 +122,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Infer owner from user_properties (owner role)
-    const { data: ownerRow, error: ownerErr } = await supabaseAdmin
-      .from("user_properties")
-      .select("user_id")
-      .eq("property_id", propertyId)
-      .eq("role", "owner")
-      .limit(1)
-      .single();
+    let ownerId = providedOwnerId;
 
-    if (ownerErr || !ownerRow) {
-      return NextResponse.json({ error: "No owner found for this property" }, { status: 400 });
+    // If ownerId not provided, infer from user_properties (owner role)
+    if (!ownerId) {
+      const { data: ownerRow, error: ownerErr } = await supabaseAdmin
+        .from("user_properties")
+        .select("user_id")
+        .eq("property_id", propertyId)
+        .eq("role", "owner")
+        .limit(1)
+        .single();
+
+      if (ownerErr || !ownerRow) {
+        return NextResponse.json({ error: "No owner found for this property" }, { status: 400 });
+      }
+
+      ownerId = ownerRow.user_id;
     }
-
-    const ownerId = ownerRow.user_id;
 
     const { data: property } = await supabaseAdmin
       .from("properties")
@@ -213,6 +218,7 @@ export async function PATCH(request: NextRequest) {
       category,
       action,
       voidReason,
+      ownerId,
     } = body || {};
 
     if (!id) {
@@ -250,6 +256,7 @@ export async function PATCH(request: NextRequest) {
     if (description !== undefined) updates.description = description;
     if (invoiceUrl !== undefined) updates.invoice_url = invoiceUrl;
     if (category !== undefined) updates.category = category;
+    if (ownerId !== undefined) updates.owner_id = ownerId;
     if (dueDate !== undefined) {
       updates.due_date = toDateOnlyString(dueDate);
     }

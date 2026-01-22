@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useMemo, useEffect, useState } from "react";
-import { formatDateOnly } from "@/lib/date-only";
+import { formatDateOnly, parseDateOnly } from "@/lib/date-only";
 
 type BillRow = {
   id: string;
+  ownerId?: string;
   ownerEmail: string;
   property: string;
   propertyAddress?: string;
@@ -23,6 +24,13 @@ type BillRow = {
 };
 
 type TenantOption = {
+  userId: string;
+  email: string;
+  propertyId: string;
+  propertyAddress: string;
+};
+
+type OwnerOption = {
   userId: string;
   email: string;
   propertyId: string;
@@ -73,9 +81,10 @@ export default function AdminBilling() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editAmounts, setEditAmounts] = useState<Record<string, { feePercent?: string; feeAmount?: string; status?: string }>>({});
+  const [editAmounts, setEditAmounts] = useState<Record<string, { feePercent?: string; feeAmount?: string; status?: string; ownerId?: string }>>({});
   const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
   const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([]);
+  const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([]);
   const [tenantBillError, setTenantBillError] = useState<string | null>(null);
   const [tenantBillSuccess, setTenantBillSuccess] = useState<string | null>(null);
   const [tenantBills, setTenantBills] = useState<TenantBillRow[]>([]);
@@ -84,17 +93,23 @@ export default function AdminBilling() {
   const [showVoidedOwnerBills, setShowVoidedOwnerBills] = useState(false);
   const [showVoidedTenantBills, setShowVoidedTenantBills] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ type: "owner" | "tenant"; id: string; description: string } | null>(null);
-  const [newBill, setNewBill] = useState<{ propertyId: string; month: number; year: number; feePercent: string; feeAmount: string; category: string }>({
+  const [newBill, setNewBill] = useState<{ propertyId: string; ownerId: string; month: number; year: number; feePercent: string; feeAmount: string; category: string; dueDate: string; description: string }>({
     propertyId: "",
+    ownerId: "",
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
     feePercent: "",
     feeAmount: "",
     category: "pm_fee",
+    dueDate: "",
+    description: "",
   });
   // Tenant bill filters
   const [tenantBillPropertyFilter, setTenantBillPropertyFilter] = useState("");
   const [tenantBillStatusFilter, setTenantBillStatusFilter] = useState("");
+  // Owner bill filters
+  const [ownerBillPropertyFilter, setOwnerBillPropertyFilter] = useState("");
+  const [ownerBillStatusFilter, setOwnerBillStatusFilter] = useState("");
   const [tenantBill, setTenantBill] = useState({
     propertyId: "",
     tenantId: "",
@@ -106,12 +121,37 @@ export default function AdminBilling() {
   });
 
   // Filter out voided bills for totals calculation
+  // Only include bills in "Balance due" if due date has elapsed (is today or past)
   const totals = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const activeBills = bills.filter((b) => b.status !== "voided");
-    const due = activeBills.filter((b) => b.status === "due" || b.status === "overdue").reduce((s, b) => s + (b.amount || 0), 0);
+    const due = activeBills
+      .filter((b) => {
+        if (b.status !== "due" && b.status !== "overdue") return false;
+        // Only count as "due" if dueDate has elapsed or is not set
+        const dueDate = parseDateOnly(b.dueDate);
+        if (!dueDate) return true; // No due date = count it
+        return dueDate <= today;
+      })
+      .reduce((s, b) => s + (b.amount || 0), 0);
     const paid = activeBills.filter((b) => b.status === "paid").reduce((s, b) => s + (b.amount || 0), 0);
     return { due, paid };
   }, [bills]);
+
+  // Filter owner bills by property and status
+  const displayedOwnerBills = useMemo(() => {
+    return bills.filter((bill) => {
+      // Voided filter
+      if (!showVoidedOwnerBills && bill.status === "voided") return false;
+      // Property filter
+      if (ownerBillPropertyFilter && bill.propertyId !== ownerBillPropertyFilter) return false;
+      // Status filter
+      if (ownerBillStatusFilter && bill.status !== ownerBillStatusFilter) return false;
+      return true;
+    });
+  }, [bills, showVoidedOwnerBills, ownerBillPropertyFilter, ownerBillStatusFilter]);
 
   const loadBills = async (includeVoided = false) => {
     try {
@@ -158,7 +198,7 @@ export default function AdminBilling() {
         if (u?.id) emailMap.set(u.id, u.email || "");
       });
 
-      const options: TenantOption[] = (propsData || [])
+      const tenants: TenantOption[] = (propsData || [])
         .filter((row: any) => row.role === "tenant")
         .map((row: any) => ({
           userId: row.user_id,
@@ -167,7 +207,17 @@ export default function AdminBilling() {
           propertyAddress: row.properties?.address || "",
         }));
 
-      setTenantOptions(options);
+      const owners: OwnerOption[] = (propsData || [])
+        .filter((row: any) => row.role === "owner")
+        .map((row: any) => ({
+          userId: row.user_id,
+          email: emailMap.get(row.user_id) || "",
+          propertyId: row.property_id,
+          propertyAddress: row.properties?.address || "",
+        }));
+
+      setTenantOptions(tenants);
+      setOwnerOptions(owners);
     } catch (err: any) {
       setTenantBillError(err.message || "Failed to load tenant options");
     }
@@ -202,11 +252,14 @@ export default function AdminBilling() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId: newBill.propertyId,
+          ownerId: newBill.ownerId || undefined,
           month: newBill.month,
           year: newBill.year,
           feePercent: newBill.feePercent || undefined,
           feeAmount: newBill.feeAmount || undefined,
           category: newBill.category,
+          dueDate: newBill.dueDate || undefined,
+          description: newBill.description || undefined,
         }),
       });
       const data = await res.json();
@@ -240,6 +293,17 @@ export default function AdminBilling() {
     return tenantOptions.filter((t) => t.propertyId === tenantBill.propertyId);
   }, [tenantOptions, tenantBill.propertyId]);
 
+  // Owners for the selected property in Create Owner Bill
+  const filteredOwners = useMemo(() => {
+    if (!newBill.propertyId) return [];
+    return ownerOptions.filter((o) => o.propertyId === newBill.propertyId);
+  }, [ownerOptions, newBill.propertyId]);
+
+  // Helper to get owners for a specific property (used in edit table)
+  const getOwnersForProperty = (propertyId: string) => {
+    return ownerOptions.filter((o) => o.propertyId === propertyId);
+  };
+
   // Show ALL bills (including paid) so admin can void/delete any bill
   // Apply property and status filters
   const displayedTenantBills = useMemo(() => {
@@ -261,6 +325,19 @@ export default function AdminBilling() {
       setTenantBill((prev) => ({ ...prev, tenantId: "" }));
     }
   }, [filteredTenants, tenantBill.propertyId, tenantBill.tenantId]);
+
+  // Auto-select first owner when property changes for Create Owner Bill
+  useEffect(() => {
+    if (!newBill.propertyId) {
+      setNewBill((prev) => ({ ...prev, ownerId: "" }));
+      return;
+    }
+    const stillValid = filteredOwners.some((o) => o.userId === newBill.ownerId);
+    if (!stillValid) {
+      // Auto-select first owner if available
+      setNewBill((prev) => ({ ...prev, ownerId: filteredOwners[0]?.userId || "" }));
+    }
+  }, [filteredOwners, newBill.propertyId]);
 
   const handleCreateTenantBill = async () => {
     if (!tenantBill.propertyId || !tenantBill.tenantId) {
@@ -316,6 +393,7 @@ export default function AdminBilling() {
           feePercent: edits.feePercent ?? bill.feePercent,
           feeAmount: edits.feeAmount ?? bill.feeAmount,
           status: edits.status ?? bill.status,
+          ownerId: edits.ownerId,
         }),
       });
       const data = await res.json();
@@ -483,23 +561,13 @@ export default function AdminBilling() {
         </div>
       </div>
 
-      {/* Owner Bills Section */}
+      {/* Create Owner Bill Section */}
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Owner Bills</h2>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showVoidedOwnerBills}
-                onChange={(e) => setShowVoidedOwnerBills(e.target.checked)}
-                className="rounded"
-              />
-              Show voided
-            </label>
-          </div>
+        <div className="px-4 py-3 border-b border-slate-200">
+          <h2 className="text-lg font-semibold text-slate-900">Create Owner Bill</h2>
+          <p className="text-xs text-slate-500">Create a new bill for a property owner.</p>
         </div>
-        <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap gap-3 items-end">
+        <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="flex flex-col text-sm">
             <label className="text-slate-600 mb-1">Property</label>
             <select
@@ -511,6 +579,22 @@ export default function AdminBilling() {
               {properties.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.address}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Owner</label>
+            <select
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={newBill.ownerId}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, ownerId: e.target.value }))}
+              disabled={!newBill.propertyId}
+            >
+              <option value="">Select owner...</option>
+              {filteredOwners.map((o) => (
+                <option key={o.userId} value={o.userId}>
+                  {o.email || o.userId}
                 </option>
               ))}
             </select>
@@ -535,7 +619,7 @@ export default function AdminBilling() {
               type="number"
               min={1}
               max={12}
-              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-24"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
               value={newBill.month}
               onChange={(e) => setNewBill((prev) => ({ ...prev, month: Number(e.target.value) }))}
             />
@@ -544,7 +628,7 @@ export default function AdminBilling() {
             <label className="text-slate-600 mb-1">Year</label>
             <input
               type="number"
-              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-28"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
               value={newBill.year}
               onChange={(e) => setNewBill((prev) => ({ ...prev, year: Number(e.target.value) }))}
             />
@@ -554,24 +638,45 @@ export default function AdminBilling() {
             <input
               type="number"
               step="0.01"
-              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-28"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
               placeholder="e.g. 10"
               value={newBill.feePercent}
               onChange={(e) => setNewBill((prev) => ({ ...prev, feePercent: e.target.value, feeAmount: "" }))}
             />
           </div>
-          <div className="flex items-end text-sm text-slate-500 pb-2">or</div>
           <div className="flex flex-col text-sm">
-            <label className="text-slate-600 mb-1">$ Amount</label>
+            <label className="text-slate-600 mb-1">$ Amount (or)</label>
             <input
               type="number"
               step="0.01"
-              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-28"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
               placeholder="e.g. 500"
               value={newBill.feeAmount}
               onChange={(e) => setNewBill((prev) => ({ ...prev, feeAmount: e.target.value, feePercent: "" }))}
             />
           </div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Due Date</label>
+            <input
+              type="date"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={newBill.dueDate}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, dueDate: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col text-sm lg:col-span-1">
+            <label className="text-slate-600 mb-1">Description (visible to owner)</label>
+            <input
+              type="text"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              placeholder="Optional note"
+              value={newBill.description}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, description: e.target.value }))}
+            />
+          </div>
+        </div>
+        {error && <div className="px-4 pb-3 text-sm text-red-600">{error}</div>}
+        <div className="px-4 pb-4">
           <button
             onClick={handleCreate}
             disabled={loading}
@@ -580,7 +685,63 @@ export default function AdminBilling() {
             {loading ? "Saving..." : "Create bill"}
           </button>
         </div>
-        {error && <div className="px-4 py-3 text-sm text-red-600">{error}</div>}
+      </div>
+
+      {/* Owner Bills List Section */}
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mt-8">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">Owner Bills</h2>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showVoidedOwnerBills}
+                onChange={(e) => setShowVoidedOwnerBills(e.target.checked)}
+                className="rounded"
+              />
+              Show voided
+            </label>
+          </div>
+        </div>
+        {/* Filters */}
+        <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap gap-3 items-center bg-slate-50">
+          <span className="text-xs text-slate-600 font-medium">Filters:</span>
+          <select
+            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+            value={ownerBillPropertyFilter}
+            onChange={(e) => setOwnerBillPropertyFilter(e.target.value)}
+          >
+            <option value="">All Properties</option>
+            {properties.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.address}
+              </option>
+            ))}
+          </select>
+          <select
+            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+            value={ownerBillStatusFilter}
+            onChange={(e) => setOwnerBillStatusFilter(e.target.value)}
+          >
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="due">Due</option>
+            <option value="paid">Paid</option>
+            <option value="overdue">Overdue</option>
+            <option value="voided">Voided</option>
+          </select>
+          {(ownerBillPropertyFilter || ownerBillStatusFilter) && (
+            <button
+              onClick={() => {
+                setOwnerBillPropertyFilter("");
+                setOwnerBillStatusFilter("");
+              }}
+              className="text-xs px-2 py-1 text-slate-500 hover:text-slate-700"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
@@ -595,19 +756,40 @@ export default function AdminBilling() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {bills.length === 0 ? (
+              {displayedOwnerBills.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-slate-500" colSpan={7}>
                     No owner bills found.
                   </td>
                 </tr>
               ) : (
-                bills.map((bill) => {
+                displayedOwnerBills.map((bill) => {
                   const edits = editAmounts[bill.id] || {};
                   const isVoided = bill.status === "voided";
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
-                      <td className="px-4 py-3 text-slate-900">{bill.ownerEmail}</td>
+                      <td className="px-4 py-3 text-slate-900">
+                        {isVoided ? (
+                          bill.ownerEmail
+                        ) : (
+                          <select
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white min-w-[150px]"
+                            value={edits.ownerId ?? bill.ownerId ?? ""}
+                            onChange={(e) =>
+                              setEditAmounts((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], ownerId: e.target.value },
+                              }))
+                            }
+                          >
+                            {getOwnersForProperty(bill.propertyId || "").map((o) => (
+                              <option key={o.userId} value={o.userId}>
+                                {o.email || o.userId}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-800">
                         {bill.propertyAddress || bill.property || bill.propertyId}
                       </td>
