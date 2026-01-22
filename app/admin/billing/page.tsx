@@ -84,13 +84,17 @@ export default function AdminBilling() {
   const [showVoidedOwnerBills, setShowVoidedOwnerBills] = useState(false);
   const [showVoidedTenantBills, setShowVoidedTenantBills] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ type: "owner" | "tenant"; id: string; description: string } | null>(null);
-  const [newBill, setNewBill] = useState<{ propertyId: string; month: number; year: number; feePercent: string; category: string }>({
+  const [newBill, setNewBill] = useState<{ propertyId: string; month: number; year: number; feePercent: string; feeAmount: string; category: string }>({
     propertyId: "",
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
-    feePercent: "10",
+    feePercent: "",
+    feeAmount: "",
     category: "pm_fee",
   });
+  // Tenant bill filters
+  const [tenantBillPropertyFilter, setTenantBillPropertyFilter] = useState("");
+  const [tenantBillStatusFilter, setTenantBillStatusFilter] = useState("");
   const [tenantBill, setTenantBill] = useState({
     propertyId: "",
     tenantId: "",
@@ -200,7 +204,8 @@ export default function AdminBilling() {
           propertyId: newBill.propertyId,
           month: newBill.month,
           year: newBill.year,
-          feePercent: newBill.feePercent,
+          feePercent: newBill.feePercent || undefined,
+          feeAmount: newBill.feeAmount || undefined,
           category: newBill.category,
         }),
       });
@@ -236,11 +241,18 @@ export default function AdminBilling() {
   }, [tenantOptions, tenantBill.propertyId]);
 
   // Show ALL bills (including paid) so admin can void/delete any bill
-  // Only filter voided bills if toggle is off
-  const displayedTenantBills = useMemo(
-    () => tenantBills.filter((bill) => showVoidedTenantBills || bill.status !== "voided"),
-    [tenantBills, showVoidedTenantBills]
-  );
+  // Apply property and status filters
+  const displayedTenantBills = useMemo(() => {
+    return tenantBills.filter((bill) => {
+      // Voided filter
+      if (!showVoidedTenantBills && bill.status === "voided") return false;
+      // Property filter
+      if (tenantBillPropertyFilter && bill.propertyId !== tenantBillPropertyFilter) return false;
+      // Status filter
+      if (tenantBillStatusFilter && bill.status !== tenantBillStatusFilter) return false;
+      return true;
+    });
+  }, [tenantBills, showVoidedTenantBills, tenantBillPropertyFilter, tenantBillStatusFilter]);
 
   useEffect(() => {
     if (!tenantBill.propertyId) return;
@@ -543,8 +555,21 @@ export default function AdminBilling() {
               type="number"
               step="0.01"
               className="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-28"
+              placeholder="e.g. 10"
               value={newBill.feePercent}
-              onChange={(e) => setNewBill((prev) => ({ ...prev, feePercent: e.target.value }))}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, feePercent: e.target.value, feeAmount: "" }))}
+            />
+          </div>
+          <div className="flex items-end text-sm text-slate-500 pb-2">or</div>
+          <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">$ Amount</label>
+            <input
+              type="number"
+              step="0.01"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white w-28"
+              placeholder="e.g. 500"
+              value={newBill.feeAmount}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, feeAmount: e.target.value, feePercent: "" }))}
             />
           </div>
           <button
@@ -820,7 +845,7 @@ export default function AdminBilling() {
         </div>
       </div>
 
-      {/* Pending Tenant Bills Section */}
+      {/* Tenant Bills Section */}
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mt-8">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <div>
@@ -847,6 +872,45 @@ export default function AdminBilling() {
               {tenantBillsLoading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
+        </div>
+        {/* Filters */}
+        <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap gap-3 items-center bg-slate-50">
+          <span className="text-xs text-slate-600 font-medium">Filters:</span>
+          <select
+            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+            value={tenantBillPropertyFilter}
+            onChange={(e) => setTenantBillPropertyFilter(e.target.value)}
+          >
+            <option value="">All Properties</option>
+            {properties.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.address}
+              </option>
+            ))}
+          </select>
+          <select
+            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+            value={tenantBillStatusFilter}
+            onChange={(e) => setTenantBillStatusFilter(e.target.value)}
+          >
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="due">Due</option>
+            <option value="paid">Paid</option>
+            <option value="overdue">Overdue</option>
+            <option value="voided">Voided</option>
+          </select>
+          {(tenantBillPropertyFilter || tenantBillStatusFilter) && (
+            <button
+              onClick={() => {
+                setTenantBillPropertyFilter("");
+                setTenantBillStatusFilter("");
+              }}
+              className="text-xs px-2 py-1 text-slate-500 hover:text-slate-700"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
         {tenantBillsError && (
           <div className="px-4 py-3 text-sm text-red-600">{tenantBillsError}</div>
