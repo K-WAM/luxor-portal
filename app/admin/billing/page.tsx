@@ -126,7 +126,7 @@ export default function AdminBilling() {
   const [tenantInvoiceFile, setTenantInvoiceFile] = useState<File | null>(null);
   const [invoiceUploading, setInvoiceUploading] = useState<Record<string, boolean>>({});
   const [tenantInvoiceUploading, setTenantInvoiceUploading] = useState<Record<string, boolean>>({});
-  const [tenantEdits, setTenantEdits] = useState<Record<string, { paymentLinkUrl?: string }>>({});
+  const [tenantEdits, setTenantEdits] = useState<Record<string, { paymentLinkUrl?: string; billType?: string }>>({});
 
   // Filter out voided bills for totals calculation
   // Only include bills in "Balance due" if due date has elapsed (is today or past)
@@ -534,6 +534,7 @@ export default function AdminBilling() {
       setTenantBillsError("Payment link must be a valid URL.");
       return;
     }
+    const billType = edits.billType ?? bill.bill_type;
     try {
       setTenantBillsError(null);
       const res = await fetch("/api/admin/tenant-billing", {
@@ -542,6 +543,7 @@ export default function AdminBilling() {
         body: JSON.stringify({
           id: bill.id,
           paymentLinkUrl: paymentLinkUrl || null,
+          billType,
         }),
       });
       const data = await res.json();
@@ -1366,8 +1368,34 @@ export default function AdminBilling() {
                         {formatDateOnly(bill.due_date) || "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-700">
-                        {TENANT_BILL_TYPES.find((t) => t.value === bill.bill_type)?.label || bill.bill_type}
-                        {bill.description ? ` - ${bill.description}` : ""}
+                        {isVoided ? (
+                          <>
+                            {TENANT_BILL_TYPES.find((t) => t.value === bill.bill_type)?.label || bill.bill_type}
+                            {bill.description ? ` - ${bill.description}` : ""}
+                          </>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            <select
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                              value={tenantEdits[bill.id]?.billType ?? bill.bill_type}
+                              onChange={(e) =>
+                                setTenantEdits((prev) => ({
+                                  ...prev,
+                                  [bill.id]: { ...prev[bill.id], billType: e.target.value },
+                                }))
+                              }
+                            >
+                              {TENANT_BILL_TYPES.map((type) => (
+                                <option key={type.value} value={type.value}>
+                                  {type.label}
+                                </option>
+                              ))}
+                            </select>
+                            {bill.description ? (
+                              <span className="text-[11px] text-slate-500">{bill.description}</span>
+                            ) : null}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-900">
                         <span className={isVoided ? "line-through" : ""}>
