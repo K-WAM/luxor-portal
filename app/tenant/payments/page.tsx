@@ -350,10 +350,7 @@ export default function TenantPayments() {
               </div>
               <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                 <div className="text-sm font-semibold text-gray-900">Card / ACH</div>
-                <div className="text-sm text-gray-700 mt-1">Coming soon.</div>
-                <div className="text-xs text-gray-500 mt-2">
-                  You can still use Zelle above while we enable online card/ACH checkout.
-                </div>
+                <div className="text-sm text-gray-700 mt-1">Use Stripe payment link on invoice.</div>
               </div>
             </div>
           </div>

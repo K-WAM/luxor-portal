@@ -93,11 +93,9 @@ export default function AdminBilling() {
   const [showVoidedOwnerBills, setShowVoidedOwnerBills] = useState(false);
   const [showVoidedTenantBills, setShowVoidedTenantBills] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ type: "owner" | "tenant"; id: string; description: string } | null>(null);
-  const [newBill, setNewBill] = useState<{ propertyId: string; ownerId: string; month: number; year: number; feePercent: string; feeAmount: string; category: string; dueDate: string; description: string }>({
+  const [newBill, setNewBill] = useState<{ propertyId: string; ownerId: string; feePercent: string; feeAmount: string; category: string; dueDate: string; description: string }>({
     propertyId: "",
     ownerId: "",
-    month: new Date().getMonth() + 1,
-    year: new Date().getFullYear(),
     feePercent: "",
     feeAmount: "",
     category: "pm_fee",
@@ -253,8 +251,6 @@ export default function AdminBilling() {
         body: JSON.stringify({
           propertyId: newBill.propertyId,
           ownerId: newBill.ownerId || undefined,
-          month: newBill.month,
-          year: newBill.year,
           feePercent: newBill.feePercent || undefined,
           feeAmount: newBill.feeAmount || undefined,
           category: newBill.category,
@@ -613,26 +609,6 @@ export default function AdminBilling() {
                 </option>
               ))}
             </select>
-          </div>
-          <div className="flex flex-col text-sm">
-            <label className="text-slate-600 mb-1">Month</label>
-            <input
-              type="number"
-              min={1}
-              max={12}
-              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-              value={newBill.month}
-              onChange={(e) => setNewBill((prev) => ({ ...prev, month: Number(e.target.value) }))}
-            />
-          </div>
-          <div className="flex flex-col text-sm">
-            <label className="text-slate-600 mb-1">Year</label>
-            <input
-              type="number"
-              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-              value={newBill.year}
-              onChange={(e) => setNewBill((prev) => ({ ...prev, year: Number(e.target.value) }))}
-            />
           </div>
           <div className="flex flex-col text-sm">
             <label className="text-slate-600 mb-1">% of rent</label>

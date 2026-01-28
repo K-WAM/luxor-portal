@@ -110,8 +110,8 @@ export async function POST(request: NextRequest) {
       category,
     } = body || {};
 
-    if (!propertyId || !month || !year) {
-      return NextResponse.json({ error: "propertyId, month, and year are required" }, { status: 400 });
+    if (!propertyId) {
+      return NextResponse.json({ error: "propertyId is required" }, { status: 400 });
     }
 
     // Validate category if provided
@@ -153,25 +153,42 @@ export async function POST(request: NextRequest) {
     const computed = override !== null ? override : percent !== null ? (baseRent || 0) * (percent / 100) : 0;
 
     const normalizedDueDate = toDateOnlyString(dueDate);
+
+    // Derive month/year from dueDate if provided, otherwise use current date
+    let billMonth: number;
+    let billYear: number;
+    if (normalizedDueDate) {
+      const dueDateObj = new Date(normalizedDueDate + "T00:00:00Z");
+      billMonth = dueDateObj.getUTCMonth() + 1;
+      billYear = dueDateObj.getUTCFullYear();
+    } else if (month && year) {
+      // Fallback to provided month/year (for backwards compatibility)
+      billMonth = month;
+      billYear = year;
+    } else {
+      // Default to current month/year
+      const now = new Date();
+      billMonth = now.getMonth() + 1;
+      billYear = now.getFullYear();
+    }
+
+    // Always INSERT a new bill (not upsert) to allow multiple bills per month
     const { data, error } = await supabaseAdmin
       .from("billing_invoices")
-      .upsert(
-        {
-          property_id: propertyId,
-          owner_id: ownerId,
-          month,
-          year,
-          base_rent: baseRent,
-          fee_percent: percent,
-          fee_amount: override,
-          total_due: computed,
-          description: description || "",
-          due_date: normalizedDueDate,
-          status: "due",
-          category: category || "pm_fee",
-        },
-        { onConflict: "property_id,owner_id,month,year" }
-      )
+      .insert({
+        property_id: propertyId,
+        owner_id: ownerId,
+        month: billMonth,
+        year: billYear,
+        base_rent: baseRent,
+        fee_percent: percent,
+        fee_amount: override,
+        total_due: computed,
+        description: description || "",
+        due_date: normalizedDueDate,
+        status: "due",
+        category: category || "pm_fee",
+      })
       .select()
       .single();
 
