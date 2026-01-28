@@ -126,7 +126,7 @@ export default function AdminBilling() {
   const [tenantInvoiceFile, setTenantInvoiceFile] = useState<File | null>(null);
   const [invoiceUploading, setInvoiceUploading] = useState<Record<string, boolean>>({});
   const [tenantInvoiceUploading, setTenantInvoiceUploading] = useState<Record<string, boolean>>({});
-  const [tenantEdits, setTenantEdits] = useState<Record<string, { paymentLinkUrl?: string; billType?: string }>>({});
+  const [tenantEdits, setTenantEdits] = useState<Record<string, { paymentLinkUrl?: string; billType?: string; amount?: string; dueDate?: string; status?: string; description?: string; tenantId?: string; propertyId?: string }>>({});
 
   // Filter out voided bills for totals calculation
   // Only include bills in "Balance due" if due date has elapsed (is today or past)
@@ -535,6 +535,12 @@ export default function AdminBilling() {
       return;
     }
     const billType = edits.billType ?? bill.bill_type;
+    const amount = edits.amount ?? String(bill.amount ?? "");
+    const dueDate = edits.dueDate ?? (bill.due_date ? bill.due_date.split("T")[0] : "");
+    const status = edits.status ?? bill.status;
+    const description = edits.description ?? (bill.description || "");
+    const tenantId = edits.tenantId ?? bill.tenantId;
+    const propertyId = edits.propertyId ?? bill.propertyId;
     try {
       setTenantBillsError(null);
       const res = await fetch("/api/admin/tenant-billing", {
@@ -544,6 +550,12 @@ export default function AdminBilling() {
           id: bill.id,
           paymentLinkUrl: paymentLinkUrl || null,
           billType,
+          amount,
+          dueDate,
+          status,
+          description,
+          tenantId,
+          propertyId,
         }),
       });
       const data = await res.json();
@@ -1362,10 +1374,66 @@ export default function AdminBilling() {
                   const isVoided = bill.status === "voided";
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
-                      <td className="px-4 py-3 text-slate-900">{bill.tenantEmail || "Tenant"}</td>
-                      <td className="px-4 py-3 text-slate-700">{bill.propertyAddress || bill.propertyId}</td>
+                      <td className="px-4 py-3 text-slate-900">
+                        {isVoided ? (
+                          bill.tenantEmail || "Tenant"
+                        ) : (
+                          <select
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white min-w-[200px]"
+                            value={tenantEdits[bill.id]?.tenantId ?? bill.tenantId}
+                            onChange={(e) =>
+                              setTenantEdits((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], tenantId: e.target.value },
+                              }))
+                            }
+                          >
+                            {tenantOptions.map((t) => (
+                              <option key={`${t.userId}-${t.propertyId}`} value={t.userId}>
+                                {t.email || "Tenant"} {t.propertyAddress ? `- ${t.propertyAddress}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-700">
-                        {formatDateOnly(bill.due_date) || "-"}
+                        {isVoided ? (
+                          bill.propertyAddress || bill.propertyId
+                        ) : (
+                          <select
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white min-w-[200px]"
+                            value={tenantEdits[bill.id]?.propertyId ?? bill.propertyId}
+                            onChange={(e) =>
+                              setTenantEdits((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], propertyId: e.target.value },
+                              }))
+                            }
+                          >
+                            {properties.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.address}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {isVoided ? (
+                          formatDateOnly(bill.due_date) || "-"
+                        ) : (
+                          <input
+                            type="date"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-32"
+                            value={tenantEdits[bill.id]?.dueDate ?? (bill.due_date ? bill.due_date.split("T")[0] : "")}
+                            onChange={(e) =>
+                              setTenantEdits((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], dueDate: e.target.value },
+                              }))
+                            }
+                          />
+                        )}
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         {isVoided ? (
@@ -1391,16 +1459,38 @@ export default function AdminBilling() {
                                 </option>
                               ))}
                             </select>
-                            {bill.description ? (
-                              <span className="text-[11px] text-slate-500">{bill.description}</span>
-                            ) : null}
+                            <input
+                              type="text"
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                              placeholder="Description"
+                              value={tenantEdits[bill.id]?.description ?? (bill.description || "")}
+                              onChange={(e) =>
+                                setTenantEdits((prev) => ({
+                                  ...prev,
+                                  [bill.id]: { ...prev[bill.id], description: e.target.value },
+                                }))
+                              }
+                            />
                           </div>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-900">
-                        <span className={isVoided ? "line-through" : ""}>
-                          ${Number(bill.amount || 0).toFixed(2)}
-                        </span>
+                        {isVoided ? (
+                          <span className="line-through">${Number(bill.amount || 0).toFixed(2)}</span>
+                        ) : (
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-24 text-right"
+                            value={tenantEdits[bill.id]?.amount ?? String(bill.amount ?? "")}
+                            onChange={(e) =>
+                              setTenantEdits((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], amount: e.target.value },
+                              }))
+                            }
+                          />
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {isVoided ? (
@@ -1413,9 +1503,22 @@ export default function AdminBilling() {
                             )}
                           </div>
                         ) : (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(bill.status)}`}>
-                            {bill.status}
-                          </span>
+                          <select
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                            value={tenantEdits[bill.id]?.status ?? bill.status}
+                            onChange={(e) =>
+                              setTenantEdits((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], status: e.target.value },
+                              }))
+                            }
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="due">Due</option>
+                            <option value="paid">Paid</option>
+                            <option value="overdue">Overdue</option>
+                            <option value="voided">Voided</option>
+                          </select>
                         )}
                       </td>
                       <td className="px-4 py-3 text-slate-700">

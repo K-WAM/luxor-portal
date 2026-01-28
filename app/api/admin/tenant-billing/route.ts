@@ -205,6 +205,8 @@ export async function PATCH(request: Request) {
       voidReason,
       paymentLinkUrl,
       invoiceUrl,
+      tenantId,
+      propertyId,
     } = body || {};
 
     if (!id) {
@@ -266,6 +268,14 @@ export async function PATCH(request: Request) {
 
     if (description !== undefined) {
       updates.description = description ? String(description).trim() : null;
+    }
+
+    if (tenantId !== undefined) {
+      updates.tenant_id = tenantId || null;
+    }
+
+    if (propertyId !== undefined) {
+      updates.property_id = propertyId || null;
     }
 
     if (dueDate !== undefined) {
