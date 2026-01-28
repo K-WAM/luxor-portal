@@ -119,7 +119,7 @@ export default function OwnerBilling() {
         </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
           <div className="text-xs uppercase text-slate-500 mb-1">Notes</div>
-          <div className="text-sm text-slate-700">Payment options: Zelle (connect at billsfordev.com), or credit card/ACH through Stripe payment link on invoice.</div>
+          <div className="text-sm text-slate-700">Payment options: Zelle (Connect@luxordev.com), or Credit Card/ACH through Stripe Payment Link on invoice.</div>
         </div>
       </div>
 
