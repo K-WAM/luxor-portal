@@ -14,6 +14,7 @@ type BillRow = {
   dueDate: string;
   status: "due" | "paid" | "overdue" | "pending" | "voided";
   invoiceUrl?: string;
+  paymentLinkUrl?: string | null;
   feePercent?: number | null;
   feeAmount?: number | null;
   propertyId?: string;
@@ -50,6 +51,8 @@ type TenantBillRow = {
   status: string;
   month: number;
   year: number;
+  invoiceUrl?: string | null;
+  paymentLinkUrl?: string | null;
   voidedAt?: string;
   voidedBy?: string;
   voidedReason?: string;
@@ -81,7 +84,7 @@ export default function AdminBilling() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editAmounts, setEditAmounts] = useState<Record<string, { feePercent?: string; feeAmount?: string; status?: string; ownerId?: string; dueDate?: string }>>({});
+  const [editAmounts, setEditAmounts] = useState<Record<string, { feePercent?: string; feeAmount?: string; status?: string; ownerId?: string; dueDate?: string; paymentLinkUrl?: string }>>({});
   const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
   const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([]);
@@ -93,7 +96,7 @@ export default function AdminBilling() {
   const [showVoidedOwnerBills, setShowVoidedOwnerBills] = useState(false);
   const [showVoidedTenantBills, setShowVoidedTenantBills] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ type: "owner" | "tenant"; id: string; description: string } | null>(null);
-  const [newBill, setNewBill] = useState<{ propertyId: string; ownerId: string; feePercent: string; feeAmount: string; category: string; dueDate: string; description: string }>({
+  const [newBill, setNewBill] = useState<{ propertyId: string; ownerId: string; feePercent: string; feeAmount: string; category: string; dueDate: string; description: string; paymentLinkUrl: string }>({
     propertyId: "",
     ownerId: "",
     feePercent: "",
@@ -101,6 +104,7 @@ export default function AdminBilling() {
     category: "pm_fee",
     dueDate: "",
     description: "",
+    paymentLinkUrl: "",
   });
   // Tenant bill filters
   const [tenantBillPropertyFilter, setTenantBillPropertyFilter] = useState("");
@@ -116,7 +120,13 @@ export default function AdminBilling() {
     billType: "rent",
     description: "",
     notifyTenant: true,
+    paymentLinkUrl: "",
   });
+  const [ownerInvoiceFile, setOwnerInvoiceFile] = useState<File | null>(null);
+  const [tenantInvoiceFile, setTenantInvoiceFile] = useState<File | null>(null);
+  const [invoiceUploading, setInvoiceUploading] = useState<Record<string, boolean>>({});
+  const [tenantInvoiceUploading, setTenantInvoiceUploading] = useState<Record<string, boolean>>({});
+  const [tenantEdits, setTenantEdits] = useState<Record<string, { paymentLinkUrl?: string }>>({});
 
   // Filter out voided bills for totals calculation
   // Only include bills in "Balance due" if due date has elapsed (is today or past)
@@ -242,6 +252,10 @@ export default function AdminBilling() {
       setError("Select a property for the bill");
       return;
     }
+    if (!isValidUrl(newBill.paymentLinkUrl)) {
+      setError("Payment link must be a valid URL.");
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -256,10 +270,15 @@ export default function AdminBilling() {
           category: newBill.category,
           dueDate: newBill.dueDate || undefined,
           description: newBill.description || undefined,
+          paymentLinkUrl: newBill.paymentLinkUrl || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create bill");
+      if (ownerInvoiceFile) {
+        await uploadOwnerInvoice(data.id, ownerInvoiceFile);
+        setOwnerInvoiceFile(null);
+      }
       await loadBills(showVoidedOwnerBills);
     } catch (err: any) {
       setError(err.message || "Failed to create bill");
@@ -344,6 +363,10 @@ export default function AdminBilling() {
       setTenantBillError("Amount and due date are required.");
       return;
     }
+    if (!isValidUrl(tenantBill.paymentLinkUrl)) {
+      setTenantBillError("Payment link must be a valid URL.");
+      return;
+    }
     try {
       setLoading(true);
       setTenantBillError(null);
@@ -359,15 +382,21 @@ export default function AdminBilling() {
           dueDate: tenantBill.dueDate,
           description: tenantBill.description,
           notifyTenant: tenantBill.notifyTenant,
+          paymentLinkUrl: tenantBill.paymentLinkUrl || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create tenant bill");
+      if (tenantInvoiceFile && data?.bill?.id) {
+        await uploadTenantInvoice(data.bill.id, tenantInvoiceFile);
+        setTenantInvoiceFile(null);
+      }
       setTenantBillSuccess("Tenant bill created.");
       setTenantBill((prev) => ({
         ...prev,
         amount: "",
         description: "",
+        paymentLinkUrl: "",
       }));
       await loadTenantBills(showVoidedTenantBills);
     } catch (err: any) {
@@ -379,6 +408,11 @@ export default function AdminBilling() {
 
   const handleSave = async (bill: BillRow) => {
     const edits = editAmounts[bill.id] || {};
+    const paymentLinkUrl = edits.paymentLinkUrl ?? bill.paymentLinkUrl ?? "";
+    if (!isValidUrl(paymentLinkUrl)) {
+      setError("Payment link must be a valid URL.");
+      return;
+    }
     try {
       setLoading(true);
       const res = await fetch("/api/admin/billing", {
@@ -391,6 +425,7 @@ export default function AdminBilling() {
           status: edits.status ?? bill.status,
           ownerId: edits.ownerId,
           dueDate: edits.dueDate,
+          paymentLinkUrl: paymentLinkUrl || null,
         }),
       });
       const data = await res.json();
@@ -492,6 +527,32 @@ export default function AdminBilling() {
     }
   };
 
+  const handleSaveTenantBill = async (bill: TenantBillRow) => {
+    const edits = tenantEdits[bill.id] || {};
+    const paymentLinkUrl = edits.paymentLinkUrl ?? bill.paymentLinkUrl ?? "";
+    if (!isValidUrl(paymentLinkUrl)) {
+      setTenantBillsError("Payment link must be a valid URL.");
+      return;
+    }
+    try {
+      setTenantBillsError(null);
+      const res = await fetch("/api/admin/tenant-billing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: bill.id,
+          paymentLinkUrl: paymentLinkUrl || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update tenant bill");
+      setTenantEdits((prev) => ({ ...prev, [bill.id]: {} }));
+      await loadTenantBills(showVoidedTenantBills);
+    } catch (err: any) {
+      setTenantBillsError(err.message || "Failed to update tenant bill");
+    }
+  };
+
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case "paid":
@@ -504,6 +565,80 @@ export default function AdminBilling() {
         return "bg-gray-200 text-gray-600 line-through";
       default:
         return "bg-slate-100 text-slate-700";
+    }
+  };
+
+  const isValidUrl = (value: string) => {
+    if (!value) return true;
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
+
+  const uploadOwnerInvoice = async (billId: string, file: File) => {
+    const key = billId;
+    setInvoiceUploading((prev) => ({ ...prev, [key]: true }));
+    try {
+      const formData = new FormData();
+      formData.append("billId", billId);
+      formData.append("file", file);
+      const res = await fetch("/api/admin/billing/invoice", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload invoice");
+      setBills((prev) => prev.map((b) => (b.id === billId ? { ...b, invoiceUrl: data.invoiceUrl } : b)));
+    } catch (err: any) {
+      setError(err.message || "Failed to upload invoice");
+    } finally {
+      setInvoiceUploading((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const removeOwnerInvoice = async (billId: string) => {
+    try {
+      setInvoiceUploading((prev) => ({ ...prev, [billId]: true }));
+      const res = await fetch(`/api/admin/billing/invoice?billId=${billId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to remove invoice");
+      setBills((prev) => prev.map((b) => (b.id === billId ? { ...b, invoiceUrl: undefined } : b)));
+    } catch (err: any) {
+      setError(err.message || "Failed to remove invoice");
+    } finally {
+      setInvoiceUploading((prev) => ({ ...prev, [billId]: false }));
+    }
+  };
+
+  const uploadTenantInvoice = async (billId: string, file: File) => {
+    const key = billId;
+    setTenantInvoiceUploading((prev) => ({ ...prev, [key]: true }));
+    try {
+      const formData = new FormData();
+      formData.append("billId", billId);
+      formData.append("file", file);
+      const res = await fetch("/api/admin/tenant-billing/invoice", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload invoice");
+      setTenantBills((prev) => prev.map((b) => (b.id === billId ? { ...b, invoiceUrl: data.invoiceUrl } : b)));
+    } catch (err: any) {
+      setTenantBillsError(err.message || "Failed to upload invoice");
+    } finally {
+      setTenantInvoiceUploading((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const removeTenantInvoice = async (billId: string) => {
+    try {
+      setTenantInvoiceUploading((prev) => ({ ...prev, [billId]: true }));
+      const res = await fetch(`/api/admin/tenant-billing/invoice?billId=${billId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to remove invoice");
+      setTenantBills((prev) => prev.map((b) => (b.id === billId ? { ...b, invoiceUrl: undefined } : b)));
+    } catch (err: any) {
+      setTenantBillsError(err.message || "Failed to remove invoice");
+    } finally {
+      setTenantInvoiceUploading((prev) => ({ ...prev, [billId]: false }));
     }
   };
 
@@ -651,6 +786,28 @@ export default function AdminBilling() {
               onChange={(e) => setNewBill((prev) => ({ ...prev, description: e.target.value }))}
             />
           </div>
+          <div className="flex flex-col text-sm lg:col-span-2">
+            <label className="text-slate-600 mb-1">Payment Link (optional)</label>
+            <input
+              type="url"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              placeholder="https://"
+              value={newBill.paymentLinkUrl}
+              onChange={(e) => setNewBill((prev) => ({ ...prev, paymentLinkUrl: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col text-sm lg:col-span-2">
+            <label className="text-slate-600 mb-1">Invoice PDF (optional)</label>
+            <input
+              type="file"
+              accept="application/pdf"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              onChange={(e) => setOwnerInvoiceFile(e.target.files?.[0] || null)}
+            />
+            {ownerInvoiceFile && (
+              <span className="text-xs text-slate-500 mt-1">{ownerInvoiceFile.name}</span>
+            )}
+          </div>
         </div>
         {error && <div className="px-4 pb-3 text-sm text-red-600">{error}</div>}
         <div className="px-4 pb-4">
@@ -729,13 +886,15 @@ export default function AdminBilling() {
                 <th className="px-4 py-3 text-right">Amount</th>
                 <th className="px-4 py-3 text-left">Due</th>
                 <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left">Payment Link</th>
+                <th className="px-4 py-3 text-left">Invoice PDF</th>
                 <th className="px-4 py-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {displayedOwnerBills.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-slate-500" colSpan={7}>
+                  <td className="px-4 py-4 text-slate-500" colSpan={9}>
                     No owner bills found.
                   </td>
                 </tr>
@@ -852,6 +1011,68 @@ export default function AdminBilling() {
                             <option value="pending">Pending</option>
                           </select>
                         )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {isVoided ? (
+                          <span className="text-xs text-slate-400">-</span>
+                        ) : (
+                          <input
+                            type="url"
+                            placeholder="https://"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-56"
+                            value={edits.paymentLinkUrl ?? bill.paymentLinkUrl ?? ""}
+                            onChange={(e) =>
+                              setEditAmounts((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], paymentLinkUrl: e.target.value },
+                              }))
+                            }
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          {bill.invoiceUrl ? (
+                            <a
+                              href={bill.invoiceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-600 hover:text-blue-700"
+                            >
+                              Invoice PDF
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-500">Not uploaded</span>
+                          )}
+                          {!isVoided && (
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer">
+                                {bill.invoiceUrl ? "Replace" : "Upload"}
+                                <input
+                                  type="file"
+                                  accept="application/pdf"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) uploadOwnerInvoice(bill.id, file);
+                                    e.currentTarget.value = "";
+                                  }}
+                                  disabled={!!invoiceUploading[bill.id]}
+                                />
+                              </label>
+                              {bill.invoiceUrl && (
+                                <button
+                                  type="button"
+                                  className="text-xs px-2 py-1 rounded border border-red-200 text-red-700 hover:bg-red-50"
+                                  onClick={() => removeOwnerInvoice(bill.id)}
+                                  disabled={!!invoiceUploading[bill.id]}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2 flex-wrap">
@@ -990,6 +1211,30 @@ export default function AdminBilling() {
               placeholder="Optional details for the tenant."
             />
           </div>
+          <div className="flex flex-col text-sm md:col-span-2">
+            <label className="text-slate-600 mb-1">Payment Link (optional)</label>
+            <input
+              type="url"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={tenantBill.paymentLinkUrl}
+              onChange={(e) =>
+                setTenantBill((prev) => ({ ...prev, paymentLinkUrl: e.target.value }))
+              }
+              placeholder="https://"
+            />
+          </div>
+          <div className="flex flex-col text-sm md:col-span-2">
+            <label className="text-slate-600 mb-1">Invoice PDF (optional)</label>
+            <input
+              type="file"
+              accept="application/pdf"
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              onChange={(e) => setTenantInvoiceFile(e.target.files?.[0] || null)}
+            />
+            {tenantInvoiceFile && (
+              <span className="text-xs text-slate-500 mt-1">{tenantInvoiceFile.name}</span>
+            )}
+          </div>
           <label className="flex items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
@@ -1098,13 +1343,15 @@ export default function AdminBilling() {
                 <th className="px-4 py-3 text-left">Type</th>
                 <th className="px-4 py-3 text-right">Amount</th>
                 <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left">Payment Link</th>
+                <th className="px-4 py-3 text-left">Invoice PDF</th>
                 <th className="px-4 py-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {displayedTenantBills.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-slate-500" colSpan={7}>
+                  <td className="px-4 py-4 text-slate-500" colSpan={9}>
                     No tenant bills found.
                   </td>
                 </tr>
@@ -1116,7 +1363,7 @@ export default function AdminBilling() {
                       <td className="px-4 py-3 text-slate-900">{bill.tenantEmail || "Tenant"}</td>
                       <td className="px-4 py-3 text-slate-700">{bill.propertyAddress || bill.propertyId}</td>
                       <td className="px-4 py-3 text-slate-700">
-                        {formatDateOnly(bill.due_date) || "—"}
+                        {formatDateOnly(bill.due_date) || "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         {TENANT_BILL_TYPES.find((t) => t.value === bill.bill_type)?.label || bill.bill_type}
@@ -1143,6 +1390,68 @@ export default function AdminBilling() {
                           </span>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {isVoided ? (
+                          <span className="text-xs text-slate-400">-</span>
+                        ) : (
+                          <input
+                            type="url"
+                            placeholder="https://"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-56"
+                            value={tenantEdits[bill.id]?.paymentLinkUrl ?? bill.paymentLinkUrl ?? ""}
+                            onChange={(e) =>
+                              setTenantEdits((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], paymentLinkUrl: e.target.value },
+                              }))
+                            }
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          {bill.invoiceUrl ? (
+                            <a
+                              href={bill.invoiceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-600 hover:text-blue-700"
+                            >
+                              Invoice PDF
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-500">Not uploaded</span>
+                          )}
+                          {!isVoided && (
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer">
+                                {bill.invoiceUrl ? "Replace" : "Upload"}
+                                <input
+                                  type="file"
+                                  accept="application/pdf"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) uploadTenantInvoice(bill.id, file);
+                                    e.currentTarget.value = "";
+                                  }}
+                                  disabled={!!tenantInvoiceUploading[bill.id]}
+                                />
+                              </label>
+                              {bill.invoiceUrl && (
+                                <button
+                                  type="button"
+                                  className="text-xs px-2 py-1 rounded border border-red-200 text-red-700 hover:bg-red-50"
+                                  onClick={() => removeTenantInvoice(bill.id)}
+                                  disabled={!!tenantInvoiceUploading[bill.id]}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2 flex-wrap">
                           {!isVoided && (
@@ -1158,6 +1467,12 @@ export default function AdminBilling() {
                                 className="text-xs px-2 py-1 rounded bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"
                               >
                                 Void
+                              </button>
+                              <button
+                                onClick={() => handleSaveTenantBill(bill)}
+                                className="text-xs px-2 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+                              >
+                                Save
                               </button>
                             </>
                           )}

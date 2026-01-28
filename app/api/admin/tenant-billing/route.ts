@@ -38,6 +38,8 @@ export async function GET(request: Request) {
         due_date,
         status,
         notify_tenant,
+        invoice_url,
+        payment_link_url,
         month,
         year,
         created_at,
@@ -83,6 +85,8 @@ export async function GET(request: Request) {
       due_date: bill.due_date,
       status: bill.status,
       notify_tenant: bill.notify_tenant,
+      invoiceUrl: bill.invoice_url,
+      paymentLinkUrl: bill.payment_link_url,
       month: bill.month,
       year: bill.year,
       created_at: bill.created_at,
@@ -117,6 +121,7 @@ export async function POST(request: Request) {
       dueDate,
       description,
       notifyTenant,
+      paymentLinkUrl,
     } = body || {};
 
     if (!propertyId || !tenantId || !billType || !dueDate) {
@@ -161,6 +166,7 @@ export async function POST(request: Request) {
         due_date: normalizedDueDate,
         status: "due",
         notify_tenant: !!notifyTenant,
+        payment_link_url: paymentLinkUrl || null,
         month: parts.month,
         year: parts.year,
       })
@@ -197,6 +203,8 @@ export async function PATCH(request: Request) {
       billType,
       action,
       voidReason,
+      paymentLinkUrl,
+      invoiceUrl,
     } = body || {};
 
     if (!id) {
@@ -284,6 +292,14 @@ export async function PATCH(request: Request) {
         );
       }
       updates.bill_type = billType;
+    }
+
+    if (paymentLinkUrl !== undefined) {
+      updates.payment_link_url = paymentLinkUrl || null;
+    }
+
+    if (invoiceUrl !== undefined) {
+      updates.invoice_url = invoiceUrl || null;
     }
 
     const { data, error } = await supabaseAdmin

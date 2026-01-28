@@ -13,6 +13,7 @@ type Bill = {
   dueDate: string;
   status: "due" | "paid" | "overdue" | "pending";
   invoiceUrl?: string;
+  paymentLinkUrl?: string;
 };
 
 export default function OwnerBilling() {
@@ -60,6 +61,7 @@ export default function OwnerBilling() {
             dueDate: b.dueDate,
             status: b.status,
             invoiceUrl: b.invoiceUrl,
+            paymentLinkUrl: b.paymentLinkUrl,
           }))
         );
       } catch (err: any) {
@@ -140,7 +142,8 @@ export default function OwnerBilling() {
                 <th className="px-4 py-3 text-right">Amount</th>
                 <th className="px-4 py-3 text-left">Due</th>
                 <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Invoice</th>
+                <th className="px-4 py-3 text-left">Invoice PDF</th>
+                <th className="px-4 py-3 text-left">Payment Link</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -167,11 +170,20 @@ export default function OwnerBilling() {
                   </td>
                   <td className="px-4 py-3">
                     {bill.invoiceUrl ? (
-                      <a href={bill.invoiceUrl} className="text-blue-600 hover:text-blue-700 text-sm">
-                        View
+                      <a href={bill.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
+                        Invoice PDF
                       </a>
                     ) : (
                       <span className="text-xs text-slate-500">Not uploaded</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {bill.paymentLinkUrl ? (
+                      <a href={bill.paymentLinkUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
+                        Pay Now
+                      </a>
+                    ) : (
+                      <span className="text-xs text-slate-500">-</span>
                     )}
                   </td>
                 </tr>

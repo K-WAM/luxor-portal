@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
-import { formatMonthYearFromParts, getDateOnlyParts } from "@/lib/date-only";
+import { formatDateOnly, formatMonthYearFromParts, getDateOnlyParts } from "@/lib/date-only";
 
 type Property = {
   id: string;
@@ -22,6 +22,8 @@ type TenantBill = {
   status: string;
   month: number;
   year: number;
+  invoice_url?: string | null;
+  payment_link_url?: string | null;
 };
 
 type OwnerBilling = {
@@ -152,39 +154,33 @@ export default function TenantPayments() {
 
   const billRows = useMemo(() => {
     const filtered = bills.filter((b) => b.year === year);
-    const grouped = new Map<string, { year: number; month: number; bills: TenantBill[] }>();
-
-    filtered.forEach((bill) => {
-      const key = `${bill.year}-${bill.month}`;
-      const entry = grouped.get(key) || { year: bill.year, month: bill.month, bills: [] };
-      entry.bills.push(bill);
-      grouped.set(key, entry);
-    });
-
-    return Array.from(grouped.values())
-      .sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month))
-      .map((group) => {
-        const total = group.bills.reduce((sum, bill) => sum + (bill.amount || 0), 0);
-        const breakdown = group.bills.map((bill) => {
-          const label = BILL_TYPE_LABELS[bill.bill_type] || bill.bill_type;
-          const detail = bill.description ? ` - ${bill.description}` : "";
-          return {
-            label,
-            detail,
-            amount: bill.amount || 0,
-            status: bill.status || "due",
-          };
-        });
-        const allPaid = group.bills.every((bill) => bill.status === "paid");
-
+    return filtered
+      .map((bill) => {
+        const label = BILL_TYPE_LABELS[bill.bill_type] || bill.bill_type;
+        const detail = bill.description ? ` - ${bill.description}` : "";
         return {
-          year: group.year,
-          month: group.month,
-          monthLabel: formatMonthYearFromParts(group.year, group.month),
-          total,
-          breakdown,
-          status: allPaid ? "Paid" : "Unpaid",
+          id: bill.id,
+          year: bill.year,
+          month: bill.month,
+          monthLabel: formatMonthYearFromParts(bill.year, bill.month),
+          description: `${label}${detail}`,
+          amount: bill.amount || 0,
+          status: bill.status || "due",
+          dueDate: bill.due_date,
+          invoiceUrl: bill.invoice_url,
+          paymentLinkUrl: bill.payment_link_url,
         };
+      })
+      .sort((a, b) => {
+        const aParts = getDateOnlyParts(a.dueDate);
+        const bParts = getDateOnlyParts(b.dueDate);
+        const aDate = aParts
+          ? new Date(Date.UTC(aParts.year, aParts.month - 1, aParts.day))
+          : new Date(Date.UTC(a.year, a.month - 1, 1));
+        const bDate = bParts
+          ? new Date(Date.UTC(bParts.year, bParts.month - 1, bParts.day))
+          : new Date(Date.UTC(b.year, b.month - 1, 1));
+        return aDate.getTime() - bDate.getTime();
       });
   }, [bills, year]);
 
@@ -369,39 +365,54 @@ export default function TenantPayments() {
                     <tr className="bg-gray-50 text-left text-sm text-gray-600">
                       <th className="py-2 px-3">Month</th>
                       <th className="py-2 px-3">Description</th>
+                      <th className="py-2 px-3">Due Date</th>
                       <th className="py-2 px-3">Status</th>
-                      <th className="py-2 px-3 text-right">Rent</th>
+                      <th className="py-2 px-3 text-right">Amount</th>
+                      <th className="py-2 px-3">Invoice PDF</th>
+                      <th className="py-2 px-3">Payment Link</th>
                     </tr>
                   </thead>
                   <tbody>
                     {billRows.map((row) => (
-                      <tr key={`${row.year}-${row.month}`} className="border-t text-sm">
+                      <tr key={row.id} className="border-t text-sm">
                         <td className="py-2 px-3 font-medium">{row.monthLabel}</td>
                         <td className="py-2 px-3">
-                          <div className="text-sm text-gray-900">
-                            {row.breakdown
-                              .map((item) => `${item.label}${item.detail}`)
-                              .join(", ")}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {row.breakdown
-                              .map((item) => `${item.label}: ${formatCurrency(item.amount)}`)
-                              .join(" | ")}
-                          </div>
+                          <div className="text-sm text-gray-900">{row.description}</div>
+                        </td>
+                        <td className="py-2 px-3 text-gray-700">
+                          {formatDateOnly(row.dueDate) || "-"}
                         </td>
                         <td className="py-2 px-3">
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              row.status === "Paid"
+                              row.status === "paid"
                                 ? "bg-emerald-100 text-emerald-700"
                                 : "bg-orange-100 text-orange-700"
                             }`}
                           >
-                            {row.status}
+                            {row.status === "paid" ? "Paid" : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
                           </span>
                         </td>
                         <td className="py-2 px-3 text-right font-semibold">
-                          {formatCurrency(row.total)}
+                          {formatCurrency(row.amount)}
+                        </td>
+                        <td className="py-2 px-3">
+                          {row.invoiceUrl ? (
+                            <a href={row.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
+                              Invoice PDF
+                            </a>
+                          ) : (
+                            <span className="text-xs text-gray-500">-</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3">
+                          {row.paymentLinkUrl ? (
+                            <a href={row.paymentLinkUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
+                              Pay Now
+                            </a>
+                          ) : (
+                            <span className="text-xs text-gray-500">-</span>
+                          )}
                         </td>
                       </tr>
                     ))}

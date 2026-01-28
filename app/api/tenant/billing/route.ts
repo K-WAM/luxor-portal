@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 
     let query = supabaseAdmin
       .from("tenant_bills")
-      .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status, month, year")
+      .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status, month, year, invoice_url, payment_link_url")
       .eq("property_id", propertyId)
       // CRITICAL: Exclude voided bills from tenant view
       .neq("status", "voided");

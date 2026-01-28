@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
         due_date,
         paid_date,
         invoice_url,
+        payment_link_url,
         properties ( address )
       `
       )
@@ -79,6 +80,7 @@ export async function GET(request: NextRequest) {
         dueDate: row.due_date,
         paidDate: row.paid_date,
         invoiceUrl: row.invoice_url,
+        paymentLinkUrl: row.payment_link_url,
       })) || [];
 
     return NextResponse.json(mapped);

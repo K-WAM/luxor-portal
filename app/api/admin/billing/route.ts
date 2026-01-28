@@ -76,6 +76,7 @@ export async function GET(request: NextRequest) {
         dueDate: row.due_date,
         paidDate: row.paid_date,
         invoiceUrl: row.invoice_url,
+        paymentLinkUrl: row.payment_link_url,
         category: row.category,
         voidedAt: row.voided_at,
         voidedBy: row.voided_by,
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
       description,
       dueDate,
       category,
+      paymentLinkUrl,
     } = body || {};
 
     if (!propertyId) {
@@ -188,6 +190,7 @@ export async function POST(request: NextRequest) {
         due_date: normalizedDueDate,
         status: "due",
         category: category || "pm_fee",
+        payment_link_url: paymentLinkUrl || null,
       })
       .select()
       .single();
@@ -232,6 +235,7 @@ export async function PATCH(request: NextRequest) {
       paidDate,
       description,
       invoiceUrl,
+      paymentLinkUrl,
       category,
       action,
       voidReason,
@@ -272,6 +276,7 @@ export async function PATCH(request: NextRequest) {
     if (status) updates.status = status;
     if (description !== undefined) updates.description = description;
     if (invoiceUrl !== undefined) updates.invoice_url = invoiceUrl;
+    if (paymentLinkUrl !== undefined) updates.payment_link_url = paymentLinkUrl || null;
     if (category !== undefined) updates.category = category;
     if (ownerId !== undefined) updates.owner_id = ownerId;
     if (dueDate !== undefined) {
