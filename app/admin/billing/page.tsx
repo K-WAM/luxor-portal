@@ -890,19 +890,19 @@ export default function AdminBilling() {
             </button>
           )}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto md:overflow-visible">
+          <table className="w-full text-sm table-fixed">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
               <tr>
-                <th className="px-4 py-3 text-left">Owner</th>
-                <th className="px-4 py-3 text-left">Property</th>
-                <th className="px-4 py-3 text-left">Category</th>
-                <th className="px-4 py-3 text-right">Amount</th>
-                <th className="px-4 py-3 text-left">Due</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Payment Link</th>
-                <th className="px-4 py-3 text-left">Invoice PDF</th>
-                <th className="px-4 py-3 text-left">Actions</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Owner</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Property</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Category</th>
+                <th className="px-4 py-3 text-right whitespace-normal">Amount</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Due</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Status</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Payment Link</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Invoice PDF</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -918,12 +918,12 @@ export default function AdminBilling() {
                   const isVoided = bill.status === "voided";
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
-                      <td className="px-4 py-3 text-slate-900">
+                      <td className="px-4 py-3 text-slate-900 break-words">
                         {isVoided ? (
                           bill.ownerEmail
                         ) : (
                           <select
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white min-w-[150px]"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={edits.ownerId ?? bill.ownerId ?? ""}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
@@ -940,10 +940,10 @@ export default function AdminBilling() {
                           </select>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-800">
+                      <td className="px-4 py-3 text-slate-800 break-words">
                         {bill.propertyAddress || bill.property || bill.propertyId}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 break-words">
                         {OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || bill.category || "PM fee"}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-900">
@@ -987,7 +987,7 @@ export default function AdminBilling() {
                         ) : (
                           <input
                             type="date"
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-32"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={edits.dueDate ?? (bill.dueDate ? bill.dueDate.split("T")[0] : "")}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
@@ -1010,7 +1010,7 @@ export default function AdminBilling() {
                           </div>
                         ) : (
                           <select
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={edits.status ?? bill.status}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
@@ -1033,7 +1033,7 @@ export default function AdminBilling() {
                           <input
                             type="url"
                             placeholder="https://"
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-56"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={edits.paymentLinkUrl ?? bill.paymentLinkUrl ?? ""}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
@@ -1347,19 +1347,19 @@ export default function AdminBilling() {
         {tenantBillsError && (
           <div className="px-4 py-3 text-sm text-red-600">{tenantBillsError}</div>
         )}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto md:overflow-visible">
+          <table className="w-full text-sm table-fixed">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
               <tr>
-                <th className="px-4 py-3 text-left">Tenant</th>
-                <th className="px-4 py-3 text-left">Property</th>
-                <th className="px-4 py-3 text-left">Due</th>
-                <th className="px-4 py-3 text-left">Type</th>
-                <th className="px-4 py-3 text-right">Amount</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Payment Link</th>
-                <th className="px-4 py-3 text-left">Invoice PDF</th>
-                <th className="px-4 py-3 text-left">Actions</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Tenant</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Property</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Due</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Type</th>
+                <th className="px-4 py-3 text-right whitespace-normal">Amount</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Status</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Payment Link</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Invoice PDF</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1374,12 +1374,12 @@ export default function AdminBilling() {
                   const isVoided = bill.status === "voided";
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
-                      <td className="px-4 py-3 text-slate-900">
+                      <td className="px-4 py-3 text-slate-900 break-words">
                         {isVoided ? (
                           bill.tenantEmail || "Tenant"
                         ) : (
                           <select
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white min-w-[200px]"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={tenantEdits[bill.id]?.tenantId ?? bill.tenantId}
                             onChange={(e) =>
                               setTenantEdits((prev) => ({
@@ -1396,12 +1396,12 @@ export default function AdminBilling() {
                           </select>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 break-words">
                         {isVoided ? (
                           bill.propertyAddress || bill.propertyId
                         ) : (
                           <select
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white min-w-[200px]"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={tenantEdits[bill.id]?.propertyId ?? bill.propertyId}
                             onChange={(e) =>
                               setTenantEdits((prev) => ({
@@ -1424,7 +1424,7 @@ export default function AdminBilling() {
                         ) : (
                           <input
                             type="date"
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-32"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={tenantEdits[bill.id]?.dueDate ?? (bill.due_date ? bill.due_date.split("T")[0] : "")}
                             onChange={(e) =>
                               setTenantEdits((prev) => ({
@@ -1444,7 +1444,7 @@ export default function AdminBilling() {
                         ) : (
                           <div className="flex flex-col gap-1">
                             <select
-                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                               value={tenantEdits[bill.id]?.billType ?? bill.bill_type}
                               onChange={(e) =>
                                 setTenantEdits((prev) => ({
@@ -1461,7 +1461,7 @@ export default function AdminBilling() {
                             </select>
                             <input
                               type="text"
-                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                               placeholder="Description"
                               value={tenantEdits[bill.id]?.description ?? (bill.description || "")}
                               onChange={(e) =>
@@ -1481,7 +1481,7 @@ export default function AdminBilling() {
                           <input
                             type="number"
                             step="0.01"
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-24 text-right"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full text-right"
                             value={tenantEdits[bill.id]?.amount ?? String(bill.amount ?? "")}
                             onChange={(e) =>
                               setTenantEdits((prev) => ({
@@ -1528,7 +1528,7 @@ export default function AdminBilling() {
                           <input
                             type="url"
                             placeholder="https://"
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-56"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={tenantEdits[bill.id]?.paymentLinkUrl ?? bill.paymentLinkUrl ?? ""}
                             onChange={(e) =>
                               setTenantEdits((prev) => ({
