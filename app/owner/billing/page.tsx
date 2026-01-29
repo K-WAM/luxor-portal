@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
-import { formatDateOnly } from "@/lib/date-only";
+import { formatDateOnly, parseDateOnly } from "@/lib/date-only";
 
 type Bill = {
   id: string;
@@ -23,6 +23,9 @@ export default function OwnerBilling() {
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [checkoutLoading, setCheckoutLoading] = useState<"bank" | "card" | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProps = async () => {
@@ -73,10 +76,60 @@ export default function OwnerBilling() {
     load();
   }, [selectedProperty, role]);
 
-  const filtered = bills.filter((b) => selectedProperty === "all" || b.propertyId === selectedProperty);
-  const totalDue = filtered
-    .filter((b) => b.status === "due" || b.status === "overdue")
+  const filtered = bills
+    .filter((b) => selectedProperty === "all" || b.propertyId === selectedProperty)
+    .sort((a, b) => {
+      const aDate = parseDateOnly(a.dueDate);
+      const bDate = parseDateOnly(b.dueDate);
+      const aTime = aDate ? aDate.getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = bDate ? bDate.getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    });
+
+  const qualifyingBills = filtered.filter((b) => {
+    if (b.status === "paid") return false;
+    const dueDate = parseDateOnly(b.dueDate);
+    if (!dueDate) return false;
+    const now = new Date();
+    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const in30Days = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate() + 30));
+    return dueDate < todayUtc || (dueDate >= todayUtc && dueDate <= in30Days);
+  });
+
+  const totalDue = qualifyingBills.reduce((sum, b) => sum + b.amount, 0);
+
+  useEffect(() => {
+    setSelectedInvoiceIds(qualifyingBills.map((b) => b.id));
+  }, [selectedProperty, bills.length]);
+
+  const selectedSubtotal = qualifyingBills
+    .filter((b) => selectedInvoiceIds.includes(b.id))
     .reduce((sum, b) => sum + b.amount, 0);
+
+  const handleCheckout = async (method: "bank" | "card") => {
+    if (!selectedInvoiceIds.length) return;
+    try {
+      setCheckoutLoading(method);
+      setCheckoutError(null);
+      const res = await fetch("/api/billing/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          selectedInvoiceIds,
+          paymentMethod: method,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start checkout");
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (err: any) {
+      setCheckoutError(err.message || "Failed to start checkout");
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
 
   const uniqueProps =
     properties.length > 0
@@ -101,8 +154,64 @@ export default function OwnerBilling() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-            <div className="text-xs uppercase text-slate-500 mb-1">Balance due</div>
+            <div className="text-xs uppercase text-slate-500 mb-1">Balance due in the next 30 days</div>
             <div className="text-2xl font-semibold text-slate-900">${totalDue.toFixed(2)}</div>
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              {qualifyingBills.length === 0 ? (
+                <div className="text-sm text-slate-500">No invoices due in the next 30 days.</div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-xs uppercase text-slate-500">Select invoices to pay</div>
+                  <div className="space-y-2">
+                    {qualifyingBills.map((bill) => (
+                      <label key={bill.id} className="flex items-start gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={selectedInvoiceIds.includes(bill.id)}
+                          onChange={(e) => {
+                            setSelectedInvoiceIds((prev) =>
+                              e.target.checked
+                                ? [...prev, bill.id]
+                                : prev.filter((id) => id !== bill.id)
+                            );
+                          }}
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium text-slate-800">
+                            {bill.propertyAddress} · {bill.description || "Invoice"}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            Due {formatDateOnly(bill.dueDate) || "-"} · ${bill.amount.toFixed(2)}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-slate-700 pt-2 border-t border-slate-100">
+                    <span>Subtotal (selected)</span>
+                    <span className="font-semibold">${selectedSubtotal.toFixed(2)}</span>
+                  </div>
+                  {checkoutError && <div className="text-xs text-red-600">{checkoutError}</div>}
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <button
+                      onClick={() => handleCheckout("bank")}
+                      disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
+                      className="h-9 px-3 rounded bg-slate-900 text-white text-xs hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      {checkoutLoading === "bank" ? "Starting..." : "Pay Balance by Bank"}
+                    </button>
+                    <button
+                      onClick={() => handleCheckout("card")}
+                      disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
+                      className="h-9 px-3 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      {checkoutLoading === "card" ? "Starting..." : "Pay Balance by Card"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
           <div className="text-xs uppercase text-slate-500 mb-1">Property</div>
@@ -120,8 +229,12 @@ export default function OwnerBilling() {
           </select>
         </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-          <div className="text-xs uppercase text-slate-500 mb-1">Notes</div>
-          <div className="text-sm text-slate-700">Payment options: Zelle (Connect@luxordev.com), or Credit Card/ACH through Stripe Payment Link on invoice.</div>
+          <div className="text-xs uppercase text-slate-500 mb-1">Payment options</div>
+          <div className="text-sm text-slate-700 space-y-1">
+            <div>• Zelle (no fee): Please send payment to Connect@luxordev.com, and include Invoice number</div>
+            <div>• Bank transfer (ACH): processing fee of 0.8% up to $5 cap applies</div>
+            <div>• Credit card: processing fee of 2.9% + CA$0.30 (domestic cards) applies</div>
+          </div>
         </div>
       </div>
 
@@ -143,7 +256,6 @@ export default function OwnerBilling() {
                 <th className="px-4 py-3 text-left">Due</th>
                 <th className="px-4 py-3 text-left">Status</th>
                 <th className="px-4 py-3 text-left">Invoice PDF</th>
-                <th className="px-4 py-3 text-left">Payment Link</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -175,15 +287,6 @@ export default function OwnerBilling() {
                       </a>
                     ) : (
                       <span className="text-xs text-slate-500">Not uploaded</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {bill.paymentLinkUrl ? (
-                      <a href={bill.paymentLinkUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
-                        Pay Now
-                      </a>
-                    ) : (
-                      <span className="text-xs text-slate-500">-</span>
                     )}
                   </td>
                 </tr>
