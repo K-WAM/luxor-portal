@@ -148,7 +148,7 @@ export default function OwnerBilling() {
         </div>
         <div className="text-sm text-slate-700">
           <div className="font-medium">Signed in as</div>
-          <div>{user?.email || "Unknown"} Â· {role || "owner"}</div>
+          <div>{user?.email || "Unknown"} · {role || "owner"}</div>
         </div>
       </div>
 
@@ -179,10 +179,10 @@ export default function OwnerBilling() {
                         />
                         <div className="flex-1">
                           <div className="font-medium text-slate-800">
-                            {bill.propertyAddress} Â· {bill.description || "Invoice"}
+                            {bill.propertyAddress} · {bill.description || "Invoice"}
                           </div>
                           <div className="text-xs text-slate-500">
-                            Due {formatDateOnly(bill.dueDate) || "-"} Â· ${bill.amount.toFixed(2)}
+                            Due {formatDateOnly(bill.dueDate) || "-"} · ${bill.amount.toFixed(2)}
                           </div>
                         </div>
                       </label>
@@ -236,9 +236,9 @@ export default function OwnerBilling() {
         <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
           <div className="text-xs uppercase text-slate-500 mb-1">Payment options</div>
           <div className="text-sm text-slate-700 space-y-1">
-            <div>â€¢ <span className="font-semibold">Zelle (no fee):</span> Please send payment to Connect@luxordev.com, and include Invoice number</div>
-            <div>â€¢ <span className="font-semibold">Bank transfer (ACH):</span> Stripe processing fee of 0.8% up to $5 cap applies</div>
-            <div>â€¢ <span className="font-semibold">Credit card:</span> Stripe processing fee of 2.9% + $0.30 (domestic cards) applies</div>
+            <div>• <span className="font-semibold">Zelle (no fee):</span> Please send payment to Connect@luxordev.com, and include Invoice number</div>
+            <div>• <span className="font-semibold">Bank transfer (ACH):</span> Stripe processing fee of 0.8% up to $5 cap applies</div>
+            <div>• <span className="font-semibold">Credit card:</span> Stripe processing fee of 2.9% + $0.30 (domestic cards) applies</div>
           </div>
         </div>
       </div>
