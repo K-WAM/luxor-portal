@@ -202,14 +202,14 @@ export default function OwnerBilling() {
                     <button
                       onClick={() => handleCheckout("bank")}
                       disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
-                      className="h-9 px-3 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50 disabled:opacity-60"
+                      className="h-9 px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-xs hover:bg-slate-200 disabled:opacity-60"
                     >
                       {checkoutLoading === "bank" ? "Starting..." : "Pay Balance by Bank (ACH)"}
                     </button>
                     <button
                       onClick={() => handleCheckout("card")}
                       disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
-                      className="h-9 px-3 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50 disabled:opacity-60"
+                      className="h-9 px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-xs hover:bg-slate-200 disabled:opacity-60"
                     >
                       {checkoutLoading === "card" ? "Starting..." : "Pay Balance by Card"}
                     </button>
