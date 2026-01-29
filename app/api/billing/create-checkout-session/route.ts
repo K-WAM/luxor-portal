@@ -14,9 +14,11 @@ type InvoiceRow = {
   due_date: string | null;
 };
 
-const CARD_FEE_PERCENT = 0.029;
+const CARD_FEE_NUMERATOR = 29;
+const CARD_FEE_DENOMINATOR = 1000;
 const CARD_FEE_FIXED_CENTS = 30;
-const BANK_FEE_PERCENT = 0.008;
+const BANK_FEE_NUMERATOR = 8;
+const BANK_FEE_DENOMINATOR = 1000;
 const BANK_FEE_CAP_CENTS = 500;
 
 const isQualifyingDueDate = (dateStr?: string | null) => {
@@ -29,6 +31,8 @@ const isQualifyingDueDate = (dateStr?: string | null) => {
 };
 
 const toCents = (amount: number) => Math.round(amount * 100);
+const roundHalfUp = (numerator: number, denominator: number) =>
+  Math.floor((numerator + denominator / 2) / denominator);
 
 export async function POST(request: NextRequest) {
   try {
@@ -81,16 +85,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Subtotal must be greater than 0" }, { status: 400 });
     }
 
+    let processingFeeCents = 0;
     let chargeCents = subtotalCents;
     if (paymentMethod === "card") {
-      chargeCents = Math.round((subtotalCents + CARD_FEE_FIXED_CENTS) / (1 - CARD_FEE_PERCENT));
+      const percentFeeCents = roundHalfUp(subtotalCents * CARD_FEE_NUMERATOR, CARD_FEE_DENOMINATOR);
+      processingFeeCents = percentFeeCents + CARD_FEE_FIXED_CENTS;
+      chargeCents = subtotalCents + processingFeeCents;
     } else {
-      const feeCents = Math.round(subtotalCents * BANK_FEE_PERCENT);
-      if (feeCents <= BANK_FEE_CAP_CENTS) {
-        chargeCents = Math.round(subtotalCents / (1 - BANK_FEE_PERCENT));
-      } else {
-        chargeCents = subtotalCents + BANK_FEE_CAP_CENTS;
-      }
+      const feeCents = roundHalfUp(subtotalCents * BANK_FEE_NUMERATOR, BANK_FEE_DENOMINATOR);
+      processingFeeCents = Math.min(feeCents, BANK_FEE_CAP_CENTS);
+      chargeCents = subtotalCents + processingFeeCents;
     }
 
     const origin = request.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -115,7 +119,11 @@ export async function POST(request: NextRequest) {
       metadata: {
         luxor_invoice_ids: eligible.map((i: InvoiceRow) => i.id).join(","),
         portal_subtotal_cents: String(subtotalCents),
+        processing_fee_cents: String(processingFeeCents),
+        total_cents: String(chargeCents),
+        invoice_ids: eligible.map((i: InvoiceRow) => i.id).join(","),
         fee_type: paymentMethod,
+        fee_method: paymentMethod,
         owner_id: user.id,
         property_ids: propertyIds.join(","),
       },

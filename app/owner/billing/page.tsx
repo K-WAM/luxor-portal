@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
@@ -148,7 +148,7 @@ export default function OwnerBilling() {
         </div>
         <div className="text-sm text-slate-700">
           <div className="font-medium">Signed in as</div>
-          <div>{user?.email || "Unknown"} · {role || "owner"}</div>
+          <div>{user?.email || "Unknown"} Â· {role || "owner"}</div>
         </div>
       </div>
 
@@ -179,10 +179,10 @@ export default function OwnerBilling() {
                         />
                         <div className="flex-1">
                           <div className="font-medium text-slate-800">
-                            {bill.propertyAddress} · {bill.description || "Invoice"}
+                            {bill.propertyAddress} Â· {bill.description || "Invoice"}
                           </div>
                           <div className="text-xs text-slate-500">
-                            Due {formatDateOnly(bill.dueDate) || "-"} · ${bill.amount.toFixed(2)}
+                            Due {formatDateOnly(bill.dueDate) || "-"} Â· ${bill.amount.toFixed(2)}
                           </div>
                         </div>
                       </label>
@@ -193,13 +193,18 @@ export default function OwnerBilling() {
                     <span className="font-semibold">${selectedSubtotal.toFixed(2)}</span>
                   </div>
                   {checkoutError && <div className="text-xs text-red-600">{checkoutError}</div>}
+                  <div className="pt-2">
+                    <div className="inline-flex items-center h-8 px-3 rounded-full border border-slate-200 bg-slate-50 text-xs text-slate-600">
+                      Zelle - Connect@luxordev.com
+                    </div>
+                  </div>
                   <div className="flex flex-wrap gap-2 pt-2">
                     <button
                       onClick={() => handleCheckout("bank")}
                       disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
-                      className="h-9 px-3 rounded bg-slate-900 text-white text-xs hover:bg-slate-800 disabled:opacity-60"
+                      className="h-9 px-3 rounded border border-slate-300 text-slate-700 text-xs hover:bg-slate-50 disabled:opacity-60"
                     >
-                      {checkoutLoading === "bank" ? "Starting..." : "Pay Balance by Bank"}
+                      {checkoutLoading === "bank" ? "Starting..." : "Pay Balance by Bank (ACH)"}
                     </button>
                     <button
                       onClick={() => handleCheckout("card")}
@@ -231,9 +236,9 @@ export default function OwnerBilling() {
         <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
           <div className="text-xs uppercase text-slate-500 mb-1">Payment options</div>
           <div className="text-sm text-slate-700 space-y-1">
-            <div>• Zelle (no fee): Please send payment to Connect@luxordev.com, and include Invoice number</div>
-            <div>• Bank transfer (ACH): processing fee of 0.8% up to $5 cap applies</div>
-            <div>• Credit card: processing fee of 2.9% + CA$0.30 (domestic cards) applies</div>
+            <div>â€¢ <span className="font-semibold">Zelle (no fee):</span> Please send payment to Connect@luxordev.com, and include Invoice number</div>
+            <div>â€¢ <span className="font-semibold">Bank transfer (ACH):</span> Stripe processing fee of 0.8% up to $5 cap applies</div>
+            <div>â€¢ <span className="font-semibold">Credit card:</span> Stripe processing fee of 2.9% + $0.30 (domestic cards) applies</div>
           </div>
         </div>
       </div>
@@ -299,3 +304,5 @@ export default function OwnerBilling() {
     </div>
   );
 }
+
+
