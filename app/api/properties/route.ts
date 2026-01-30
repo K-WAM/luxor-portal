@@ -59,6 +59,7 @@ export async function POST(request: Request) {
       .from('properties')
       .insert({
         address: body.address,
+        owner_name: body.ownerName,
         lease_start: leaseStart,
         lease_end: leaseEnd,
       })
@@ -90,6 +91,7 @@ export async function PATCH(request: Request) {
     const body = await request.json();
     const updates: any = {};
     if (body.address !== undefined) updates.address = body.address;
+    if (body.ownerName !== undefined) updates.owner_name = body.ownerName;
     if (body.leaseStart !== undefined) updates.lease_start = toDateOnlyString(body.leaseStart);
     if (body.leaseEnd !== undefined) updates.lease_end = toDateOnlyString(body.leaseEnd);
 
