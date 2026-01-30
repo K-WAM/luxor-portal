@@ -161,13 +161,13 @@ export default function OwnerBilling() {
                 <div className="text-sm text-slate-500">No invoices due in the next 30 days.</div>
               ) : (
                 <div className="space-y-2">
-                  <div className="text-xs uppercase text-slate-500">Select invoices to pay</div>
+                  <div className="text-xs uppercase text-slate-500">Invoices included</div>
                   <div className="space-y-2">
                     {qualifyingBills.map((bill) => (
                       <label key={bill.id} className="flex items-start gap-2 text-sm text-slate-700">
                         <input
                           type="checkbox"
-                          className="mt-1"
+                          className="mt-1 h-3.5 w-3.5 text-slate-600 border-slate-300"
                           checked={selectedInvoiceIds.includes(bill.id)}
                           onChange={(e) => {
                             setSelectedInvoiceIds((prev) =>
@@ -178,11 +178,12 @@ export default function OwnerBilling() {
                           }}
                         />
                         <div className="flex-1">
-                          <div className="font-medium text-slate-800">
+                          <div className="text-slate-700">
                             {bill.propertyAddress} · {bill.description || "Invoice"}
                           </div>
                           <div className="text-xs text-slate-500">
-                            Due {formatDateOnly(bill.dueDate) || "-"} · ${bill.amount.toFixed(2)}
+                            Due {formatDateOnly(bill.dueDate) || "-"} ·{" "}
+                            <span className="font-semibold text-slate-700">${bill.amount.toFixed(2)}</span>
                           </div>
                         </div>
                       </label>
@@ -193,9 +194,10 @@ export default function OwnerBilling() {
                     <span className="font-semibold">${selectedSubtotal.toFixed(2)}</span>
                   </div>
                   {checkoutError && <div className="text-xs text-red-600">{checkoutError}</div>}
-                  <div className="pt-2">
-                    <div className="inline-flex items-center h-8 px-3 rounded-full border border-slate-200 bg-slate-50 text-xs text-slate-600">
-                      Zelle - Connect@luxordev.com
+                  <div className="border-t border-slate-100 mt-3 pt-3">
+                    <div className="inline-flex flex-col justify-center h-9 px-3 rounded border border-slate-400 bg-slate-100 text-xs text-slate-800">
+                      <span>Zelle · Connect@luxordev.com</span>
+                      <span className="text-[11px] text-slate-500">No processing fee</span>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
@@ -234,11 +236,19 @@ export default function OwnerBilling() {
           </select>
         </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-          <div className="text-xs uppercase text-slate-500 mb-1">Payment options</div>
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-xs uppercase text-slate-500">Payment options</div>
+            <span
+              className="text-xs text-slate-500"
+              title="Processing fees are charged by Stripe for electronic payments. Zelle has no processing fee. Fees shown are estimates and may vary based on payment details."
+            >
+              ⓘ Fees explained
+            </span>
+          </div>
           <div className="text-sm text-slate-700 space-y-1">
-            <div>• <span className="font-semibold">Zelle (no fee):</span> Please send payment to Connect@luxordev.com, and include Invoice number</div>
-            <div>• <span className="font-semibold">Bank transfer (ACH):</span> Stripe processing fee of 0.8% up to $5 cap applies</div>
-            <div>• <span className="font-semibold">Credit card:</span> Stripe processing fee of 2.9% + $0.30 (domestic cards) applies</div>
+            <div>• Zelle (no fee)</div>
+            <div>• Bank transfer (ACH): 0.8% (max $5)</div>
+            <div>• Credit card: 2.9% + $0.30 (domestic)</div>
           </div>
         </div>
       </div>
