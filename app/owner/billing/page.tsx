@@ -16,6 +16,64 @@ type Bill = {
   paymentLinkUrl?: string;
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const getDueDateMs = (dateStr?: string | null) => {
+  const date = parseDateOnly(dateStr);
+  return date ? date.getTime() : null;
+};
+
+const getQualifyingBills = (items: Bill[], nowMs: number) => {
+  const windowEndMs = nowMs + 30 * DAY_MS;
+  return items.filter((bill) => {
+    if (bill.status === "paid") return false;
+    const dueMs = getDueDateMs(bill.dueDate);
+    if (dueMs === null) return false;
+    return dueMs <= windowEndMs;
+  });
+};
+
+if (process.env.NODE_ENV !== "production") {
+  const testNowMs = Date.UTC(2026, 0, 30, 12);
+  const testBills: Bill[] = [
+    {
+      id: "overdue",
+      propertyId: "p1",
+      propertyAddress: "Test",
+      description: "Overdue",
+      amount: 1,
+      dueDate: "2026-01-01",
+      status: "due",
+    },
+    {
+      id: "within",
+      propertyId: "p1",
+      propertyAddress: "Test",
+      description: "Within",
+      amount: 1,
+      dueDate: "2026-02-09",
+      status: "due",
+    },
+    {
+      id: "beyond",
+      propertyId: "p1",
+      propertyAddress: "Test",
+      description: "Beyond",
+      amount: 1,
+      dueDate: "2026-03-02",
+      status: "due",
+    },
+  ];
+  const ids = getQualifyingBills(testBills, testNowMs)
+    .map((bill) => bill.id)
+    .sort()
+    .join(",");
+  const expected = ["overdue", "within"].sort().join(",");
+  if (ids !== expected) {
+    console.warn("Qualifying invoice filter failed dev check", { ids, expected });
+  }
+}
+
 export default function OwnerBilling() {
   const { user, role } = useAuth();
   const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
@@ -86,15 +144,8 @@ export default function OwnerBilling() {
       return aTime - bTime;
     });
 
-  const qualifyingBills = filtered.filter((b) => {
-    if (b.status === "paid") return false;
-    const dueDate = parseDateOnly(b.dueDate);
-    if (!dueDate) return false;
-    const now = new Date();
-    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const in30Days = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate() + 30));
-    return dueDate < todayUtc || (dueDate >= todayUtc && dueDate <= in30Days);
-  });
+  const nowMs = Date.now();
+  const qualifyingBills = getQualifyingBills(filtered, nowMs);
 
   const totalDue = qualifyingBills.reduce((sum, b) => sum + b.amount, 0);
 
@@ -152,8 +203,9 @@ export default function OwnerBilling() {
         </div>
       </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="md:col-span-2">
+          <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
             <div className="text-xs uppercase text-slate-500 mb-1">Balance due in the next 30 days</div>
             <div className="text-2xl font-semibold text-slate-900">${totalDue.toFixed(2)}</div>
             <div className="mt-3 border-t border-slate-100 pt-3">
@@ -220,35 +272,38 @@ export default function OwnerBilling() {
               )}
             </div>
           </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-          <div className="text-xs uppercase text-slate-500 mb-1">Property</div>
-          <select
-            value={selectedProperty}
-            onChange={(e) => setSelectedProperty(e.target.value)}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-          >
-            <option value="all">All properties</option>
-            {uniqueProps.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.address}
-              </option>
-            ))}
-          </select>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <div className="text-xs uppercase text-slate-500">Payment options</div>
-            <span
-              className="text-xs text-slate-500"
-              title="Processing fees are charged by Stripe for electronic payments. Zelle has no processing fee. Fees shown are estimates and may vary based on payment details."
+        <div className="flex flex-col gap-4">
+          <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
+            <div className="text-xs uppercase text-slate-500 mb-1">Property</div>
+            <select
+              value={selectedProperty}
+              onChange={(e) => setSelectedProperty(e.target.value)}
+              className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
             >
-              ⓘ Fees explained
-            </span>
+              <option value="all">All properties</option>
+              {uniqueProps.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.address}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="text-sm text-slate-700 space-y-1">
-            <div>• Zelle (no fee)</div>
-            <div>• Bank transfer (ACH): 0.8% (max $5)</div>
-            <div>• Credit card: 2.9% + $0.30 (domestic)</div>
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-xs uppercase text-slate-500">Payment options</div>
+              <span
+                className="text-xs text-slate-500"
+                title="Processing fees are charged by Stripe for electronic payments. Zelle has no processing fee. Fees shown are estimates and may vary based on payment details."
+              >
+                ⓘ Fees explained
+              </span>
+            </div>
+            <div className="text-sm text-slate-700 space-y-1">
+              <div>• Zelle (no fee)</div>
+              <div>• Bank transfer (ACH): 0.8% (max $5)</div>
+              <div>• Credit card: 2.9% + $0.30 (domestic)</div>
+            </div>
           </div>
         </div>
       </div>
