@@ -151,6 +151,35 @@ export default function AdminBilling() {
   }, [bills]);
 
   // Filter owner bills by property and status
+  const getDueDateTimestamp = (dateStr?: string | null) => {
+    const date = parseDateOnly(dateStr);
+    return date ? date.getTime() : null;
+  };
+
+  const compareDueDateAsc = (a: { dueDate?: string | null; id: string }, b: { dueDate?: string | null; id: string }) => {
+    const aTime = getDueDateTimestamp(a.dueDate);
+    const bTime = getDueDateTimestamp(b.dueDate);
+    if (aTime === null && bTime === null) return a.id.localeCompare(b.id);
+    if (aTime === null) return 1;
+    if (bTime === null) return -1;
+    if (aTime !== bTime) return aTime - bTime;
+    return a.id.localeCompare(b.id);
+  };
+
+  if (process.env.NODE_ENV !== "production") {
+    const sample = [
+      { id: "a", dueDate: "2026-02-05" },
+      { id: "b", dueDate: "2026-02-01" },
+      { id: "c", dueDate: "2026-03-01" },
+      { id: "d", dueDate: null },
+    ];
+    const sorted = [...sample].sort(compareDueDateAsc).map((row) => row.id).join(",");
+    const expected = ["b", "a", "c", "d"].join(",");
+    if (sorted !== expected) {
+      console.warn("Due date sort check failed", { sorted, expected });
+    }
+  }
+
   const displayedOwnerBills = useMemo(() => {
     return bills.filter((bill) => {
       // Voided filter
@@ -160,7 +189,7 @@ export default function AdminBilling() {
       // Status filter
       if (ownerBillStatusFilter && bill.status !== ownerBillStatusFilter) return false;
       return true;
-    });
+    }).sort(compareDueDateAsc);
   }, [bills, showVoidedOwnerBills, ownerBillPropertyFilter, ownerBillStatusFilter]);
 
   const loadBills = async (includeVoided = false) => {
@@ -332,7 +361,7 @@ export default function AdminBilling() {
       // Status filter
       if (tenantBillStatusFilter && bill.status !== tenantBillStatusFilter) return false;
       return true;
-    });
+    }).sort((a, b) => compareDueDateAsc({ dueDate: a.due_date, id: a.id }, { dueDate: b.due_date, id: b.id }));
   }, [tenantBills, showVoidedTenantBills, tenantBillPropertyFilter, tenantBillStatusFilter]);
 
   useEffect(() => {
