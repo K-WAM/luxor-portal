@@ -124,8 +124,10 @@ const buildInvoicePdf = async (params: {
   y = height - 170;
   page.drawText("Bill To", { x: left, y, size: 10, font: boldFont });
   y -= line;
-  page.drawText(params.ownerName, { x: left, y, size: 9, font });
-  y -= line;
+  if (params.ownerName) {
+    page.drawText(params.ownerName, { x: left, y, size: 9, font });
+    y -= line;
+  }
   page.drawText(params.ownerEmail, { x: left, y, size: 9, font });
 
   y -= line * 2;
@@ -213,7 +215,7 @@ export async function POST(request: NextRequest) {
     const ownerName =
       (owner?.data?.user?.user_metadata as any)?.full_name ||
       (owner?.data?.user?.user_metadata as any)?.name ||
-      ownerEmail;
+      "";
 
     const { invoiceNumber, invoiceDate: storedInvoiceDate } = await getOrCreateInvoiceMeta(bill.id, bill.due_date);
     const invoiceDate = storedInvoiceDate ? formatDateOnlyString(storedInvoiceDate) : formatDate(new Date());

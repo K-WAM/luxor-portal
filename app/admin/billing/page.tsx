@@ -1094,14 +1094,19 @@ export default function AdminBilling() {
                           {!isVoided && (
                             <div className="flex items-center gap-2">
                               {bill.category === "pm_fee" ? (
-                                <button
-                                  type="button"
-                                  className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
-                                  onClick={() => generateOwnerInvoice(bill.id)}
-                                  disabled={!!invoiceGenerating[bill.id]}
-                                >
-                                  Generate Invoice
-                                </button>
+                                <div className="flex flex-col gap-1">
+                                  <button
+                                    type="button"
+                                    className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                                    onClick={() => generateOwnerInvoice(bill.id)}
+                                    disabled={!!invoiceGenerating[bill.id] || bill.status === "paid" || bill.status === "voided"}
+                                  >
+                                    {bill.invoiceUrl ? "Regenerate Invoice" : "Generate Invoice"}
+                                  </button>
+                                  <span className="text-[11px] text-slate-500">
+                                    For major corrections (amount/property/owner), void and reissue.
+                                  </span>
+                                </div>
                               ) : (
                                 <label className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer">
                                   {bill.invoiceUrl ? "Replace" : "Upload"}

@@ -74,6 +74,41 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PATCH(request: Request) {
+  try {
+    const { user, role } = await getAuthContext();
+    if (!user || !isAdmin(role)) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "Property ID required" }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const updates: any = {};
+    if (body.address !== undefined) updates.address = body.address;
+    if (body.leaseStart !== undefined) updates.lease_start = toDateOnlyString(body.leaseStart);
+    if (body.leaseEnd !== undefined) updates.lease_end = toDateOnlyString(body.leaseEnd);
+
+    const { data, error } = await supabaseAdmin
+      .from("properties")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Error updating property:", error);
+    return NextResponse.json({ error: "Failed to update property" }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     const { user, role } = await getAuthContext();
