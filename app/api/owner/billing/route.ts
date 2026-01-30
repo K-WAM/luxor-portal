@@ -45,11 +45,10 @@ export async function GET(request: NextRequest) {
         paid_date,
         invoice_url,
         payment_link_url,
+        voided_at,
         properties ( address )
       `
       )
-      // CRITICAL: Exclude voided bills from owner view
-      .neq("status", "voided")
       .order("year", { ascending: false })
       .order("month", { ascending: false });
 
@@ -80,6 +79,7 @@ export async function GET(request: NextRequest) {
         dueDate: row.due_date,
         paidDate: row.paid_date,
         invoiceUrl: row.invoice_url,
+        voidedAt: row.voided_at,
         paymentLinkUrl: row.payment_link_url,
       })) || [];
 

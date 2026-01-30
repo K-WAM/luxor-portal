@@ -13,8 +13,9 @@ type BillRow = {
   amount: number;
   dueDate: string;
   status: "due" | "paid" | "overdue" | "pending" | "voided";
-  invoiceUrl?: string;
-  paymentLinkUrl?: string | null;
+    invoiceUrl?: string;
+    invoiceNumber?: string;
+    paymentLinkUrl?: string | null;
   feePercent?: number | null;
   feeAmount?: number | null;
   propertyId?: string;
@@ -125,6 +126,7 @@ export default function AdminBilling() {
   const [ownerInvoiceFile, setOwnerInvoiceFile] = useState<File | null>(null);
   const [tenantInvoiceFile, setTenantInvoiceFile] = useState<File | null>(null);
   const [invoiceUploading, setInvoiceUploading] = useState<Record<string, boolean>>({});
+  const [invoiceGenerating, setInvoiceGenerating] = useState<Record<string, boolean>>({});
   const [tenantInvoiceUploading, setTenantInvoiceUploading] = useState<Record<string, boolean>>({});
   const [tenantEdits, setTenantEdits] = useState<Record<string, { paymentLinkUrl?: string; billType?: string; amount?: string; dueDate?: string; status?: string; description?: string; tenantId?: string; propertyId?: string }>>({});
 
@@ -602,11 +604,42 @@ export default function AdminBilling() {
       const res = await fetch("/api/admin/billing/invoice", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to upload invoice");
-      setBills((prev) => prev.map((b) => (b.id === billId ? { ...b, invoiceUrl: data.invoiceUrl } : b)));
+      setBills((prev) =>
+        prev.map((b) =>
+          b.id === billId
+            ? { ...b, invoiceUrl: data.invoiceUrl, invoiceNumber: data.invoiceNumber ?? b.invoiceNumber }
+            : b
+        )
+      );
     } catch (err: any) {
       setError(err.message || "Failed to upload invoice");
     } finally {
       setInvoiceUploading((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const generateOwnerInvoice = async (billId: string) => {
+    const key = billId;
+    setInvoiceGenerating((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch("/api/admin/billing/invoice/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ billId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate invoice");
+      setBills((prev) =>
+        prev.map((b) =>
+          b.id === billId
+            ? { ...b, invoiceUrl: data.invoiceUrl, invoiceNumber: data.invoiceNumber ?? b.invoiceNumber }
+            : b
+        )
+      );
+    } catch (err: any) {
+      setError(err.message || "Failed to generate invoice");
+    } finally {
+      setInvoiceGenerating((prev) => ({ ...prev, [key]: false }));
     }
   };
 
@@ -1060,20 +1093,31 @@ export default function AdminBilling() {
                           )}
                           {!isVoided && (
                             <div className="flex items-center gap-2">
-                              <label className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer">
-                                {bill.invoiceUrl ? "Replace" : "Upload"}
-                                <input
-                                  type="file"
-                                  accept="application/pdf"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) uploadOwnerInvoice(bill.id, file);
-                                    e.currentTarget.value = "";
-                                  }}
-                                  disabled={!!invoiceUploading[bill.id]}
-                                />
-                              </label>
+                              {bill.category === "pm_fee" ? (
+                                <button
+                                  type="button"
+                                  className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                                  onClick={() => generateOwnerInvoice(bill.id)}
+                                  disabled={!!invoiceGenerating[bill.id]}
+                                >
+                                  Generate Invoice
+                                </button>
+                              ) : (
+                                <label className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer">
+                                  {bill.invoiceUrl ? "Replace" : "Upload"}
+                                  <input
+                                    type="file"
+                                    accept="application/pdf"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) uploadOwnerInvoice(bill.id, file);
+                                      e.currentTarget.value = "";
+                                    }}
+                                    disabled={!!invoiceUploading[bill.id]}
+                                  />
+                                </label>
+                              )}
                               {bill.invoiceUrl && (
                                 <button
                                   type="button"

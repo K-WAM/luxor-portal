@@ -11,9 +11,10 @@ type Bill = {
   description: string;
   amount: number;
   dueDate: string;
-  status: "due" | "paid" | "overdue" | "pending";
+  status: "due" | "paid" | "overdue" | "pending" | "voided";
   invoiceUrl?: string;
   paymentLinkUrl?: string;
+  voidedAt?: string;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -27,6 +28,7 @@ const getQualifyingBills = (items: Bill[], nowMs: number) => {
   const windowEndMs = nowMs + 30 * DAY_MS;
   return items.filter((bill) => {
     if (bill.status === "paid") return false;
+    if (bill.status === "voided") return false;
     const dueMs = getDueDateMs(bill.dueDate);
     if (dueMs === null) return false;
     return dueMs <= windowEndMs;
@@ -123,6 +125,7 @@ export default function OwnerBilling() {
             status: b.status,
             invoiceUrl: b.invoiceUrl,
             paymentLinkUrl: b.paymentLinkUrl,
+            voidedAt: b.voidedAt,
           }))
         );
       } catch (err: any) {
@@ -344,6 +347,8 @@ export default function OwnerBilling() {
                           ? "bg-emerald-100 text-emerald-700"
                           : bill.status === "overdue"
                           ? "bg-red-100 text-red-700"
+                          : bill.status === "voided"
+                          ? "bg-slate-100 text-slate-600"
                           : "bg-amber-100 text-amber-800"
                       }`}
                     >

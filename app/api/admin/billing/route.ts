@@ -76,6 +76,7 @@ export async function GET(request: NextRequest) {
         dueDate: row.due_date,
         paidDate: row.paid_date,
         invoiceUrl: row.invoice_url,
+        invoiceNumber: row.invoice_number,
         paymentLinkUrl: row.payment_link_url,
         category: row.category,
         voidedAt: row.voided_at,
