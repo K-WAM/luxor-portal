@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
 
     const { data: property } = await supabaseAdmin
       .from("properties")
-      .select("address")
+      .select("address, owner_name")
       .eq("id", bill.property_id)
       .single();
 
@@ -215,6 +215,7 @@ export async function POST(request: NextRequest) {
     const ownerName =
       (owner?.data?.user?.user_metadata as any)?.full_name ||
       (owner?.data?.user?.user_metadata as any)?.name ||
+      property?.owner_name ||
       "";
 
     const { invoiceNumber, invoiceDate: storedInvoiceDate } = await getOrCreateInvoiceMeta(bill.id, bill.due_date);
