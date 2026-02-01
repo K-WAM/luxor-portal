@@ -686,13 +686,13 @@ export default function TenantInvitesPage() {
               <tbody className="divide-y divide-slate-200">
                 {users.map((user) => (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-sm text-slate-900">
+                    <td className="px-4 py-3 text-sm text-slate-900 min-w-0">
                       <div className="flex items-center gap-2">
-                        <input
-                          type="text"
+                        <textarea
+                          rows={1}
                           defaultValue={user.name || ""}
                           onBlur={(e) => handleUserNameUpdate(user.id, e.target.value)}
-                          className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white w-full"
+                          className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white w-full min-w-0 resize-none whitespace-normal break-words"
                           placeholder="Name"
                           disabled={savingUserId === user.id}
                         />
