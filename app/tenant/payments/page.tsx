@@ -247,17 +247,17 @@ export default function TenantPayments() {
     }).format(value);
 
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="flex items-center justify-between mb-4">
+    <div className="px-4 py-6 md:p-8 max-w-5xl">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div>
           <h1 className="text-3xl font-bold">Payments</h1>
           <p className="text-gray-700">
             Payment status and history for your lease.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col md:flex-row md:items-center gap-2">
           <select
-            className="border border-gray-300 rounded px-3 py-2 text-sm"
+            className="border border-gray-300 rounded px-3 py-2 text-sm w-full md:w-auto"
             value={selectedPropertyId}
             onChange={(e) => setSelectedPropertyId(e.target.value)}
             disabled={role === "tenant"}
@@ -269,7 +269,7 @@ export default function TenantPayments() {
             ))}
           </select>
           <select
-            className="border border-gray-300 rounded px-3 py-2 text-sm"
+            className="border border-gray-300 rounded px-3 py-2 text-sm w-full md:w-auto"
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
           >
@@ -359,66 +359,111 @@ export default function TenantPayments() {
             ) : billRows.length === 0 ? (
               <p className="text-gray-500">No payment history available yet.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50 text-left text-sm text-gray-600">
-                      <th className="py-2 px-3">Month</th>
-                      <th className="py-2 px-3">Description</th>
-                      <th className="py-2 px-3">Due Date</th>
-                      <th className="py-2 px-3">Status</th>
-                      <th className="py-2 px-3 text-right">Amount</th>
-                      <th className="py-2 px-3">Invoice PDF</th>
-                      <th className="py-2 px-3">Payment Link</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {billRows.map((row) => (
-                      <tr key={row.id} className="border-t text-sm">
-                        <td className="py-2 px-3 font-medium">{row.monthLabel}</td>
-                        <td className="py-2 px-3">
-                          <div className="text-sm text-gray-900">{row.description}</div>
-                        </td>
-                        <td className="py-2 px-3 text-gray-700">
-                          {formatDateOnly(row.dueDate) || "-"}
-                        </td>
-                        <td className="py-2 px-3">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              row.status === "paid"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-orange-100 text-orange-700"
-                            }`}
-                          >
-                            {row.status === "paid" ? "Paid" : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-right font-semibold">
-                          {formatCurrency(row.amount)}
-                        </td>
-                        <td className="py-2 px-3">
-                          {row.invoiceUrl ? (
-                            <a href={row.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
-                              Invoice PDF
-                            </a>
-                          ) : (
-                            <span className="text-xs text-gray-500">-</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3">
-                          {row.paymentLinkUrl ? (
-                            <a href={row.paymentLinkUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
-                              Pay Now
-                            </a>
-                          ) : (
-                            <span className="text-xs text-gray-500">-</span>
-                          )}
-                        </td>
+              <>
+                <div className="md:hidden space-y-3">
+                  {billRows.map((row) => (
+                    <div key={row.id} className="border border-gray-200 rounded-lg p-3">
+                      <div className="text-sm font-semibold text-gray-900">{row.monthLabel}</div>
+                      <div className="text-sm text-gray-700 mt-1">{row.description}</div>
+                      <div className="mt-2 flex items-center justify-between text-sm">
+                        <span className="text-gray-500">Due</span>
+                        <span className="text-gray-700">{formatDateOnly(row.dueDate) || "-"}</span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-sm">
+                        <span className="text-gray-500">Amount</span>
+                        <span className="font-semibold">{formatCurrency(row.amount)}</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            row.status === "paid"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-orange-100 text-orange-700"
+                          }`}
+                        >
+                          {row.status === "paid" ? "Paid" : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                        </span>
+                        {row.invoiceUrl ? (
+                          <a href={row.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-xs">
+                            Invoice PDF
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-500">-</span>
+                        )}
+                      </div>
+                      <div className="mt-2">
+                        {row.paymentLinkUrl ? (
+                          <a href={row.paymentLinkUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-xs">
+                            Pay Now
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-500">-</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 text-left text-sm text-gray-600">
+                        <th className="py-2 px-3">Month</th>
+                        <th className="py-2 px-3">Description</th>
+                        <th className="py-2 px-3">Due Date</th>
+                        <th className="py-2 px-3">Status</th>
+                        <th className="py-2 px-3 text-right">Amount</th>
+                        <th className="py-2 px-3">Invoice PDF</th>
+                        <th className="py-2 px-3">Payment Link</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {billRows.map((row) => (
+                        <tr key={row.id} className="border-t text-sm">
+                          <td className="py-2 px-3 font-medium">{row.monthLabel}</td>
+                          <td className="py-2 px-3">
+                            <div className="text-sm text-gray-900">{row.description}</div>
+                          </td>
+                          <td className="py-2 px-3 text-gray-700">
+                            {formatDateOnly(row.dueDate) || "-"}
+                          </td>
+                          <td className="py-2 px-3">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                row.status === "paid"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-orange-100 text-orange-700"
+                              }`}
+                            >
+                              {row.status === "paid" ? "Paid" : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold">
+                            {formatCurrency(row.amount)}
+                          </td>
+                          <td className="py-2 px-3">
+                            {row.invoiceUrl ? (
+                              <a href={row.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
+                                Invoice PDF
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-500">-</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3">
+                            {row.paymentLinkUrl ? (
+                              <a href={row.paymentLinkUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
+                                Pay Now
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-500">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </>

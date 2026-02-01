@@ -194,7 +194,7 @@ export default function OwnerBilling() {
         }));
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="px-4 py-6 md:p-6 max-w-6xl mx-auto">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-3xl font-semibold text-slate-900">Billing</h1>
@@ -250,7 +250,7 @@ export default function OwnerBilling() {
                   </div>
                   {checkoutError && <div className="text-xs text-red-600">{checkoutError}</div>}
                   <div className="border-t border-slate-100 mt-3 pt-3">
-                    <div className="inline-flex flex-col justify-center h-9 px-3 rounded border border-slate-400 bg-slate-100 text-xs text-slate-800">
+                    <div className="inline-flex flex-col justify-center h-11 md:h-9 px-3 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs text-slate-800">
                       <span>Zelle · Connect@luxordev.com</span>
                       <span className="text-[11px] text-slate-500">No processing fee</span>
                     </div>
@@ -259,14 +259,14 @@ export default function OwnerBilling() {
                     <button
                       onClick={() => handleCheckout("bank")}
                       disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
-                      className="h-9 px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-xs hover:bg-slate-200 disabled:opacity-60"
+                      className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                     >
                       {checkoutLoading === "bank" ? "Starting..." : "Pay Balance by Bank (ACH)"}
                     </button>
                     <button
                       onClick={() => handleCheckout("card")}
                       disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
-                      className="h-9 px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-xs hover:bg-slate-200 disabled:opacity-60"
+                      className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                     >
                       {checkoutLoading === "card" ? "Starting..." : "Pay Balance by Card"}
                     </button>
@@ -319,28 +319,21 @@ export default function OwnerBilling() {
         {loading ? (
           <div className="p-6 text-center text-slate-500">Loading...</div>
         ) : (
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3 text-left">Property</th>
-                <th className="px-4 py-3 text-left">Description</th>
-                <th className="px-4 py-3 text-right">Amount</th>
-                <th className="px-4 py-3 text-left">Due</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Invoice PDF</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
+          <>
+            <div className="md:hidden space-y-3 p-4">
               {filtered.map((bill) => (
-                <tr key={bill.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-900">{bill.propertyAddress}</td>
-                  <td className="px-4 py-3 text-slate-700">{bill.description}</td>
-                  <td className="px-4 py-3 text-right text-slate-900">${bill.amount.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-slate-700">
-                    {formatDateOnly(bill.dueDate) || "-"}
-                  </td>
-                  <td className="px-4 py-3">
+                <div key={bill.id} className="border border-slate-200 rounded-lg p-3">
+                  <div className="text-sm font-semibold text-slate-900">{bill.propertyAddress}</div>
+                  <div className="text-sm text-slate-700 mt-1">{bill.description}</div>
+                  <div className="mt-2 flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Due</span>
+                    <span className="text-slate-700">{formatDateOnly(bill.dueDate) || "-"}</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Amount</span>
+                    <span className="font-semibold text-slate-900">${bill.amount.toFixed(2)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-semibold ${
                         bill.status === "paid"
@@ -354,21 +347,73 @@ export default function OwnerBilling() {
                     >
                       {bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
                     {bill.invoiceUrl ? (
-                      <a href={bill.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
+                      <a
+                        href={bill.invoiceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:text-blue-700 text-xs"
+                      >
                         Invoice PDF
                       </a>
                     ) : (
                       <span className="text-xs text-slate-500">Not uploaded</span>
                     )}
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Property</th>
+                    <th className="px-4 py-3 text-left">Description</th>
+                    <th className="px-4 py-3 text-right">Amount</th>
+                    <th className="px-4 py-3 text-left">Due</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left">Invoice PDF</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filtered.map((bill) => (
+                    <tr key={bill.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-900">{bill.propertyAddress}</td>
+                      <td className="px-4 py-3 text-slate-700">{bill.description}</td>
+                      <td className="px-4 py-3 text-right text-slate-900">${bill.amount.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatDateOnly(bill.dueDate) || "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            bill.status === "paid"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : bill.status === "overdue"
+                              ? "bg-red-100 text-red-700"
+                              : bill.status === "voided"
+                              ? "bg-slate-100 text-slate-600"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {bill.invoiceUrl ? (
+                          <a href={bill.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-sm">
+                            Invoice PDF
+                          </a>
+                        ) : (
+                          <span className="text-xs text-slate-500">Not uploaded</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

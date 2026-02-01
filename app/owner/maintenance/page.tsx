@@ -92,7 +92,7 @@ export default function OwnerMaintenancePage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="px-4 py-6 md:p-8 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Maintenance Requests</h1>
       <p className="text-gray-600 mb-6">
         View maintenance requests for your properties (read-only)
@@ -115,9 +115,60 @@ export default function OwnerMaintenancePage() {
             No active maintenance requests for your properties.
           </div>
         ) : (
-          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
+          <>
+            <div className="md:hidden space-y-3">
+              {activeRequests.map((req) => (
+                <div key={req.id} className="bg-white rounded-lg border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        {req.propertyAddress || req.propertyId || "â€”"}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {req.createdAt
+                          ? new Date(req.createdAt).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })
+                          : "â€”"}
+                        {" · "}
+                        {getElapsedTime(req.createdAt)}
+                      </div>
+                    </div>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        req.status === "open"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : req.status === "in_progress"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {req.status === "in_progress"
+                        ? "In Progress"
+                        : req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-700">
+                    {req.description}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">
+                      {req.category || "General"}
+                    </span>
+                    <span>{req.tenantName}</span>
+                    <span className="text-slate-400">{req.tenantEmail}</span>
+                    <span className="ml-auto text-slate-700">
+                      {req.cost ? `$${req.cost.toFixed(2)}` : "â€”"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden md:block bg-white rounded-lg border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -201,9 +252,10 @@ export default function OwnerMaintenancePage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
 
