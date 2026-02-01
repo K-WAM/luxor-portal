@@ -32,7 +32,8 @@ export async function GET() {
         zelle_phone,
         properties (
           id,
-          address
+          address,
+          owner_name
         )
       `
       )
@@ -52,7 +53,8 @@ export async function GET() {
           ownership_percentage,
           properties (
             id,
-            address
+            address,
+            owner_name
           )
         `
         )
@@ -84,6 +86,7 @@ export async function GET() {
     const rows = rowsData.map((row: any) => ({
       userId: row.user_id,
       ownerEmail: userEmailMap.get(row.user_id) || "",
+      ownerName: row.properties?.owner_name || "",
       propertyId: row.property_id,
       propertyAddress: getPropertyAddress(row.properties),
       ownershipPercentage: row.ownership_percentage ?? null,
