@@ -22,6 +22,7 @@ export async function GET() {
         created_at: u.created_at,
         last_sign_in_at: u.last_sign_in_at,
         role: (u.user_metadata as any)?.role || null,
+        name: (u.user_metadata as any)?.name || null,
       })) ?? [];
 
     return NextResponse.json(users);
@@ -39,24 +40,36 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const { userId, role: newRole } = (await request.json()) as { userId?: string; role?: string };
+    const { userId, role: newRole, name } = (await request.json()) as { userId?: string; role?: string; name?: string | null };
 
-    if (!userId || !newRole) {
-      return NextResponse.json({ error: "userId and role are required" }, { status: 400 });
+    if (!userId || (!newRole && name === undefined)) {
+      return NextResponse.json({ error: "userId and role or name are required" }, { status: 400 });
     }
-    if (!ALLOWED_ROLES.includes(newRole)) {
+    if (newRole && !ALLOWED_ROLES.includes(newRole)) {
       return NextResponse.json({ error: `Role must be one of ${ALLOWED_ROLES.join(", ")}` }, { status: 400 });
     }
 
+    let existingMetadata: Record<string, any> | null = null;
+    if (name !== undefined || newRole) {
+      const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (userError) throw userError;
+      existingMetadata = (userData.user?.user_metadata as Record<string, any>) || {};
+    }
+
     const { data: updated, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      user_metadata: { role: newRole },
+      user_metadata: {
+        ...(existingMetadata || {}),
+        ...(newRole ? { role: newRole } : {}),
+        ...(name !== undefined ? { name: name ? String(name).trim() : null } : {}),
+      },
     });
     if (updateError) throw updateError;
 
     return NextResponse.json({
       id: updated.user?.id,
       email: updated.user?.email,
-      role: newRole,
+      role: (updated.user?.user_metadata as any)?.role || null,
+      name: (updated.user?.user_metadata as any)?.name || null,
     });
   } catch (error) {
     console.error("Error updating user role", error);

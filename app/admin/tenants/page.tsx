@@ -12,6 +12,7 @@ type Invite = {
   id: string;
   email: string;
   phone?: string | null;
+  name?: string | null;
   role: string;
   ownership_percentage?: number;
   token: string;
@@ -29,6 +30,7 @@ type Invite = {
 type UserRow = {
   id: string;
   email: string | null;
+  name?: string | null;
   role: string | null;
   created_at: string | null;
   last_sign_in_at: string | null;
@@ -62,6 +64,7 @@ export default function TenantInvitesPage() {
   const [savingOwnershipKey, setSavingOwnershipKey] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
+    name: "",
     email: "",
     phone: "",
     propertyId: "",
@@ -139,7 +142,7 @@ export default function TenantInvitesPage() {
 
       setSuccess("Invite created!");
       setLatestInviteUrl(data.inviteUrl || null);
-      setFormData({ email: "", phone: "", propertyId: "", role: "tenant", ownershipPercentage: "" });
+      setFormData({ name: "", email: "", phone: "", propertyId: "", role: "tenant", ownershipPercentage: "" });
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to create invite");
@@ -161,6 +164,27 @@ export default function TenantInvitesPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to update user");
       setSuccess(`Updated role for ${data.email || "user"}`);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "Failed to update user");
+    } finally {
+      setSavingUserId(null);
+    }
+  };
+
+  const handleUserNameUpdate = async (userId: string, name: string) => {
+    setError(null);
+    setSuccess(null);
+    setSavingUserId(userId);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update user");
+      setSuccess(`Updated name for ${data.email || "user"}`);
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to update user");
@@ -379,7 +403,22 @@ export default function TenantInvitesPage() {
       <div className="bg-white rounded-lg border border-slate-200 p-6 mb-8">
         <h2 className="text-xl font-semibold mb-4">Create New Invite</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Name
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Full name"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium mb-1">
                 Email <span className="text-red-500">*</span>
@@ -505,6 +544,9 @@ export default function TenantInvitesPage() {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     Email
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -533,6 +575,9 @@ export default function TenantInvitesPage() {
               <tbody className="divide-y divide-slate-200">
                 {visibleInvites.map((invite) => (
                   <tr key={invite.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 text-sm text-slate-900">
+                      {invite.name || "-"}
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-900">
                       <div>{invite.email}</div>
                       {invite.phone && (
@@ -616,6 +661,9 @@ export default function TenantInvitesPage() {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     Email
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -638,6 +686,18 @@ export default function TenantInvitesPage() {
               <tbody className="divide-y divide-slate-200">
                 {users.map((user) => (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 text-sm text-slate-900">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          defaultValue={user.name || ""}
+                          onBlur={(e) => handleUserNameUpdate(user.id, e.target.value)}
+                          className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white w-full"
+                          placeholder="Name"
+                          disabled={savingUserId === user.id}
+                        />
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-900">{user.email || "-"}</td>
                     <td className="px-4 py-3 text-sm">
                       <select

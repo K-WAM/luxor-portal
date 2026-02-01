@@ -95,6 +95,7 @@ export async function POST(
     // Use role from invite (tenant or owner)
     const userRole = invite.role || 'tenant'
     const invitePhone = invite.phone ? String(invite.phone).trim() : null
+    const inviteName = invite.name ? String(invite.name).trim() : null
 
     // Create the user account
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -104,6 +105,7 @@ export async function POST(
       user_metadata: {
         role: userRole,
         phone: invitePhone || undefined,
+        ...(inviteName ? { name: inviteName } : {}),
       },
       ...(invitePhone ? { phone: invitePhone } : {}),
     })
@@ -117,11 +119,12 @@ export async function POST(
 
         if (user) {
           // Update metadata if we have a phone on the invite
-          if (invitePhone) {
+          if (invitePhone || inviteName) {
             await supabaseAdmin.auth.admin.updateUserById(user.id, {
               user_metadata: {
                 ...(user.user_metadata || {}),
-                phone: invitePhone,
+                ...(invitePhone ? { phone: invitePhone } : {}),
+                ...(inviteName ? { name: inviteName } : {}),
               },
             });
           }
