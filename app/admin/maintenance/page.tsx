@@ -16,6 +16,7 @@ type MaintenanceRequest = {
   cost?: number;
   createdAt?: string;
   closedAt?: string;
+  attachments?: { url: string; name: string; type?: string; size?: number }[];
 };
 
 type Property = { id: string; address: string };
@@ -488,7 +489,24 @@ export default function MaintenanceRequestsPage() {
                         <td className="px-4 py-3 text-sm text-slate-700">
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{req.category || "General"}</span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-slate-700 max-w-xs">{req.description}</td>
+                        <td className="px-4 py-3 text-sm text-slate-700 max-w-xs">
+                          <div>{req.description}</div>
+                          {req.attachments && req.attachments.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {req.attachments.map((att, index) => (
+                                <a
+                                  key={`${att.url}-${index}`}
+                                  href={att.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block text-xs text-blue-600 hover:text-blue-700"
+                                >
+                                  {att.name || `Attachment ${index + 1}`}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm">
                           <select
                             className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"

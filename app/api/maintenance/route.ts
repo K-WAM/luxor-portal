@@ -2,6 +2,49 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers'
 
+const sendMaintenanceEmail = async (payload: {
+  propertyAddress: string
+  description: string
+  tenantName?: string
+  tenantEmail?: string
+}) => {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    console.warn('RESEND_API_KEY is not set; skipping maintenance email.')
+    return
+  }
+
+  const baseUrl = process.env.APP_BASE_URL || ''
+  const adminLink = baseUrl ? `${baseUrl.replace(/\/$/, '')}/admin/maintenance` : ''
+  const lines = [
+    'New Maintenance Request Submitted',
+    '',
+    `Property: ${payload.propertyAddress || 'Unknown property'}`,
+    payload.tenantName ? `Tenant: ${payload.tenantName}` : null,
+    payload.tenantEmail ? `Tenant Email: ${payload.tenantEmail}` : null,
+    '',
+    'Description:',
+    payload.description || 'No description provided.',
+    '',
+    'Log in to the portal to view full details.',
+    adminLink ? `Admin link: ${adminLink}` : null,
+  ].filter(Boolean)
+
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: 'Luxor <no-reply@luxordev.com>',
+      to: ['connect@luxordev.com'],
+      subject: 'New Maintenance Request Submitted',
+      text: lines.join('\n'),
+    }),
+  })
+}
+
 export async function GET(request: Request) {
   try {
     const { user, role } = await getAuthContext()
@@ -72,7 +115,8 @@ export async function GET(request: Request) {
       cost: item.cost,
       createdAt: item.created_at,
       closedAt: item.closed_at,
-      propertyAddress: item.properties?.address
+      propertyAddress: item.properties?.address,
+      attachments: item.attachments || []
     }))
 
     return NextResponse.json(formatted)
@@ -122,6 +166,7 @@ export async function POST(request: Request) {
     // Add optional fields if provided
     if (body.cost !== undefined) insertData.cost = body.cost
     if (body.internalComments) insertData.internal_comments = body.internalComments
+    if (Array.isArray(body.attachments)) insertData.attachments = body.attachments
 
     const { data, error } = await supabaseAdmin
       .from('maintenance_requests')
@@ -130,6 +175,23 @@ export async function POST(request: Request) {
       .single()
 
     if (error) throw error
+
+    try {
+      const { data: propertyData } = await supabaseAdmin
+        .from('properties')
+        .select('address')
+        .eq('id', body.propertyId)
+        .single()
+
+      await sendMaintenanceEmail({
+        propertyAddress: propertyData?.address || '',
+        description: body.description,
+        tenantName,
+        tenantEmail,
+      })
+    } catch (emailError) {
+      console.error('Error sending maintenance email:', emailError)
+    }
 
     return NextResponse.json(data)
   } catch (error) {

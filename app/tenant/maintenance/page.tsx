@@ -22,6 +22,7 @@ type MaintenanceRequest = {
   description: string;
   status: string;
   createdAt?: string;
+  attachments?: { url: string; name: string; type?: string; size?: number }[];
 };
 
 export default function TenantMaintenance() {
@@ -38,6 +39,18 @@ export default function TenantMaintenance() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
+  const MAX_FILE_MB = 10;
+  const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+  const ACCEPTED_TYPES = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/heic",
+    "video/mp4",
+    "video/quicktime",
+  ]);
 
   const loadData = async () => {
     try {
@@ -94,6 +107,34 @@ export default function TenantMaintenance() {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   };
 
+  const handleAttachmentChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) {
+      setAttachments([]);
+      setAttachmentError(null);
+      return;
+    }
+
+    const invalidType = files.find((file) => !ACCEPTED_TYPES.has(file.type));
+    if (invalidType) {
+      setAttachments([]);
+      setAttachmentError("Unsupported file type. Please upload images or videos.");
+      e.target.value = "";
+      return;
+    }
+
+    const tooLarge = files.find((file) => file.size > MAX_FILE_BYTES);
+    if (tooLarge) {
+      setAttachments([]);
+      setAttachmentError(`File exceeds ${MAX_FILE_MB} MB limit.`);
+      e.target.value = "";
+      return;
+    }
+
+    setAttachments(files);
+    setAttachmentError(null);
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -106,10 +147,26 @@ export default function TenantMaintenance() {
     setSubmitting(true);
 
     try {
+      let uploadedAttachments: { url: string; name: string; type?: string; size?: number }[] = [];
+      if (attachments.length > 0) {
+        const formData = new FormData();
+        formData.append("propertyId", form.propertyId);
+        attachments.forEach((file) => formData.append("files", file));
+        const uploadRes = await fetch("/api/maintenance/attachments", {
+          method: "POST",
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) {
+          throw new Error(uploadData.error || "Failed to upload attachments");
+        }
+        uploadedAttachments = uploadData.attachments || [];
+      }
+
       const res = await fetch("/api/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, attachments: uploadedAttachments }),
       });
 
       const data = await res.json();
@@ -117,6 +174,8 @@ export default function TenantMaintenance() {
 
       await loadData();
       setForm((f) => ({ ...f, description: "", category: "" }));
+      setAttachments([]);
+      setAttachmentError(null);
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {
@@ -219,6 +278,32 @@ export default function TenantMaintenance() {
             placeholder="Please describe the maintenance issue in detail..."
             required
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Attachments (optional)
+          </label>
+          <input
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/heic,video/mp4,video/quicktime"
+            onChange={handleAttachmentChange}
+            className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Max file size: {MAX_FILE_MB} MB per file. If your file exceeds this limit, please email it to connect@luxordev.com.
+          </p>
+          {attachmentError && (
+            <p className="text-xs text-red-600 mt-1">{attachmentError}</p>
+          )}
+          {attachments.length > 0 && (
+            <div className="mt-2 text-xs text-slate-600 space-y-1">
+              {attachments.map((file) => (
+                <div key={`${file.name}-${file.size}`}>{file.name}</div>
+              ))}
+            </div>
+          )}
         </div>
 
         <button
