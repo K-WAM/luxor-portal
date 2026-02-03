@@ -21,6 +21,12 @@ type MaintenanceRequest = {
 
 type Property = { id: string; address: string };
 type TenantUser = { id: string; email: string | null; name: string | null; role: string | null };
+type UserPropertyAccess = {
+  user_id: string;
+  role: string;
+  property_id: string;
+  properties?: { id: string; address: string };
+};
 
 const toDateTimeLocal = (value?: string) => {
   if (!value) return "";
@@ -53,6 +59,8 @@ export default function MaintenanceRequestsPage() {
   const [editAttachments, setEditAttachments] = useState<File[]>([]);
   const [editAttachmentError, setEditAttachmentError] = useState<string | null>(null);
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
+  const [userProperties, setUserProperties] = useState<UserPropertyAccess[]>([]);
+  const [editTenantUserId, setEditTenantUserId] = useState("");
 
   const [createForm, setCreateForm] = useState({
     propertyId: "",
@@ -92,6 +100,11 @@ export default function MaintenanceRequestsPage() {
       if (usersRes.ok) {
         const usersData = (await usersRes.json()) as TenantUser[];
         setTenantUsers((usersData || []).filter((u) => u.role === "tenant"));
+      }
+      const accessRes = await fetch("/api/admin/user-properties");
+      if (accessRes.ok) {
+        const accessData = (await accessRes.json()) as UserPropertyAccess[];
+        setUserProperties(accessData || []);
       }
       const reqRes = await fetch("/api/maintenance");
       const reqData = await reqRes.json();
@@ -183,6 +196,17 @@ export default function MaintenanceRequestsPage() {
       ...f,
       tenantUserId,
       tenantName: selected?.name || f.tenantName,
+      tenantEmail: selected?.email || f.tenantEmail,
+    }));
+  };
+
+  const handleEditTenantSelect = (e: ChangeEvent<HTMLSelectElement>) => {
+    const tenantUserId = e.target.value;
+    const selected = tenantUsers.find((u) => u.id === tenantUserId);
+    setEditTenantUserId(tenantUserId);
+    setEditForm((f) => ({
+      ...f,
+      tenantName: selected?.name || selected?.email || f.tenantName,
       tenantEmail: selected?.email || f.tenantEmail,
     }));
   };
@@ -332,6 +356,10 @@ export default function MaintenanceRequestsPage() {
     setEditingRequestId(req.id);
     setEditAttachments([]);
     setEditAttachmentError(null);
+    const matchedTenant = tenantUsers.find(
+      (u) => u.email && req.tenantEmail && u.email.toLowerCase() === req.tenantEmail.toLowerCase()
+    );
+    setEditTenantUserId(matchedTenant?.id || "");
     setEditForm({
       propertyId: fallbackPropertyId,
       tenantName: req.tenantName || "",
@@ -348,6 +376,13 @@ export default function MaintenanceRequestsPage() {
   const handleEditChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setEditForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  const tenantOptionsForProperty = (propertyId: string) => {
+    const tenantIds = userProperties
+      .filter((up) => up.property_id === propertyId && up.role === "tenant")
+      .map((up) => up.user_id);
+    return tenantUsers.filter((u) => tenantIds.includes(u.id));
+  };
 
   const handleEditSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -728,12 +763,29 @@ export default function MaintenanceRequestsPage() {
                                 </select>
                               </div>
                               <div className="flex flex-col gap-1">
-                                <label className="font-medium">Tenant Name</label>
-                                <input type="text" name="tenantName" value={editForm.tenantName} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
+                                <label className="font-medium">Tenant</label>
+                                <select
+                                  value={editTenantUserId}
+                                  onChange={handleEditTenantSelect}
+                                  className="border border-slate-300 rounded-md px-2 py-1.5"
+                                >
+                                  <option value="">Select tenant...</option>
+                                  {tenantOptionsForProperty(editForm.propertyId).map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.name || u.email || "Tenant"}
+                                    </option>
+                                  ))}
+                                </select>
                               </div>
                               <div className="flex flex-col gap-1">
                                 <label className="font-medium">Tenant Email</label>
-                                <input type="email" name="tenantEmail" value={editForm.tenantEmail} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
+                                <input
+                                  type="email"
+                                  name="tenantEmail"
+                                  value={editForm.tenantEmail}
+                                  readOnly
+                                  className="border border-slate-300 rounded-md px-2 py-1.5 bg-slate-50"
+                                />
                               </div>
                               <div className="flex flex-col gap-1">
                                 <label className="font-medium">Category</label>
@@ -913,14 +965,31 @@ export default function MaintenanceRequestsPage() {
                           {properties.map((p) => (<option key={p.id} value={p.id}>{p.address}</option>))}
                         </select>
                       </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-medium">Tenant Name</label>
-                        <input type="text" name="tenantName" value={editForm.tenantName} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-medium">Tenant Email</label>
-                        <input type="email" name="tenantEmail" value={editForm.tenantEmail} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
-                      </div>
+                              <div className="flex flex-col gap-1">
+                                <label className="font-medium">Tenant</label>
+                                <select
+                                  value={editTenantUserId}
+                                  onChange={handleEditTenantSelect}
+                                  className="border border-slate-300 rounded-md px-2 py-1.5"
+                                >
+                                  <option value="">Select tenant...</option>
+                                  {tenantOptionsForProperty(editForm.propertyId).map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.name || u.email || "Tenant"}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <label className="font-medium">Tenant Email</label>
+                                <input
+                                  type="email"
+                                  name="tenantEmail"
+                                  value={editForm.tenantEmail}
+                                  readOnly
+                                  className="border border-slate-300 rounded-md px-2 py-1.5 bg-slate-50"
+                                />
+                              </div>
                       <div className="flex flex-col gap-1">
                         <label className="font-medium">Category</label>
                         <select name="category" value={editForm.category} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5">
