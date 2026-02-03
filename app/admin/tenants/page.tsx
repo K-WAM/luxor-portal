@@ -686,19 +686,21 @@ export default function TenantInvitesPage() {
               <tbody className="divide-y divide-slate-200">
                 {users.map((user) => (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-sm text-slate-900 min-w-0">
+                    <td className="px-4 py-3 text-sm text-slate-900 min-w-[160px]">
                       <div className="flex items-center gap-2">
-                        <textarea
-                          rows={1}
+                        <input
+                          type="text"
                           defaultValue={user.name || ""}
                           onBlur={(e) => handleUserNameUpdate(user.id, e.target.value)}
-                          className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white w-full min-w-0 resize-none whitespace-normal break-words"
+                          className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white w-full"
                           placeholder="Name"
                           disabled={savingUserId === user.id}
                         />
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-900">{user.email || "-"}</td>
+                    <td className="px-4 py-3 text-sm text-slate-900 break-words">
+                      {user.email || "-"}
+                    </td>
                     <td className="px-4 py-3 text-sm">
                       <select
                         defaultValue={user.role || ""}
@@ -780,10 +782,10 @@ export default function TenantInvitesPage() {
                         })}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
+                    <td className="px-4 py-3 text-sm text-slate-600 whitespace-normal">
                       {user.created_at ? new Date(user.created_at).toLocaleDateString() : "-"}
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
+                    <td className="px-4 py-3 text-sm text-slate-600 whitespace-normal">
                       {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "-"}
                     </td>
                     <td className="px-4 py-3 text-sm">
