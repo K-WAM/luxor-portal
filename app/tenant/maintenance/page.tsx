@@ -360,6 +360,21 @@ export default function TenantMaintenance() {
                   <span className="font-medium">{r.category || "General"}</span>
                 </div>
                 <p className="text-sm text-slate-700">{r.description}</p>
+                {r.attachments && r.attachments.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {r.attachments.map((att, index) => (
+                      <a
+                        key={`${att.url}-${index}`}
+                        href={att.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block text-xs text-blue-600 hover:text-blue-700"
+                      >
+                        {att.name || `Attachment ${index + 1}`}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

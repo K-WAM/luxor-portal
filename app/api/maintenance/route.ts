@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers'
+import nodemailer from 'nodemailer'
 
 const sendMaintenanceEmail = async (payload: {
   propertyAddress: string
@@ -8,9 +9,14 @@ const sendMaintenanceEmail = async (payload: {
   tenantName?: string
   tenantEmail?: string
 }) => {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) {
-    console.warn('RESEND_API_KEY is not set; skipping maintenance email.')
+  const host = process.env.SMTP_HOST
+  const port = Number(process.env.SMTP_PORT || 0)
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+  const from = process.env.SMTP_FROM
+
+  if (!host || !port || !user || !pass || !from) {
+    console.warn('SMTP env vars missing; skipping maintenance email.')
     return
   }
 
@@ -30,18 +36,18 @@ const sendMaintenanceEmail = async (payload: {
     adminLink ? `Admin link: ${adminLink}` : null,
   ].filter(Boolean)
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'Luxor <no-reply@luxordev.com>',
-      to: ['connect@luxordev.com'],
-      subject: 'New Maintenance Request Submitted',
-      text: lines.join('\n'),
-    }),
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  })
+
+  await transporter.sendMail({
+    from,
+    to: 'connect@luxordev.com',
+    subject: 'New Maintenance Request Submitted',
+    text: lines.join('\n'),
   })
 }
 
