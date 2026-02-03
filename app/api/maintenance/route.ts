@@ -160,10 +160,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Tenant email is required" }, { status: 400 })
     }
 
+    if (role !== "tenant" && !tenantEmail) {
+      return NextResponse.json({ error: "Tenant email is required" }, { status: 400 })
+    }
+
+    const normalizedTenantEmail = tenantEmail ? tenantEmail.trim().toLowerCase() : ""
+
     const insertData: any = {
       property_id: body.propertyId,
       tenant_name: tenantName,
-      tenant_email: tenantEmail,
+      tenant_email: normalizedTenantEmail,
       category: body.category,
       description: body.description,
       status: 'open',
@@ -243,7 +249,9 @@ export async function PATCH(request: Request) {
     if (cost !== undefined) updateData.cost = cost
     if (propertyId !== undefined) updateData.property_id = propertyId
     if (tenantName !== undefined) updateData.tenant_name = tenantName
-    if (tenantEmail !== undefined) updateData.tenant_email = tenantEmail
+    if (tenantEmail !== undefined) {
+      updateData.tenant_email = tenantEmail ? tenantEmail.trim().toLowerCase() : tenantEmail
+    }
     if (category !== undefined) updateData.category = category
     if (description !== undefined) updateData.description = description
     if (createdAt !== undefined) {
@@ -257,6 +265,19 @@ export async function PATCH(request: Request) {
       } else {
         updateData.closed_at = closedAt
       }
+    }
+
+    if (Array.isArray(body.attachments)) {
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from('maintenance_requests')
+        .select('attachments')
+        .eq('id', id)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      const existingAttachments = Array.isArray(existing?.attachments) ? existing.attachments : []
+      updateData.attachments = [...existingAttachments, ...body.attachments]
     }
 
     const { data, error } = await supabaseAdmin

@@ -47,6 +47,10 @@ export default function MaintenanceRequestsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
+  const [createAttachments, setCreateAttachments] = useState<File[]>([]);
+  const [createAttachmentError, setCreateAttachmentError] = useState<string | null>(null);
+  const [editAttachments, setEditAttachments] = useState<File[]>([]);
+  const [editAttachmentError, setEditAttachmentError] = useState<string | null>(null);
 
   const [createForm, setCreateForm] = useState({
     propertyId: "",
@@ -164,6 +168,72 @@ export default function MaintenanceRequestsPage() {
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setCreateForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
+  const MAX_FILE_MB = 10;
+  const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+  const ACCEPTED_TYPES = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/heic",
+    "video/mp4",
+    "video/quicktime",
+  ]);
+
+  const handleCreateAttachmentChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) {
+      setCreateAttachments([]);
+      setCreateAttachmentError(null);
+      return;
+    }
+
+    const invalidType = files.find((file) => !ACCEPTED_TYPES.has(file.type));
+    if (invalidType) {
+      setCreateAttachments([]);
+      setCreateAttachmentError("Unsupported file type. Please upload images or videos.");
+      e.target.value = "";
+      return;
+    }
+
+    const tooLarge = files.find((file) => file.size > MAX_FILE_BYTES);
+    if (tooLarge) {
+      setCreateAttachments([]);
+      setCreateAttachmentError(`File exceeds ${MAX_FILE_MB} MB limit.`);
+      e.target.value = "";
+      return;
+    }
+
+    setCreateAttachments(files);
+    setCreateAttachmentError(null);
+  };
+
+  const handleEditAttachmentChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) {
+      setEditAttachments([]);
+      setEditAttachmentError(null);
+      return;
+    }
+
+    const invalidType = files.find((file) => !ACCEPTED_TYPES.has(file.type));
+    if (invalidType) {
+      setEditAttachments([]);
+      setEditAttachmentError("Unsupported file type. Please upload images or videos.");
+      e.target.value = "";
+      return;
+    }
+
+    const tooLarge = files.find((file) => file.size > MAX_FILE_BYTES);
+    if (tooLarge) {
+      setEditAttachments([]);
+      setEditAttachmentError(`File exceeds ${MAX_FILE_MB} MB limit.`);
+      e.target.value = "";
+      return;
+    }
+
+    setEditAttachments(files);
+    setEditAttachmentError(null);
+  };
+
   const handleCreateSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -173,12 +243,27 @@ export default function MaintenanceRequestsPage() {
     }
     try {
       setCreating(true);
+      let uploadedAttachments: { url: string; name: string; type?: string; size?: number }[] = [];
+      if (createAttachments.length > 0) {
+        const formData = new FormData();
+        formData.append("propertyId", createForm.propertyId);
+        createAttachments.forEach((file) => formData.append("files", file));
+        const uploadRes = await fetch("/api/maintenance/attachments", {
+          method: "POST",
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) throw new Error(uploadData.error || "Failed to upload attachments");
+        uploadedAttachments = uploadData.attachments || [];
+      }
+
       const payload: any = {
         propertyId: createForm.propertyId,
         tenantName: createForm.tenantName,
         tenantEmail: createForm.tenantEmail,
         category: createForm.category,
         description: createForm.description,
+        attachments: uploadedAttachments,
       };
       const res = await fetch("/api/maintenance", {
         method: "POST",
@@ -211,6 +296,8 @@ export default function MaintenanceRequestsPage() {
         cost: "",
         internalComments: "",
       });
+      setCreateAttachments([]);
+      setCreateAttachmentError(null);
       setShowCreateForm(false);
       await loadRequests();
     } catch (err: any) {
@@ -223,6 +310,8 @@ export default function MaintenanceRequestsPage() {
   const startEdit = (req: MaintenanceRequest) => {
     const fallbackPropertyId = req.propertyId || properties[0]?.id || "";
     setEditingRequestId(req.id);
+    setEditAttachments([]);
+    setEditAttachmentError(null);
     setEditForm({
       propertyId: fallbackPropertyId,
       tenantName: req.tenantName || "",
@@ -249,6 +338,20 @@ export default function MaintenanceRequestsPage() {
     }
     try {
       setSavingId(editingRequestId);
+      let uploadedAttachments: { url: string; name: string; type?: string; size?: number }[] = [];
+      if (editAttachments.length > 0) {
+        const formData = new FormData();
+        formData.append("propertyId", editForm.propertyId);
+        editAttachments.forEach((file) => formData.append("files", file));
+        const uploadRes = await fetch("/api/maintenance/attachments", {
+          method: "POST",
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) throw new Error(uploadData.error || "Failed to upload attachments");
+        uploadedAttachments = uploadData.attachments || [];
+      }
+
       const payload: any = {
         id: editingRequestId,
         propertyId: editForm.propertyId,
@@ -258,6 +361,9 @@ export default function MaintenanceRequestsPage() {
         description: editForm.description,
         status: editForm.status,
       };
+      if (uploadedAttachments.length > 0) {
+        payload.attachments = uploadedAttachments;
+      }
       if (editForm.cost !== "") payload.cost = parseFloat(editForm.cost);
       const createdAtIso = toIsoString(editForm.createdAt);
       if (createdAtIso) payload.createdAt = createdAtIso;
@@ -272,6 +378,8 @@ export default function MaintenanceRequestsPage() {
       if (!res.ok) throw new Error(data.error || "Failed to save changes");
       await loadRequests();
       setEditingRequestId(null);
+      setEditAttachments([]);
+      setEditAttachmentError(null);
     } catch (err: any) {
       setError(err.message || "Failed to save changes.");
     } finally {
@@ -434,6 +542,29 @@ export default function MaintenanceRequestsPage() {
                 className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Attachments (optional)</label>
+              <input
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/heic,video/mp4,video/quicktime"
+                onChange={handleCreateAttachmentChange}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Max file size: 10 MB per file. If your file exceeds this limit, please email it to connect@luxordev.com.
+              </p>
+              {createAttachmentError && (
+                <p className="text-xs text-red-600 mt-1">{createAttachmentError}</p>
+              )}
+              {createAttachments.length > 0 && (
+                <div className="mt-2 text-xs text-slate-600 space-y-1">
+                  {createAttachments.map((file) => (
+                    <div key={`${file.name}-${file.size}`}>{file.name}</div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -591,6 +722,29 @@ export default function MaintenanceRequestsPage() {
                               <div className="flex flex-col gap-1 md:col-span-3">
                                 <label className="font-medium">Description</label>
                                 <textarea name="description" value={editForm.description} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" rows={2} />
+                              </div>
+                              <div className="flex flex-col gap-1 md:col-span-3">
+                                <label className="font-medium">Attachments (optional)</label>
+                                <input
+                                  type="file"
+                                  multiple
+                                  accept="image/jpeg,image/png,image/heic,video/mp4,video/quicktime"
+                                  onChange={handleEditAttachmentChange}
+                                  className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Max file size: 10 MB per file. If your file exceeds this limit, please email it to connect@luxordev.com.
+                                </p>
+                                {editAttachmentError && (
+                                  <p className="text-xs text-red-600 mt-1">{editAttachmentError}</p>
+                                )}
+                                {editAttachments.length > 0 && (
+                                  <div className="mt-2 text-xs text-slate-600 space-y-1">
+                                    {editAttachments.map((file) => (
+                                      <div key={`${file.name}-${file.size}`}>{file.name}</div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:col-span-3">
                                 <div className="flex flex-col gap-1">
@@ -754,6 +908,29 @@ export default function MaintenanceRequestsPage() {
                       <div className="flex flex-col gap-1 md:col-span-3">
                         <label className="font-medium">Description</label>
                         <textarea name="description" value={editForm.description} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" rows={2} />
+                      </div>
+                      <div className="flex flex-col gap-1 md:col-span-3">
+                        <label className="font-medium">Attachments (optional)</label>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/heic,video/mp4,video/quicktime"
+                          onChange={handleEditAttachmentChange}
+                          className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Max file size: 10 MB per file. If your file exceeds this limit, please email it to connect@luxordev.com.
+                        </p>
+                        {editAttachmentError && (
+                          <p className="text-xs text-red-600 mt-1">{editAttachmentError}</p>
+                        )}
+                        {editAttachments.length > 0 && (
+                          <div className="mt-2 text-xs text-slate-600 space-y-1">
+                            {editAttachments.map((file) => (
+                              <div key={`${file.name}-${file.size}`}>{file.name}</div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 md:col-span-3">
                         <button type="submit" disabled={savingId === req.id} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300">{savingId === req.id ? "Saving..." : "Save Changes"}</button>
