@@ -61,6 +61,7 @@ export default function MaintenanceRequestsPage() {
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
   const [userProperties, setUserProperties] = useState<UserPropertyAccess[]>([]);
   const [editTenantUserId, setEditTenantUserId] = useState("");
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string>("all");
 
   const [createForm, setCreateForm] = useState({
     propertyId: "",
@@ -467,8 +468,13 @@ export default function MaintenanceRequestsPage() {
         })
       : "N/A";
 
-  const activeRequests = requests.filter((r) => r.status !== "closed");
-  const closedRequests = requests.filter((r) => r.status === "closed");
+  const filteredRequests =
+    selectedPropertyId === "all"
+      ? requests
+      : requests.filter((r) => r.propertyId === selectedPropertyId);
+
+  const activeRequests = filteredRequests.filter((r) => r.status !== "closed");
+  const closedRequests = filteredRequests.filter((r) => r.status === "closed");
   if (loading) {
     return (
       <div className="p-8">
@@ -495,6 +501,42 @@ export default function MaintenanceRequestsPage() {
           {error}
         </div>
       )}
+
+      <div className="mb-6">
+        <div className="bg-white rounded-lg border border-slate-200">
+          <div className="px-4 py-3 border-b border-slate-200">
+            <div className="text-sm font-semibold text-slate-800">Properties</div>
+          </div>
+          <div className="divide-y divide-slate-200">
+            <button
+              type="button"
+              onClick={() => setSelectedPropertyId("all")}
+              className={`w-full text-left px-4 py-3 text-sm ${
+                selectedPropertyId === "all" ? "bg-slate-100 font-semibold" : "hover:bg-slate-50"
+              }`}
+            >
+              All properties
+            </button>
+            {properties.map((property) => {
+              const isActive = selectedPropertyId === property.id;
+              return (
+                <div key={property.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPropertyId(property.id)}
+                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between ${
+                      isActive ? "bg-slate-100 font-semibold" : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <span>{property.address}</span>
+                    <span className="text-xs text-slate-500">{isActive ? "−" : "+"}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
       {showCreateForm && (
         <div className="mb-8 bg-white rounded-lg border border-slate-200 p-6">
