@@ -20,6 +20,7 @@ type MaintenanceRequest = {
 };
 
 type Property = { id: string; address: string };
+type TenantUser = { id: string; email: string | null; name: string | null; role: string | null };
 
 const toDateTimeLocal = (value?: string) => {
   if (!value) return "";
@@ -51,9 +52,11 @@ export default function MaintenanceRequestsPage() {
   const [createAttachmentError, setCreateAttachmentError] = useState<string | null>(null);
   const [editAttachments, setEditAttachments] = useState<File[]>([]);
   const [editAttachmentError, setEditAttachmentError] = useState<string | null>(null);
+  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
 
   const [createForm, setCreateForm] = useState({
     propertyId: "",
+    tenantUserId: "",
     tenantName: "",
     tenantEmail: "",
     category: "",
@@ -85,6 +88,11 @@ export default function MaintenanceRequestsPage() {
       setError(null);
       const propsRes = await fetch("/api/properties");
       if (propsRes.ok) setProperties((await propsRes.json()) || []);
+      const usersRes = await fetch("/api/admin/users");
+      if (usersRes.ok) {
+        const usersData = (await usersRes.json()) as TenantUser[];
+        setTenantUsers((usersData || []).filter((u) => u.role === "tenant"));
+      }
       const reqRes = await fetch("/api/maintenance");
       const reqData = await reqRes.json();
       if (!reqRes.ok) throw new Error(reqData.error || "Failed to load");
@@ -167,6 +175,17 @@ export default function MaintenanceRequestsPage() {
   const handleCreateChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setCreateForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handleTenantSelect = (e: ChangeEvent<HTMLSelectElement>) => {
+    const tenantUserId = e.target.value;
+    const selected = tenantUsers.find((u) => u.id === tenantUserId);
+    setCreateForm((f) => ({
+      ...f,
+      tenantUserId,
+      tenantName: selected?.name || f.tenantName,
+      tenantEmail: selected?.email || f.tenantEmail,
+    }));
+  };
 
   const MAX_FILE_MB = 10;
   const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
@@ -289,6 +308,7 @@ export default function MaintenanceRequestsPage() {
       }
       setCreateForm({
         propertyId: "",
+        tenantUserId: "",
         tenantName: "",
         tenantEmail: "",
         category: "",
@@ -480,6 +500,25 @@ export default function MaintenanceRequestsPage() {
                   <option value="hvac">Heating / Cooling</option>
                   <option value="other">Other</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Tenant (optional)</label>
+                <select
+                  name="tenantUserId"
+                  value={createForm.tenantUserId}
+                  onChange={handleTenantSelect}
+                  className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select tenant...</option>
+                  {tenantUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name || u.email || "Tenant"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Selecting a tenant will auto-fill name and email.
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">

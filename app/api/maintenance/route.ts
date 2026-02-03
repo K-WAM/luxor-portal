@@ -89,7 +89,12 @@ export async function GET(request: Request) {
         .in('property_id', propertyIds)
         .order('created_at', { ascending: false })
 
-      // Tenants can see requests for their associated properties
+      if (role === "tenant") {
+        const tenantEmail = user.email || ""
+        if (tenantEmail) {
+          query = query.ilike("tenant_email", tenantEmail.trim())
+        }
+      }
 
       const result = await query
       data = result.data
