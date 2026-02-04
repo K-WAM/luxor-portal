@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 
 const sidebarItems = [
@@ -27,6 +27,10 @@ export default function TenantLayout({
     : user?.email
       ? `${user.email} (${role || "role"})`
       : "Not signed in";
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
 
   return (
     <div className="flex min-h-screen">
