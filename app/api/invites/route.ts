@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { email, propertyId, role: requestedRole = 'tenant', ownershipPercentage, phone, name } = body
+    const { email, propertyId, role: requestedRole = 'tenant', ownershipPercentage, phone, name, phoneE164 } = body
 
     const allowedRoles = ['tenant', 'owner', 'admin', 'viewer']
 
@@ -117,6 +117,12 @@ export async function POST(request: Request) {
     if (phone) {
       insertData.phone = String(phone).trim();
     }
+    if (phoneE164) {
+      const trimmedE164 = String(phoneE164).trim();
+      if (/^\+[1-9]\d{1,14}$/.test(trimmedE164)) {
+        insertData.phone_e164 = trimmedE164;
+      }
+    }
     if (name) {
       insertData.name = String(name).trim();
     }
@@ -147,6 +153,10 @@ export async function POST(request: Request) {
           token,
           ownership_percentage: requestedRole === 'owner' && ownershipPercentage ? parseFloat(ownershipPercentage) : null,
           phone: phone ? String(phone).trim() : null,
+          phone_e164:
+            phoneE164 && /^\+[1-9]\d{1,14}$/.test(String(phoneE164).trim())
+              ? String(phoneE164).trim()
+              : null,
           name: name ? String(name).trim() : null,
           status: 'pending',
           expires_at: expiresAt.toISOString(),

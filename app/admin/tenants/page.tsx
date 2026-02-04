@@ -49,6 +49,18 @@ type UserPropertyAccess = {
 };
 
 export default function TenantInvitesPage() {
+  const normalizePhone = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("+")) return trimmed;
+    const digits = trimmed.replace(/\D/g, "");
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+    return trimmed;
+  };
+
+  const isValidE164 = (value: string) => /^\+[1-9]\d{1,14}$/.test(value);
+
   const [properties, setProperties] = useState<Property[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -59,6 +71,7 @@ export default function TenantInvitesPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [phoneWarning, setPhoneWarning] = useState<string | null>(null);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingAccessUserId, setSavingAccessUserId] = useState<string | null>(null);
   const [savingOwnershipKey, setSavingOwnershipKey] = useState<string | null>(null);
@@ -127,13 +140,24 @@ export default function TenantInvitesPage() {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    const normalizedPhone = normalizePhone(formData.phone);
+    const phoneE164 = normalizedPhone && isValidE164(normalizedPhone) ? normalizedPhone : "";
+    const nextFormData = { ...formData, phone: normalizedPhone };
+    setFormData(nextFormData);
+    if (normalizedPhone && !isValidE164(normalizedPhone)) {
+      setPhoneWarning(
+        "Phone number is not in E.164 format; it will be saved, but may not be used for authentication."
+      );
+    } else {
+      setPhoneWarning(null);
+    }
     setCreating(true);
 
     try {
       const res = await fetch("/api/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...nextFormData, phoneE164 }),
       });
 
       const data = await res.json();
@@ -143,6 +167,7 @@ export default function TenantInvitesPage() {
       setSuccess("Invite created!");
       setLatestInviteUrl(data.inviteUrl || null);
       setFormData({ name: "", email: "", phone: "", propertyId: "", role: "tenant", ownershipPercentage: "" });
+      setPhoneWarning(null);
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to create invite");
@@ -445,9 +470,26 @@ export default function TenantInvitesPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, phone: e.target.value })
                 }
+                onBlur={(e) => {
+                  const normalized = normalizePhone(e.target.value);
+                  setFormData({ ...formData, phone: normalized });
+                  if (normalized && !isValidE164(normalized)) {
+                    setPhoneWarning(
+                      "Phone number is not in E.164 format; it will be saved, but may not be used for authentication."
+                    );
+                  } else {
+                    setPhoneWarning(null);
+                  }
+                }}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="(555) 555-5555"
+                placeholder="+12025550123"
               />
+              <p className="mt-1 text-xs text-slate-500">
+                Use E.164 format (e.g., +12025550123). If you enter a US/Canada number without +1, we’ll format it automatically.
+              </p>
+              {phoneWarning && (
+                <p className="mt-1 text-xs text-amber-700">{phoneWarning}</p>
+              )}
             </div>
 
             <div>
