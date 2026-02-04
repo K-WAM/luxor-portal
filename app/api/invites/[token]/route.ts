@@ -96,6 +96,7 @@ export async function POST(
     const userRole = invite.role || 'tenant'
     const invitePhone = invite.phone ? String(invite.phone).trim() : null
     const inviteName = invite.name ? String(invite.name).trim() : null
+    const e164Phone = invitePhone && /^\+[1-9]\d{1,14}$/.test(invitePhone) ? invitePhone : null
 
     // Create the user account
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -104,10 +105,10 @@ export async function POST(
       email_confirm: true,
       user_metadata: {
         role: userRole,
-        phone: invitePhone || undefined,
+        ...(invitePhone ? { phone: invitePhone } : {}),
         ...(inviteName ? { name: inviteName } : {}),
       },
-      ...(invitePhone ? { phone: invitePhone } : {}),
+      ...(e164Phone ? { phone: e164Phone } : {}),
     })
 
     if (authError) {
@@ -126,6 +127,7 @@ export async function POST(
                 ...(invitePhone ? { phone: invitePhone } : {}),
                 ...(inviteName ? { name: inviteName } : {}),
               },
+              ...(e164Phone ? { phone: e164Phone } : {}),
             });
           }
 
