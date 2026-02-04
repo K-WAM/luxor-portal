@@ -192,7 +192,8 @@ export default function TenantPayments() {
     return date ? date.getTime() : null;
   };
 
-  const nowMs = Date.now();
+  // Memoize to prevent infinite render loop (windowEndMs → qualifyingBills → useEffect → setState)
+  const nowMs = useMemo(() => Date.now(), []);
   const windowEndMs = nowMs + 30 * DAY_MS;
 
   const qualifyingBills = useMemo(() => {
