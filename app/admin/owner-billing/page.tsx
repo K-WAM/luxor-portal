@@ -103,7 +103,14 @@ export default function OwnerBillingDetailsPage() {
   const [editAmounts, setEditAmounts] = useState<
     Record<
       string,
-      { feePercent?: string; feeAmount?: string; status?: string; ownerId?: string; dueDate?: string }
+      {
+        feePercent?: string;
+        feeAmount?: string;
+        status?: string;
+        ownerId?: string;
+        dueDate?: string;
+        description?: string;
+      }
     >
   >({});
   const [ownerBillPropertyFilter, setOwnerBillPropertyFilter] = useState("");
@@ -343,6 +350,7 @@ export default function OwnerBillingDetailsPage() {
           status: edits.status ?? bill.status,
           ownerId: edits.ownerId,
           dueDate: edits.dueDate,
+          description: edits.description ?? bill.description,
         }),
       });
       const data = await res.json();
@@ -914,6 +922,7 @@ export default function OwnerBillingDetailsPage() {
                 <th className="px-4 py-3 text-left whitespace-normal">Owner</th>
                 <th className="px-4 py-3 text-left whitespace-normal">Property</th>
                 <th className="px-4 py-3 text-left whitespace-normal">Category</th>
+                <th className="px-4 py-3 text-left whitespace-normal">Description</th>
                 <th className="px-4 py-3 text-right whitespace-normal">Amount</th>
                 <th className="px-4 py-3 text-left whitespace-normal">Due</th>
                 <th className="px-4 py-3 text-left whitespace-normal">Status</th>
@@ -924,7 +933,7 @@ export default function OwnerBillingDetailsPage() {
             <tbody className="divide-y divide-slate-100">
               {displayedOwnerBills.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-slate-500" colSpan={8}>
+                  <td className="px-4 py-4 text-slate-500" colSpan={9}>
                     No owner bills found.
                   </td>
                 </tr>
@@ -961,6 +970,23 @@ export default function OwnerBillingDetailsPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-700 break-words">
                         {OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || bill.category || "PM fee"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700 break-words">
+                        {isVoided ? (
+                          bill.description || "-"
+                        ) : (
+                          <textarea
+                            rows={2}
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full resize-none"
+                            value={edits.description ?? bill.description ?? ""}
+                            onChange={(e) =>
+                              setEditAmounts((prev) => ({
+                                ...prev,
+                                [bill.id]: { ...prev[bill.id], description: e.target.value },
+                              }))
+                            }
+                          />
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-900">
                         <span className={isVoided ? "line-through" : ""}>
