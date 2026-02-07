@@ -997,19 +997,6 @@ export default function OwnerBillingDetailsPage() {
                             <input
                               type="number"
                               step="0.01"
-                              placeholder="%"
-                              className="w-16 border border-slate-300 rounded px-2 py-1"
-                              value={edits.feePercent ?? (bill.feePercent ?? "")}
-                              onChange={(e) =>
-                                setEditAmounts((prev) => ({
-                                  ...prev,
-                                  [bill.id]: { ...prev[bill.id], feePercent: e.target.value },
-                                }))
-                              }
-                            />
-                            <input
-                              type="number"
-                              step="0.01"
                               placeholder="$ override"
                               className="w-20 border border-slate-300 rounded px-2 py-1"
                               value={edits.feeAmount ?? (bill.feeAmount ?? "")}
