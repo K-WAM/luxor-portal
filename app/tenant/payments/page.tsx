@@ -47,6 +47,8 @@ export default function TenantPayments() {
   const [billsLoading, setBillsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [checkoutLoading, setCheckoutLoading] = useState<"ach" | "card" | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -222,6 +224,33 @@ export default function TenantPayments() {
       maximumFractionDigits: 0,
     }).format(value);
 
+  const handleCheckout = async (method: "ach" | "card") => {
+    if (selectedInvoiceIds.length === 0) return;
+    try {
+      setCheckoutLoading(method);
+      setCheckoutError(null);
+      const res = await fetch("/api/tenant/payments/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          billIds: selectedInvoiceIds,
+          method,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to start checkout");
+      }
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (err: any) {
+      setCheckoutError(err.message || "Failed to start checkout");
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
   return (
     <div className="px-4 py-6 md:p-8 max-w-5xl">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
@@ -305,6 +334,7 @@ export default function TenantPayments() {
                         <span>Subtotal (selected)</span>
                         <span className="font-semibold">${selectedSubtotal.toFixed(2)}</span>
                       </div>
+                      {checkoutError && <div className="text-xs text-red-600">{checkoutError}</div>}
                       <div className="border-t border-slate-100 mt-3 pt-3">
                         {ownerBillingError ? (
                           <div className="text-xs text-red-600">{ownerBillingError}</div>
@@ -330,21 +360,21 @@ export default function TenantPayments() {
                       <div className="flex flex-wrap gap-2 pt-2">
                         <div>
                           <button
-                            disabled
-                            className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs disabled:opacity-60"
+                            onClick={() => handleCheckout("ach")}
+                            disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
+                            className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                           >
-                            Pay Balance by Bank (ACH)
+                            {checkoutLoading === "ach" ? "Starting..." : "Pay Balance by Bank (ACH)"}
                           </button>
-                          <div className="text-xs text-slate-500 mt-1">Coming soon</div>
                         </div>
                         <div>
                           <button
-                            disabled
-                            className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs disabled:opacity-60"
+                            onClick={() => handleCheckout("card")}
+                            disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
+                            className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                           >
-                            Pay Balance by Card
+                            {checkoutLoading === "card" ? "Starting..." : "Pay Balance by Card"}
                           </button>
-                          <div className="text-xs text-slate-500 mt-1">Coming soon</div>
                         </div>
                       </div>
                     </div>
