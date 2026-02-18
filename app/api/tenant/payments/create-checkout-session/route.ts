@@ -42,12 +42,9 @@ const isPaymentsUnavailableError = (error: unknown) => {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, role } = await getAuthContext();
+    const { user } = await getAuthContext();
     if (!user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-    if (role !== "tenant") {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
     const body = await request.json();
