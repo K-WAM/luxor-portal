@@ -42,7 +42,7 @@ const isPaymentsUnavailableError = (error: unknown) => {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await getAuthContext();
+    const { user, role } = await getAuthContext();
     if (!user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
@@ -80,7 +80,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "One or more bills not found" }, { status: 400 });
     }
 
-    const unauthorized = bills.some((bill) => bill.tenant_id !== user.id);
+    const isAdminRole = role === "admin";
+    const unauthorized = bills.some((bill) => !isAdminRole && bill.tenant_id !== user.id);
     if (unauthorized) {
       return NextResponse.json({ error: "One or more bills are not payable by this tenant" }, { status: 403 });
     }
