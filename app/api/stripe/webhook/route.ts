@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     if (tenantBillIds.length > 0) {
       const { data: existingTenantBills, error: tenantFetchError } = await supabaseAdmin
         .from("tenant_bills")
-        .select("id, status")
+        .select("id, status, stripe_session_id, stripe_payment_intent_id")
         .in("id", tenantBillIds);
 
       if (tenantFetchError) {
@@ -42,16 +42,42 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Failed to load tenant bills" }, { status: 500 });
       }
 
-      const unpaidTenantBillIds = (existingTenantBills || [])
-        .filter((bill: { id: string; status: string }) => (bill.status || "").toLowerCase() !== "paid")
-        .map((bill: { id: string }) => bill.id);
+      const tenantBills = (existingTenantBills || []) as Array<{
+        id: string;
+        status: string | null;
+        stripe_session_id: string | null;
+        stripe_payment_intent_id: string | null;
+      }>;
+      const currentPaymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
 
-      if (unpaidTenantBillIds.length > 0) {
+      const unsettledTenantBillIds = tenantBills
+        .filter((bill) => {
+          const isPaid = (bill.status || "").toLowerCase() === "paid";
+          const hasSameStripeIds =
+            bill.stripe_session_id === session.id &&
+            (currentPaymentIntentId === null || bill.stripe_payment_intent_id === currentPaymentIntentId);
+          return !(isPaid || hasSameStripeIds);
+        })
+        .map((bill) => bill.id);
+
+      const skippedTenantCount = tenantBillIds.length - unsettledTenantBillIds.length;
+      console.log("Stripe webhook tenant replay check", {
+        eventType: event.type,
+        totalTenantBillIds: tenantBillIds.length,
+        tenantToUpdate: unsettledTenantBillIds.length,
+        tenantSkipped: skippedTenantCount,
+      });
+
+      if (unsettledTenantBillIds.length === 0) {
+        return NextResponse.json({ received: true });
+      }
+
+      if (unsettledTenantBillIds.length > 0) {
         const tenantUpdates = {
           status: "paid",
           payment_link_url: null,
           stripe_session_id: session.id,
-          stripe_payment_intent_id: typeof session.payment_intent === "string" ? session.payment_intent : null,
+          stripe_payment_intent_id: currentPaymentIntentId,
           paid_date: new Date().toISOString().split("T")[0],
           updated_at: new Date().toISOString(),
         };
@@ -59,7 +85,7 @@ export async function POST(request: NextRequest) {
         const { error: tenantUpdateError } = await supabaseAdmin
           .from("tenant_bills")
           .update(tenantUpdates)
-          .in("id", unpaidTenantBillIds);
+          .in("id", unsettledTenantBillIds);
 
         if (tenantUpdateError) {
           console.error("Error updating tenant bills from webhook:", tenantUpdateError);
@@ -73,18 +99,58 @@ export async function POST(request: NextRequest) {
       : [];
 
     if (isPaidSession && invoiceIds.length > 0) {
+      const { data: existingInvoices, error: invoicesFetchError } = await supabaseAdmin
+        .from("billing_invoices")
+        .select("id, status, stripe_session_id, stripe_payment_intent_id")
+        .in("id", invoiceIds);
+
+      if (invoicesFetchError) {
+        console.error("Error loading invoices from webhook:", invoicesFetchError);
+        return NextResponse.json({ error: "Failed to load invoices" }, { status: 500 });
+      }
+
+      const invoices = (existingInvoices || []) as Array<{
+        id: string;
+        status: string | null;
+        stripe_session_id: string | null;
+        stripe_payment_intent_id: string | null;
+      }>;
+      const currentPaymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
+
+      const unsettledInvoiceIds = invoices
+        .filter((invoice) => {
+          const isPaid = (invoice.status || "").toLowerCase() === "paid";
+          const hasSameStripeIds =
+            invoice.stripe_session_id === session.id &&
+            (currentPaymentIntentId === null || invoice.stripe_payment_intent_id === currentPaymentIntentId);
+          return !(isPaid || hasSameStripeIds);
+        })
+        .map((invoice) => invoice.id);
+
+      const skippedOwnerCount = invoiceIds.length - unsettledInvoiceIds.length;
+      console.log("Stripe webhook owner replay check", {
+        eventType: event.type,
+        totalInvoiceIds: invoiceIds.length,
+        ownerToUpdate: unsettledInvoiceIds.length,
+        ownerSkipped: skippedOwnerCount,
+      });
+
+      if (unsettledInvoiceIds.length === 0) {
+        return NextResponse.json({ received: true });
+      }
+
       const paidDate = new Date().toISOString().split("T")[0];
       const updates = {
         status: "paid",
         paid_date: paidDate,
         payment_link_url: null,
         stripe_session_id: session.id,
-        stripe_payment_intent_id: typeof session.payment_intent === "string" ? session.payment_intent : null,
+        stripe_payment_intent_id: currentPaymentIntentId,
       };
       const { error } = await supabaseAdmin
         .from("billing_invoices")
         .update(updates)
-        .in("id", invoiceIds);
+        .in("id", unsettledInvoiceIds);
 
       if (error) {
         console.error("Error updating invoices from webhook:", error);
