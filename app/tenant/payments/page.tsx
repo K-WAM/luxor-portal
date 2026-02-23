@@ -340,13 +340,13 @@ export default function TenantPayments() {
                         {ownerBillingError ? (
                           <div className="text-xs text-red-600">{ownerBillingError}</div>
                         ) : zelleRecipient?.zelleEmail ? (
-                          <div className="inline-flex flex-col justify-center h-11 md:h-9 px-3 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs text-slate-800">
+                          <div className="inline-flex flex-col px-3 py-2 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs leading-tight text-slate-800">
                             <span>Zelle: {zelleRecipient.zelleEmail}</span>
                             <span className="text-[11px] text-slate-500">Recipient: {zelleRecipient.zelleRecipient || "—"}</span>
                             <span className="text-[11px] text-slate-500">No processing fee</span>
                           </div>
                         ) : zelleRecipient?.zellePhone ? (
-                          <div className="inline-flex flex-col justify-center h-11 md:h-9 px-3 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs text-slate-800">
+                          <div className="inline-flex flex-col px-3 py-2 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs leading-tight text-slate-800">
                             <span>Zelle: {zelleRecipient.zellePhone}</span>
                             <span className="text-[11px] text-slate-500">Recipient: {zelleRecipient.zelleRecipient || "—"}</span>
                             <span className="text-[11px] text-slate-500">No processing fee</span>
