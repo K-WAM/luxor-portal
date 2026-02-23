@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabaseAdmin
       .from("user_properties")
-      .select("user_id, zelle_email, zelle_phone")
+      .select("user_id, zelle_email, zelle_phone, zelle_recipient")
       .eq("property_id", propertyId)
       .eq("role", "owner");
     let rowsData: any[] = (data as any[]) || [];
@@ -64,6 +64,7 @@ export async function GET(request: Request) {
       ownerEmail: userEmailMap.get(row.user_id) || "",
       zelleEmail: row.zelle_email || null,
       zellePhone: row.zelle_phone || null,
+      zelleRecipient: row.zelle_recipient || null,
     }));
     return NextResponse.json({ rows: owners, warning });
   } catch (error) {

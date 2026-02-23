@@ -30,6 +30,7 @@ export async function GET() {
         ownership_percentage,
         zelle_email,
         zelle_phone,
+        zelle_recipient,
         properties (
           id,
           address,
@@ -92,6 +93,7 @@ export async function GET() {
       ownershipPercentage: row.ownership_percentage ?? null,
       zelleEmail: row.zelle_email || null,
       zellePhone: row.zelle_phone || null,
+      zelleRecipient: row.zelle_recipient || null,
     }));
 
     rows.sort((a, b) => {
@@ -119,7 +121,7 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { userId, propertyId, zelleType, zelleValue } = body || {};
+    const { userId, propertyId, zelleType, zelleValue, zelleRecipient } = body || {};
 
     if (!userId || !propertyId) {
       return NextResponse.json(
@@ -145,9 +147,17 @@ export async function PATCH(request: Request) {
       }
     }
 
-    const updateData: { zelle_email: string | null; zelle_phone: string | null } = {
+    const recipientTrimmed =
+      typeof zelleRecipient === "string" ? zelleRecipient.trim() : "";
+
+    const updateData: {
+      zelle_email: string | null;
+      zelle_phone: string | null;
+      zelle_recipient: string | null;
+    } = {
       zelle_email: null,
       zelle_phone: null,
+      zelle_recipient: recipientTrimmed || null,
     };
 
     if (trimmed) {
@@ -160,7 +170,7 @@ export async function PATCH(request: Request) {
     if (trimmed) {
       await supabaseAdmin
         .from("user_properties")
-        .update({ zelle_email: null, zelle_phone: null })
+        .update({ zelle_email: null, zelle_phone: null, zelle_recipient: null })
         .eq("property_id", propertyId)
         .eq("role", "owner")
         .neq("user_id", userId);
@@ -209,7 +219,7 @@ export async function DELETE(request: Request) {
     // Clear zelle details for this owner-property
     const { error } = await supabaseAdmin
       .from("user_properties")
-      .update({ zelle_email: null, zelle_phone: null })
+      .update({ zelle_email: null, zelle_phone: null, zelle_recipient: null })
       .eq("user_id", userId)
       .eq("property_id", propertyId)
       .eq("role", "owner");

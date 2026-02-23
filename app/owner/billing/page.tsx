@@ -17,6 +17,14 @@ type Bill = {
   voidedAt?: string;
 };
 
+type OwnerBillingRecipient = {
+  userId: string;
+  ownerEmail: string;
+  zelleEmail: string | null;
+  zellePhone: string | null;
+  zelleRecipient: string | null;
+};
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const getDueDateMs = (dateStr?: string | null) => {
@@ -86,6 +94,7 @@ export default function OwnerBilling() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [checkoutLoading, setCheckoutLoading] = useState<"bank" | "card" | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [ownerBillingRows, setOwnerBillingRows] = useState<OwnerBillingRecipient[]>([]);
 
   useEffect(() => {
     const loadProps = async () => {
@@ -152,6 +161,29 @@ export default function OwnerBilling() {
 
   const totalDue = qualifyingBills.reduce((sum, b) => sum + b.amount, 0);
 
+  const zellePropertyId =
+    selectedProperty !== "all" ? selectedProperty : qualifyingBills[0]?.propertyId || filtered[0]?.propertyId || "";
+
+  useEffect(() => {
+    const loadOwnerBilling = async () => {
+      if (!zellePropertyId) {
+        setOwnerBillingRows([]);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/owner-billing?propertyId=${zellePropertyId}`, {
+          cache: "no-store",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load owner billing details");
+        setOwnerBillingRows(data.rows || []);
+      } catch {
+        setOwnerBillingRows([]);
+      }
+    };
+    loadOwnerBilling();
+  }, [zellePropertyId]);
+
   useEffect(() => {
     setSelectedInvoiceIds(qualifyingBills.map((b) => b.id));
   }, [selectedProperty, bills.length]);
@@ -159,6 +191,12 @@ export default function OwnerBilling() {
   const selectedSubtotal = qualifyingBills
     .filter((b) => selectedInvoiceIds.includes(b.id))
     .reduce((sum, b) => sum + b.amount, 0);
+
+  const zelleRecipient = (() => {
+    if (!ownerBillingRows.length) return null;
+    const withZelle = ownerBillingRows.find((o) => o.zelleEmail || o.zellePhone);
+    return withZelle || ownerBillingRows[0];
+  })();
 
   const handleCheckout = async (method: "bank" | "card") => {
     if (!selectedInvoiceIds.length) return;
@@ -251,7 +289,12 @@ export default function OwnerBilling() {
                   {checkoutError && <div className="text-xs text-red-600">{checkoutError}</div>}
                   <div className="border-t border-slate-100 mt-3 pt-3">
                     <div className="inline-flex flex-col justify-center h-11 md:h-9 px-3 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs text-slate-800">
-                      <span>Zelle · Connect@luxordev.com</span>
+                      <span>
+                        Zelle: {zelleRecipient?.zelleEmail || zelleRecipient?.zellePhone || "—"}
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        Recipient: {zelleRecipient?.zelleRecipient || "—"}
+                      </span>
                       <span className="text-[11px] text-slate-500">No processing fee</span>
                     </div>
                   </div>

@@ -31,6 +31,7 @@ type OwnerBilling = {
   ownerEmail: string;
   zelleEmail: string | null;
   zellePhone: string | null;
+  zelleRecipient: string | null;
 };
 
 export default function TenantPayments() {
@@ -340,12 +341,14 @@ export default function TenantPayments() {
                           <div className="text-xs text-red-600">{ownerBillingError}</div>
                         ) : zelleRecipient?.zelleEmail ? (
                           <div className="inline-flex flex-col justify-center h-11 md:h-9 px-3 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs text-slate-800">
-                            <span>Zelle · {zelleRecipient.zelleEmail}</span>
+                            <span>Zelle: {zelleRecipient.zelleEmail}</span>
+                            <span className="text-[11px] text-slate-500">Recipient: {zelleRecipient.zelleRecipient || "—"}</span>
                             <span className="text-[11px] text-slate-500">No processing fee</span>
                           </div>
                         ) : zelleRecipient?.zellePhone ? (
                           <div className="inline-flex flex-col justify-center h-11 md:h-9 px-3 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs text-slate-800">
-                            <span>Zelle · {zelleRecipient.zellePhone}</span>
+                            <span>Zelle: {zelleRecipient.zellePhone}</span>
+                            <span className="text-[11px] text-slate-500">Recipient: {zelleRecipient.zelleRecipient || "—"}</span>
                             <span className="text-[11px] text-slate-500">No processing fee</span>
                           </div>
                         ) : (

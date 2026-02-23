@@ -54,6 +54,7 @@ type OwnerBillingRow = {
   ownershipPercentage: number | null;
   zelleEmail: string | null;
   zellePhone: string | null;
+  zelleRecipient: string | null;
 };
 
 type PropertyGroup = {
@@ -121,9 +122,10 @@ export default function OwnerBillingDetailsPage() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
-  const [form, setForm] = useState<{ type: "email" | "phone"; value: string }>({
+  const [form, setForm] = useState<{ type: "email" | "phone"; value: string; recipient: string }>({
     type: "email",
     value: "",
+    recipient: "",
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -472,9 +474,10 @@ export default function OwnerBillingDetailsPage() {
     const row = group.activeOwner || group.owners[0];
     const type = row.zelleEmail ? "email" : row.zellePhone ? "phone" : "email";
     const value = row.zelleEmail || row.zellePhone || "";
+    const recipient = row.zelleRecipient || "";
     setEditingKey(group.propertyId);
     setSelectedOwner(row.userId);
-    setForm({ type, value });
+    setForm({ type, value, recipient });
     setError(null);
     setSuccess(null);
   };
@@ -482,7 +485,7 @@ export default function OwnerBillingDetailsPage() {
   const cancelEdit = () => {
     setEditingKey(null);
     setSelectedOwner(null);
-    setForm({ type: "email", value: "" });
+    setForm({ type: "email", value: "", recipient: "" });
   };
 
   const saveZelle = async (group: PropertyGroup) => {
@@ -513,6 +516,7 @@ export default function OwnerBillingDetailsPage() {
           propertyId: group.propertyId,
           zelleType: form.type,
           zelleValue: trimmed,
+          zelleRecipient: form.recipient,
         }),
       });
       const data = await res.json();
@@ -520,7 +524,7 @@ export default function OwnerBillingDetailsPage() {
       setSuccess("Zelle recipient updated for this property.");
       setEditingKey(null);
       setSelectedOwner(null);
-      setForm({ type: "email", value: "" });
+      setForm({ type: "email", value: "", recipient: "" });
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to save Zelle details");
@@ -643,6 +647,7 @@ export default function OwnerBillingDetailsPage() {
                     : activeOwner?.zellePhone
                       ? `Phone: ${activeOwner.zellePhone}`
                       : "Not set";
+                  const recipientLabel = activeOwner?.zelleRecipient || "—";
 
                   return (
                     <tr key={group.propertyId} className="hover:bg-slate-50 transition-colors">
@@ -651,21 +656,30 @@ export default function OwnerBillingDetailsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-900">
                         {isEditing ? (
-                          <select
-                            value={selectedOwner || ""}
-                            onChange={(e) => setSelectedOwner(e.target.value)}
-                            className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white min-w-[200px]"
-                          >
-                            {group.owners.map((owner) => (
-                              <option key={owner.userId} value={owner.userId}>
-                                {owner.ownerEmail || owner.userId}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex flex-col gap-2 min-w-[220px]">
+                            <select
+                              value={selectedOwner || ""}
+                              onChange={(e) => setSelectedOwner(e.target.value)}
+                              className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                            >
+                              {group.owners.map((owner) => (
+                                <option key={owner.userId} value={owner.userId}>
+                                  {owner.ownerEmail || owner.userId}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              value={form.recipient}
+                              onChange={(e) =>
+                                setForm((prev) => ({ ...prev, recipient: e.target.value }))
+                              }
+                              placeholder="e.g. Blue Towers LLC"
+                              className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                            />
+                          </div>
                         ) : (
-                          activeOwner?.ownerName || (
-                            <span className="text-slate-400 italic">None selected</span>
-                          )
+                          recipientLabel
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
