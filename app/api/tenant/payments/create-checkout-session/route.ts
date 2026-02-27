@@ -161,6 +161,20 @@ export async function POST(request: NextRequest) {
       }
     );
 
+    const createdPaymentIntentId =
+      typeof session.payment_intent === "string" ? session.payment_intent : null;
+    const { error: trackError } = await supabaseAdmin
+      .from("tenant_bills")
+      .update({
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: createdPaymentIntentId,
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", uniqueBillIds);
+    if (trackError) {
+      console.error("Failed to store tenant Stripe session IDs:", trackError);
+    }
+
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("Error creating tenant checkout session:", error);
