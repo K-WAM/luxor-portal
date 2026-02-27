@@ -153,17 +153,20 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.async_payment_succeeded" ||
+    event.type === "checkout.session.async_payment_failed"
+  ) {
     const session = event.data.object as Stripe.Checkout.Session;
-    const isPaidSession = session.payment_status === "paid";
     const invoiceIds = session.metadata?.luxor_invoice_ids
       ? session.metadata.luxor_invoice_ids.split(",").filter(Boolean)
       : [];
 
-    if (isPaidSession && invoiceIds.length > 0) {
+    if (invoiceIds.length > 0) {
       const { data: existingInvoices, error: invoicesFetchError } = await supabaseAdmin
         .from("billing_invoices")
-        .select("id, status, stripe_session_id, stripe_payment_intent_id")
+        .select("id, status, stripe_session_id, stripe_payment_intent_id, processing_started_at")
         .in("id", invoiceIds);
 
       if (invoicesFetchError) {
@@ -176,47 +179,103 @@ export async function POST(request: NextRequest) {
         status: string | null;
         stripe_session_id: string | null;
         stripe_payment_intent_id: string | null;
+        processing_started_at: string | null;
       }>;
       const currentPaymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
+      const nowIso = new Date().toISOString();
+      const paidDate = nowIso.split("T")[0];
 
-      const unsettledInvoiceIds = invoices
+      let ownerStatusTarget: "paid" | "processing" | "due" | null = null;
+      if (event.type === "checkout.session.completed") {
+        ownerStatusTarget = session.payment_status === "paid" ? "paid" : "processing";
+      } else if (event.type === "checkout.session.async_payment_succeeded") {
+        ownerStatusTarget = "paid";
+      } else if (event.type === "checkout.session.async_payment_failed") {
+        ownerStatusTarget = "due";
+      }
+
+      const invoiceIdsToUpdate = invoices
         .filter((invoice) => {
-          const isPaid = (invoice.status || "").toLowerCase() === "paid";
-          const hasSameStripeIds =
-            invoice.stripe_session_id === session.id &&
-            (currentPaymentIntentId === null || invoice.stripe_payment_intent_id === currentPaymentIntentId);
-          return !(isPaid || hasSameStripeIds);
+          const currentStatus = (invoice.status || "").toLowerCase();
+          if (currentStatus === "paid") {
+            return false;
+          }
+          if (ownerStatusTarget === "processing") {
+            if (currentStatus === "processing") {
+              return false;
+            }
+            return true;
+          }
+          if (ownerStatusTarget === "paid") {
+            return true;
+          }
+          if (ownerStatusTarget === "due") {
+            if (currentStatus === "due") {
+              return false;
+            }
+            return true;
+          }
+          return false;
         })
         .map((invoice) => invoice.id);
 
-      const skippedOwnerCount = invoiceIds.length - unsettledInvoiceIds.length;
-      console.log("Stripe webhook owner replay check", {
+      const skippedOwnerCount = invoiceIds.length - invoiceIdsToUpdate.length;
+      console.log("Stripe webhook owner status sync", {
         eventType: event.type,
         totalInvoiceIds: invoiceIds.length,
-        ownerToUpdate: unsettledInvoiceIds.length,
+        ownerToUpdate: invoiceIdsToUpdate.length,
         ownerSkipped: skippedOwnerCount,
       });
 
-      if (unsettledInvoiceIds.length === 0) {
-        return NextResponse.json({ received: true });
-      }
+      if (invoiceIdsToUpdate.length > 0) {
+        if (ownerStatusTarget === "paid") {
+          const { error } = await supabaseAdmin
+            .from("billing_invoices")
+            .update({
+              status: "paid",
+              paid_date: paidDate,
+              payment_link_url: null,
+              stripe_session_id: session.id,
+              stripe_payment_intent_id: currentPaymentIntentId,
+              processing_started_at: null,
+            })
+            .in("id", invoiceIdsToUpdate);
 
-      const paidDate = new Date().toISOString().split("T")[0];
-      const updates = {
-        status: "paid",
-        paid_date: paidDate,
-        payment_link_url: null,
-        stripe_session_id: session.id,
-        stripe_payment_intent_id: currentPaymentIntentId,
-      };
-      const { error } = await supabaseAdmin
-        .from("billing_invoices")
-        .update(updates)
-        .in("id", unsettledInvoiceIds);
+          if (error) {
+            console.error("Error updating invoices from webhook:", error);
+            return NextResponse.json({ error: "Failed to update invoices" }, { status: 500 });
+          }
+        } else if (ownerStatusTarget === "processing") {
+          const { error } = await supabaseAdmin
+            .from("billing_invoices")
+            .update({
+              status: "processing",
+              stripe_session_id: session.id,
+              stripe_payment_intent_id: currentPaymentIntentId,
+              processing_started_at: nowIso,
+            })
+            .in("id", invoiceIdsToUpdate);
 
-      if (error) {
-        console.error("Error updating invoices from webhook:", error);
-        return NextResponse.json({ error: "Failed to update invoices" }, { status: 500 });
+          if (error) {
+            console.error("Error updating invoices from webhook:", error);
+            return NextResponse.json({ error: "Failed to update invoices" }, { status: 500 });
+          }
+        } else if (ownerStatusTarget === "due") {
+          const { error } = await supabaseAdmin
+            .from("billing_invoices")
+            .update({
+              status: "due",
+              stripe_session_id: null,
+              stripe_payment_intent_id: null,
+              processing_started_at: null,
+            })
+            .in("id", invoiceIdsToUpdate);
+
+          if (error) {
+            console.error("Error updating invoices from webhook:", error);
+            return NextResponse.json({ error: "Failed to update invoices" }, { status: 500 });
+          }
+        }
       }
     }
   }

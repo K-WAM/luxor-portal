@@ -78,6 +78,8 @@ export async function GET(request: NextRequest) {
         invoiceUrl: row.invoice_url,
         invoiceNumber: row.invoice_number,
         paymentLinkUrl: row.payment_link_url,
+        stripeSessionId: row.stripe_session_id,
+        stripePaymentIntentId: row.stripe_payment_intent_id,
         category: row.category,
         voidedAt: row.voided_at,
         voidedBy: row.voided_by,

@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
         owner_id: user.id,
         property_ids: propertyIds.join(","),
       },
-      success_url: `${origin}/owner/billing?checkout=success`,
+      success_url: `${origin}/owner/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/owner/billing?checkout=cancel`,
     });
 

@@ -13,10 +13,12 @@ type BillRow = {
   description: string;
   amount: number;
   dueDate: string;
-  status: "due" | "paid" | "overdue" | "pending" | "voided";
+  status: "due" | "paid" | "overdue" | "pending" | "processing" | "voided";
   invoiceUrl?: string;
   invoiceNumber?: string;
   paymentLinkUrl?: string | null;
+  stripeSessionId?: string | null;
+  stripePaymentIntentId?: string | null;
   feePercent?: number | null;
   feeAmount?: number | null;
   propertyId?: string;
@@ -77,6 +79,7 @@ export default function OwnerBillingDetailsPage() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [ownerBillsLoading, setOwnerBillsLoading] = useState(false);
   const [ownerBillError, setOwnerBillError] = useState<string | null>(null);
+  const [ownerBillNotice, setOwnerBillNotice] = useState<string | null>(null);
   const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([]);
   const [showVoidedOwnerBills, setShowVoidedOwnerBills] = useState(false);
@@ -101,6 +104,7 @@ export default function OwnerBillingDetailsPage() {
   const [ownerInvoiceFile, setOwnerInvoiceFile] = useState<File | null>(null);
   const [invoiceUploading, setInvoiceUploading] = useState<Record<string, boolean>>({});
   const [invoiceGenerating, setInvoiceGenerating] = useState<Record<string, boolean>>({});
+  const [ownerStripeRefreshLoading, setOwnerStripeRefreshLoading] = useState<Record<string, boolean>>({});
   const [editAmounts, setEditAmounts] = useState<
     Record<
       string,
@@ -363,6 +367,42 @@ export default function OwnerBillingDetailsPage() {
       setOwnerBillError(err.message || "Failed to update billing");
     } finally {
       setOwnerBillsLoading(false);
+    }
+  };
+
+  const handleRefreshOwnerBillAchStatus = async (bill: BillRow) => {
+    if (!bill.stripeSessionId && !bill.stripePaymentIntentId) {
+      setOwnerBillNotice("No Stripe payment found");
+      return;
+    }
+    const confirmed = window.confirm(
+      "This will re-check Stripe and update this invoice’s status if needed. Continue?"
+    );
+    if (!confirmed) return;
+
+    try {
+      setOwnerBillError(null);
+      setOwnerBillNotice(null);
+      setOwnerStripeRefreshLoading((prev) => ({ ...prev, [bill.id]: true }));
+
+      const res = await fetch(`/api/admin/billing/owner-invoices/${bill.id}/refresh-stripe-status`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to refresh ACH status");
+
+      if (data?.ok && data?.status) {
+        setBills((prev) =>
+          prev.map((row) =>
+            row.id === bill.id ? { ...row, status: data.status } : row
+          )
+        );
+      }
+      setOwnerBillNotice(data?.message || "No change");
+    } catch (err: any) {
+      setOwnerBillError(err.message || "Failed to refresh ACH status");
+    } finally {
+      setOwnerStripeRefreshLoading((prev) => ({ ...prev, [bill.id]: false }));
     }
   };
 
@@ -914,6 +954,7 @@ export default function OwnerBillingDetailsPage() {
             <option value="pending">Pending</option>
             <option value="due">Due</option>
             <option value="paid">Paid</option>
+            <option value="processing">Processing</option>
             <option value="overdue">Overdue</option>
             <option value="voided">Voided</option>
           </select>
@@ -929,6 +970,7 @@ export default function OwnerBillingDetailsPage() {
             </button>
           )}
         </div>
+        {ownerBillNotice && <div className="px-4 py-3 text-sm text-slate-700">{ownerBillNotice}</div>}
         <div className="overflow-x-auto md:overflow-visible">
           <table className="w-full text-sm table-fixed">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
@@ -1066,6 +1108,7 @@ export default function OwnerBillingDetailsPage() {
                             <option value="overdue">Overdue</option>
                             <option value="paid">Paid</option>
                             <option value="pending">Pending</option>
+                            <option value="processing">Processing</option>
                           </select>
                         )}
                       </td>
@@ -1139,6 +1182,19 @@ export default function OwnerBillingDetailsPage() {
                                 className="text-xs px-2 py-1 rounded bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"
                               >
                                 Void
+                              </button>
+                              <button
+                                onClick={() => handleRefreshOwnerBillAchStatus(bill)}
+                                disabled={
+                                  ownerBillsLoading ||
+                                  ownerStripeRefreshLoading[bill.id] ||
+                                  (!bill.stripeSessionId && !bill.stripePaymentIntentId)
+                                }
+                                className="text-xs px-2 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                {ownerStripeRefreshLoading[bill.id]
+                                  ? "Refreshing..."
+                                  : "Refresh ACH Status"}
                               </button>
                               <button
                                 onClick={() => handleSave(bill)}

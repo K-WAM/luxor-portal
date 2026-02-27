@@ -11,7 +11,7 @@ type Bill = {
   description: string;
   amount: number;
   dueDate: string;
-  status: "due" | "paid" | "overdue" | "pending" | "voided";
+  status: "due" | "paid" | "overdue" | "pending" | "processing" | "voided";
   invoiceUrl?: string;
   paymentLinkUrl?: string;
   voidedAt?: string;
@@ -94,6 +94,7 @@ export default function OwnerBilling() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [checkoutLoading, setCheckoutLoading] = useState<"bank" | "card" | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [showCheckoutSuccessBanner, setShowCheckoutSuccessBanner] = useState(false);
   const [ownerBillingRows, setOwnerBillingRows] = useState<OwnerBillingRecipient[]>([]);
 
   useEffect(() => {
@@ -146,6 +147,17 @@ export default function OwnerBilling() {
     load();
   }, [selectedProperty, role]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") === "success") {
+      setShowCheckoutSuccessBanner(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("checkout");
+      url.searchParams.delete("session_id");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    }
+  }, []);
+
   const filtered = bills
     .filter((b) => selectedProperty === "all" || b.propertyId === selectedProperty)
     .sort((a, b) => {
@@ -191,6 +203,9 @@ export default function OwnerBilling() {
   const selectedSubtotal = qualifyingBills
     .filter((b) => selectedInvoiceIds.includes(b.id))
     .reduce((sum, b) => sum + b.amount, 0);
+  const hasProcessingSelected = qualifyingBills.some(
+    (bill) => selectedInvoiceIds.includes(bill.id) && bill.status === "processing"
+  );
 
   const zelleRecipient = (() => {
     if (!ownerBillingRows.length) return null;
@@ -245,6 +260,14 @@ export default function OwnerBilling() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {showCheckoutSuccessBanner && (
+          <div className="md:col-span-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+            <div className="text-sm font-semibold text-blue-900">Payment initiated</div>
+            <div className="text-sm text-blue-800">
+              Your bank transfer has been initiated and is processing. This can take 2–5 business days. If it doesn’t complete, you’ll be able to try again.
+            </div>
+          </div>
+        )}
         <div className="md:col-span-2">
           <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
             <div className="text-xs uppercase text-slate-500 mb-1">Balance due in the next 30 days</div>
@@ -278,6 +301,11 @@ export default function OwnerBilling() {
                             Due {formatDateOnly(bill.dueDate) || "-"} ·{" "}
                             <span className="font-semibold text-slate-700">${bill.amount.toFixed(2)}</span>
                           </div>
+                          {bill.status === "processing" && (
+                            <span className="inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">
+                              Processing (ACH)
+                            </span>
+                          )}
                         </div>
                       </label>
                     ))}
@@ -287,6 +315,9 @@ export default function OwnerBilling() {
                     <span className="font-semibold">${selectedSubtotal.toFixed(2)}</span>
                   </div>
                   {checkoutError && <div className="text-xs text-red-600">{checkoutError}</div>}
+                  {hasProcessingSelected && (
+                    <div className="text-xs text-slate-500">A selected invoice is currently processing via ACH.</div>
+                  )}
                   <div className="border-t border-slate-100 mt-3 pt-3">
                     <div className="inline-flex flex-col justify-center h-11 md:h-9 px-3 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs text-slate-800">
                       <span>
@@ -301,14 +332,14 @@ export default function OwnerBilling() {
                   <div className="flex flex-wrap gap-2 pt-2">
                     <button
                       onClick={() => handleCheckout("bank")}
-                      disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
+                      disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0 || hasProcessingSelected}
                       className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                     >
                       {checkoutLoading === "bank" ? "Starting..." : "Pay Balance by Bank (ACH)"}
                     </button>
                     <button
                       onClick={() => handleCheckout("card")}
-                      disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
+                      disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0 || hasProcessingSelected}
                       className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                     >
                       {checkoutLoading === "card" ? "Starting..." : "Pay Balance by Card"}
@@ -388,7 +419,9 @@ export default function OwnerBilling() {
                           : "bg-amber-100 text-amber-800"
                       }`}
                     >
-                      {bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
+                      {bill.status === "processing"
+                        ? "Processing (ACH)"
+                        : bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
                     </span>
                     {bill.invoiceUrl ? (
                       <a
@@ -439,7 +472,9 @@ export default function OwnerBilling() {
                               : "bg-amber-100 text-amber-800"
                           }`}
                         >
-                          {bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
+                          {bill.status === "processing"
+                            ? "Processing (ACH)"
+                            : bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
                         </span>
                       </td>
                       <td className="px-4 py-3">
