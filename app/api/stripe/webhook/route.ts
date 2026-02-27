@@ -23,10 +23,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.async_payment_succeeded" ||
+    event.type === "checkout.session.async_payment_failed"
+  ) {
     const session = event.data.object as Stripe.Checkout.Session;
-    const isPaidSession = session.payment_status === "paid";
-
     const tenantBillIds = session.metadata?.billIds
       ? session.metadata.billIds.split(",").map((id) => id.trim()).filter(Boolean)
       : [];
@@ -34,7 +36,7 @@ export async function POST(request: NextRequest) {
     if (tenantBillIds.length > 0) {
       const { data: existingTenantBills, error: tenantFetchError } = await supabaseAdmin
         .from("tenant_bills")
-        .select("id, status, stripe_session_id, stripe_payment_intent_id")
+        .select("id, status, stripe_session_id, stripe_payment_intent_id, processing_started_at")
         .in("id", tenantBillIds);
 
       if (tenantFetchError) {
@@ -47,53 +49,113 @@ export async function POST(request: NextRequest) {
         status: string | null;
         stripe_session_id: string | null;
         stripe_payment_intent_id: string | null;
+        processing_started_at: string | null;
       }>;
       const currentPaymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
+      const nowIso = new Date().toISOString();
+      const paidDate = nowIso.split("T")[0];
 
-      const unsettledTenantBillIds = tenantBills
+      let tenantStatusTarget: "paid" | "processing" | "due" | null = null;
+      if (event.type === "checkout.session.completed") {
+        tenantStatusTarget = session.payment_status === "paid" ? "paid" : "processing";
+      } else if (event.type === "checkout.session.async_payment_succeeded") {
+        tenantStatusTarget = "paid";
+      } else if (event.type === "checkout.session.async_payment_failed") {
+        tenantStatusTarget = "due";
+      }
+
+      const tenantBillIdsToUpdate = tenantBills
         .filter((bill) => {
-          const isPaid = (bill.status || "").toLowerCase() === "paid";
-          const hasSameStripeIds =
-            bill.stripe_session_id === session.id &&
-            (currentPaymentIntentId === null || bill.stripe_payment_intent_id === currentPaymentIntentId);
-          return !(isPaid || hasSameStripeIds);
+          const currentStatus = (bill.status || "").toLowerCase();
+          if (currentStatus === "paid") {
+            return false;
+          }
+          if (tenantStatusTarget === "processing") {
+            if (currentStatus === "processing") {
+              return false;
+            }
+            return true;
+          }
+          if (tenantStatusTarget === "paid") {
+            return true;
+          }
+          if (tenantStatusTarget === "due") {
+            if (currentStatus === "due") {
+              return false;
+            }
+            return true;
+          }
+          return false;
         })
         .map((bill) => bill.id);
 
-      const skippedTenantCount = tenantBillIds.length - unsettledTenantBillIds.length;
-      console.log("Stripe webhook tenant replay check", {
+      const skippedTenantCount = tenantBillIds.length - tenantBillIdsToUpdate.length;
+      console.log("Stripe webhook tenant status sync", {
         eventType: event.type,
         totalTenantBillIds: tenantBillIds.length,
-        tenantToUpdate: unsettledTenantBillIds.length,
+        tenantToUpdate: tenantBillIdsToUpdate.length,
         tenantSkipped: skippedTenantCount,
       });
 
-      if (unsettledTenantBillIds.length === 0) {
-        return NextResponse.json({ received: true });
-      }
+      if (tenantBillIdsToUpdate.length > 0) {
+        if (tenantStatusTarget === "paid") {
+          const { error: tenantUpdateError } = await supabaseAdmin
+            .from("tenant_bills")
+            .update({
+              status: "paid",
+              payment_link_url: null,
+              stripe_session_id: session.id,
+              stripe_payment_intent_id: currentPaymentIntentId,
+              paid_date: paidDate,
+              processing_started_at: null,
+              updated_at: nowIso,
+            })
+            .in("id", tenantBillIdsToUpdate);
 
-      if (unsettledTenantBillIds.length > 0) {
-        const tenantUpdates = {
-          status: "paid",
-          payment_link_url: null,
-          stripe_session_id: session.id,
-          stripe_payment_intent_id: currentPaymentIntentId,
-          paid_date: new Date().toISOString().split("T")[0],
-          updated_at: new Date().toISOString(),
-        };
+          if (tenantUpdateError) {
+            console.error("Error updating tenant bills from webhook:", tenantUpdateError);
+            return NextResponse.json({ error: "Failed to update tenant bills" }, { status: 500 });
+          }
+        } else if (tenantStatusTarget === "processing") {
+          const { error: tenantUpdateError } = await supabaseAdmin
+            .from("tenant_bills")
+            .update({
+              status: "processing",
+              stripe_session_id: session.id,
+              stripe_payment_intent_id: currentPaymentIntentId,
+              processing_started_at: nowIso,
+              updated_at: nowIso,
+            })
+            .in("id", tenantBillIdsToUpdate);
 
-        const { error: tenantUpdateError } = await supabaseAdmin
-          .from("tenant_bills")
-          .update(tenantUpdates)
-          .in("id", unsettledTenantBillIds);
+          if (tenantUpdateError) {
+            console.error("Error updating tenant bills from webhook:", tenantUpdateError);
+            return NextResponse.json({ error: "Failed to update tenant bills" }, { status: 500 });
+          }
+        } else if (tenantStatusTarget === "due") {
+          const { error: tenantUpdateError } = await supabaseAdmin
+            .from("tenant_bills")
+            .update({
+              status: "due",
+              stripe_session_id: null,
+              stripe_payment_intent_id: null,
+              processing_started_at: null,
+              updated_at: nowIso,
+            })
+            .in("id", tenantBillIdsToUpdate);
 
-        if (tenantUpdateError) {
-          console.error("Error updating tenant bills from webhook:", tenantUpdateError);
-          return NextResponse.json({ error: "Failed to update tenant bills" }, { status: 500 });
+          if (tenantUpdateError) {
+            console.error("Error updating tenant bills from webhook:", tenantUpdateError);
+            return NextResponse.json({ error: "Failed to update tenant bills" }, { status: 500 });
+          }
         }
       }
     }
+  }
 
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const isPaidSession = session.payment_status === "paid";
     const invoiceIds = session.metadata?.luxor_invoice_ids
       ? session.metadata.luxor_invoice_ids.split(",").filter(Boolean)
       : [];

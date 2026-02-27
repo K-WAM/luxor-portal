@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
         mode: "payment",
         payment_method_types: method === "ach" ? ["us_bank_account"] : ["card"],
         line_items: lineItems,
-        success_url: `${origin}/tenant/payments?checkout=success`,
+        success_url: `${origin}/tenant/payments?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/tenant/payments?checkout=cancel`,
         metadata: {
           tenantUserId: user.id,

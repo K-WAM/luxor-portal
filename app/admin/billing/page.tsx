@@ -26,6 +26,8 @@ type TenantBillRow = {
   year: number;
   invoiceUrl?: string | null;
   paymentLinkUrl?: string | null;
+  stripeSessionId?: string | null;
+  stripePaymentIntentId?: string | null;
   voidedAt?: string;
   voidedBy?: string;
   voidedReason?: string;
@@ -51,6 +53,7 @@ export default function AdminBilling() {
   const [tenantBills, setTenantBills] = useState<TenantBillRow[]>([]);
   const [tenantBillsLoading, setTenantBillsLoading] = useState(false);
   const [tenantBillsError, setTenantBillsError] = useState<string | null>(null);
+  const [tenantBillsNotice, setTenantBillsNotice] = useState<string | null>(null);
   const [showVoidedTenantBills, setShowVoidedTenantBills] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; description: string } | null>(null);
   const [tenantBillPropertyFilter, setTenantBillPropertyFilter] = useState("");
@@ -66,6 +69,7 @@ export default function AdminBilling() {
   });
   const [tenantInvoiceFile, setTenantInvoiceFile] = useState<File | null>(null);
   const [tenantInvoiceUploading, setTenantInvoiceUploading] = useState<Record<string, boolean>>({});
+  const [tenantStripeRefreshLoading, setTenantStripeRefreshLoading] = useState<Record<string, boolean>>({});
   const [tenantEdits, setTenantEdits] = useState<Record<string, { billType?: string; amount?: string; dueDate?: string; status?: string; description?: string; tenantId?: string; propertyId?: string }>>({});
 
   // Date sort helper for tenant bills
@@ -209,6 +213,7 @@ export default function AdminBilling() {
       setLoading(true);
       setTenantBillError(null);
       setTenantBillSuccess(null);
+      setTenantBillsNotice(null);
       const res = await fetch("/api/admin/tenant-billing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -245,6 +250,7 @@ export default function AdminBilling() {
   const handleMarkTenantBillPaid = async (billId: string) => {
     try {
       setTenantBillsError(null);
+      setTenantBillsNotice(null);
       const res = await fetch("/api/admin/tenant-billing", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -261,6 +267,7 @@ export default function AdminBilling() {
   const handleVoidTenantBill = async (billId: string, reason?: string) => {
     try {
       setTenantBillsError(null);
+      setTenantBillsNotice(null);
       const res = await fetch("/api/admin/tenant-billing", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -281,6 +288,7 @@ export default function AdminBilling() {
   const handleDeleteTenantBill = async (billId: string) => {
     try {
       setTenantBillsError(null);
+      setTenantBillsNotice(null);
       const res = await fetch(`/api/admin/tenant-billing?id=${billId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete tenant bill");
@@ -302,6 +310,7 @@ export default function AdminBilling() {
     const propertyId = edits.propertyId ?? bill.propertyId;
     try {
       setTenantBillsError(null);
+      setTenantBillsNotice(null);
       const res = await fetch("/api/admin/tenant-billing", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -322,6 +331,42 @@ export default function AdminBilling() {
       await loadTenantBills(showVoidedTenantBills);
     } catch (err: any) {
       setTenantBillsError(err.message || "Failed to update tenant bill");
+    }
+  };
+
+  const handleRefreshTenantBillAchStatus = async (bill: TenantBillRow) => {
+    if (!bill.stripeSessionId && !bill.stripePaymentIntentId) {
+      setTenantBillsNotice("No Stripe payment found");
+      return;
+    }
+    const confirmed = window.confirm(
+      "This will re-check Stripe and update this bill’s status if needed. Continue?"
+    );
+    if (!confirmed) return;
+
+    try {
+      setTenantBillsError(null);
+      setTenantBillsNotice(null);
+      setTenantStripeRefreshLoading((prev) => ({ ...prev, [bill.id]: true }));
+
+      const res = await fetch(`/api/admin/billing/tenant-bills/${bill.id}/refresh-stripe-status`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to refresh ACH status");
+
+      if (data?.ok && data?.status) {
+        setTenantBills((prev) =>
+          prev.map((row) =>
+            row.id === bill.id ? { ...row, status: data.status } : row
+          )
+        );
+      }
+      setTenantBillsNotice(data?.message || "No change");
+    } catch (err: any) {
+      setTenantBillsError(err.message || "Failed to refresh ACH status");
+    } finally {
+      setTenantStripeRefreshLoading((prev) => ({ ...prev, [bill.id]: false }));
     }
   };
 
@@ -586,6 +631,7 @@ export default function AdminBilling() {
             <option value="pending">Pending</option>
             <option value="due">Due</option>
             <option value="paid">Paid</option>
+            <option value="processing">Processing</option>
             <option value="overdue">Overdue</option>
             <option value="voided">Voided</option>
           </select>
@@ -603,6 +649,9 @@ export default function AdminBilling() {
         </div>
         {tenantBillsError && (
           <div className="px-4 py-3 text-sm text-red-600">{tenantBillsError}</div>
+        )}
+        {tenantBillsNotice && (
+          <div className="px-4 py-3 text-sm text-slate-700">{tenantBillsNotice}</div>
         )}
         <div className="overflow-x-auto md:overflow-visible">
           <table className="w-full text-sm table-fixed">
@@ -772,6 +821,7 @@ export default function AdminBilling() {
                             <option value="pending">Pending</option>
                             <option value="due">Due</option>
                             <option value="paid">Paid</option>
+                            <option value="processing">Processing</option>
                             <option value="overdue">Overdue</option>
                             <option value="voided">Voided</option>
                           </select>
@@ -830,6 +880,18 @@ export default function AdminBilling() {
                                 className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
                               >
                                 Mark Paid
+                              </button>
+                              <button
+                                onClick={() => handleRefreshTenantBillAchStatus(bill)}
+                                disabled={
+                                  tenantStripeRefreshLoading[bill.id] ||
+                                  (!bill.stripeSessionId && !bill.stripePaymentIntentId)
+                                }
+                                className="text-xs px-2 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                {tenantStripeRefreshLoading[bill.id]
+                                  ? "Refreshing..."
+                                  : "Refresh ACH Status"}
                               </button>
                               <button
                                 onClick={() => handleVoidTenantBill(bill.id)}

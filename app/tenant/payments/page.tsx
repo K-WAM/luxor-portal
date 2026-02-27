@@ -50,6 +50,7 @@ export default function TenantPayments() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [checkoutLoading, setCheckoutLoading] = useState<"ach" | "card" | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [showCheckoutSuccessBanner, setShowCheckoutSuccessBanner] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -127,6 +128,17 @@ export default function TenantPayments() {
 
     loadBills();
   }, [authLoading, selectedPropertyId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") === "success") {
+      setShowCheckoutSuccessBanner(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("checkout");
+      url.searchParams.delete("session_id");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    }
+  }, []);
 
   const zelleRecipient = useMemo(() => {
     if (!ownerBilling.length) return null;
@@ -216,6 +228,10 @@ export default function TenantPayments() {
   const selectedSubtotal = qualifyingBills
     .filter((bill) => selectedInvoiceIds.includes(bill.id))
     .reduce((sum, bill) => sum + (bill.amount || 0), 0);
+  const hasProcessingSelected = qualifyingBills.some(
+    (bill) =>
+      selectedInvoiceIds.includes(bill.id) && (bill.status || "").toLowerCase() === "processing"
+  );
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-US", {
@@ -283,6 +299,14 @@ export default function TenantPayments() {
       ) : (
         <>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Pay Now</h2>
+          {showCheckoutSuccessBanner && (
+            <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="text-sm font-semibold text-blue-900">Payment initiated</div>
+              <div className="text-sm text-blue-800">
+                Your bank transfer has been initiated and is processing. This can take 2–5 business days. If it doesn’t complete, you’ll be able to try again.
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="md:col-span-2">
               <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
@@ -326,6 +350,11 @@ export default function TenantPayments() {
                                     ${bill.amount.toFixed(2)}
                                   </span>
                                 </div>
+                                {(bill.status || "").toLowerCase() === "processing" && (
+                                  <span className="inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">
+                                    Processing (ACH)
+                                  </span>
+                                )}
                               </div>
                             </label>
                           );
@@ -336,6 +365,11 @@ export default function TenantPayments() {
                         <span className="font-semibold">${selectedSubtotal.toFixed(2)}</span>
                       </div>
                       {checkoutError && <div className="text-xs text-red-600">{checkoutError}</div>}
+                      {hasProcessingSelected && (
+                        <div className="text-xs text-slate-500">
+                          A selected bill is currently processing via ACH.
+                        </div>
+                      )}
                       <div className="border-t border-slate-100 mt-3 pt-3">
                         {ownerBillingError ? (
                           <div className="text-xs text-red-600">{ownerBillingError}</div>
@@ -364,7 +398,7 @@ export default function TenantPayments() {
                         <div>
                           <button
                             onClick={() => handleCheckout("ach")}
-                            disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
+                            disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0 || hasProcessingSelected}
                             className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                           >
                             {checkoutLoading === "ach" ? "Starting..." : "Pay Balance by Bank (ACH)"}
@@ -373,7 +407,7 @@ export default function TenantPayments() {
                         <div>
                           <button
                             onClick={() => handleCheckout("card")}
-                            disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0}
+                            disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0 || hasProcessingSelected}
                             className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                           >
                             {checkoutLoading === "card" ? "Starting..." : "Pay Balance by Card"}
@@ -447,10 +481,16 @@ export default function TenantPayments() {
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             row.status === "paid"
                               ? "bg-emerald-100 text-emerald-700"
+                              : row.status === "processing"
+                              ? "bg-blue-100 text-blue-700"
                               : "bg-orange-100 text-orange-700"
                           }`}
                         >
-                          {row.status === "paid" ? "Paid" : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                          {row.status === "paid"
+                            ? "Paid"
+                            : row.status === "processing"
+                            ? "Processing (ACH)"
+                            : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
                         </span>
                         {row.invoiceUrl ? (
                           <a href={row.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-xs">
@@ -490,10 +530,16 @@ export default function TenantPayments() {
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                                 row.status === "paid"
                                   ? "bg-emerald-100 text-emerald-700"
+                                  : row.status === "processing"
+                                  ? "bg-blue-100 text-blue-700"
                                   : "bg-orange-100 text-orange-700"
                               }`}
                             >
-                              {row.status === "paid" ? "Paid" : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                              {row.status === "paid"
+                                ? "Paid"
+                                : row.status === "processing"
+                                ? "Processing (ACH)"
+                                : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
                             </span>
                           </td>
                           <td className="py-2 px-3 text-right font-semibold">

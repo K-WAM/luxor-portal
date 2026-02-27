@@ -4,7 +4,7 @@ import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import { getDateOnlyParts, toDateOnlyString } from "@/lib/date-only";
 
 const BILL_TYPES = ["rent", "fee", "late_fee", "security_deposit", "hoa", "maintenance", "other"];
-const BILL_STATUSES = ["due", "paid", "overdue", "pending", "voided"];
+const BILL_STATUSES = ["due", "paid", "overdue", "pending", "processing", "voided"];
 
 const getPropertyAddress = (properties: any) => {
   if (!properties) return "";
@@ -40,6 +40,8 @@ export async function GET(request: Request) {
         notify_tenant,
         invoice_url,
         payment_link_url,
+        stripe_session_id,
+        stripe_payment_intent_id,
         month,
         year,
         created_at,
@@ -87,6 +89,8 @@ export async function GET(request: Request) {
       notify_tenant: bill.notify_tenant,
       invoiceUrl: bill.invoice_url,
       paymentLinkUrl: bill.payment_link_url,
+      stripeSessionId: bill.stripe_session_id,
+      stripePaymentIntentId: bill.stripe_payment_intent_id,
       month: bill.month,
       year: bill.year,
       created_at: bill.created_at,
