@@ -83,7 +83,9 @@ export async function GET(request: Request) {
       query = query.neq("status", "voided");
     }
 
-    let { data: bills, error } = await query.order("due_date", { ascending: false });
+    const initialResult = await query.order("due_date", { ascending: false });
+    let bills: any[] | null = initialResult.data as any[] | null;
+    let error = initialResult.error;
 
     // Backward compatibility: if Stripe ID columns are not present yet in this DB,
     // retry without those columns so tenant billing page can still load.
@@ -99,7 +101,7 @@ export async function GET(request: Request) {
         fallbackQuery = fallbackQuery.neq("status", "voided");
       }
       const fallback = await fallbackQuery.order("due_date", { ascending: false });
-      bills = fallback.data;
+      bills = (fallback.data as any[] | null) ?? null;
       error = fallback.error;
     }
 
