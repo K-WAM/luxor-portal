@@ -25,10 +25,30 @@ export async function GET(request: Request) {
     const status = searchParams.get("status");
     const includeVoided = searchParams.get("includeVoided") === "true";
 
-    let query = supabaseAdmin
-      .from("tenant_bills")
-      .select(
-        `
+    const baseSelect = `
+        id,
+        tenant_id,
+        property_id,
+        bill_type,
+        description,
+        amount,
+        due_date,
+        status,
+        notify_tenant,
+        invoice_url,
+        payment_link_url,
+        month,
+        year,
+        created_at,
+        voided_at,
+        voided_by,
+        voided_reason,
+        properties (
+          id,
+          address
+        )
+      `;
+    const selectWithStripeIds = `
         id,
         tenant_id,
         property_id,
@@ -52,8 +72,9 @@ export async function GET(request: Request) {
           id,
           address
         )
-      `
-      );
+      `;
+
+    let query = supabaseAdmin.from("tenant_bills").select(selectWithStripeIds);
 
     if (status && BILL_STATUSES.includes(status)) {
       query = query.eq("status", status);
@@ -62,7 +83,25 @@ export async function GET(request: Request) {
       query = query.neq("status", "voided");
     }
 
-    const { data: bills, error } = await query.order("due_date", { ascending: false });
+    let { data: bills, error } = await query.order("due_date", { ascending: false });
+
+    // Backward compatibility: if Stripe ID columns are not present yet in this DB,
+    // retry without those columns so tenant billing page can still load.
+    if (
+      error &&
+      (String(error.message || "").includes("stripe_session_id") ||
+        String(error.message || "").includes("stripe_payment_intent_id"))
+    ) {
+      let fallbackQuery = supabaseAdmin.from("tenant_bills").select(baseSelect);
+      if (status && BILL_STATUSES.includes(status)) {
+        fallbackQuery = fallbackQuery.eq("status", status);
+      } else if (!includeVoided) {
+        fallbackQuery = fallbackQuery.neq("status", "voided");
+      }
+      const fallback = await fallbackQuery.order("due_date", { ascending: false });
+      bills = fallback.data;
+      error = fallback.error;
+    }
 
     if (error) throw error;
 
