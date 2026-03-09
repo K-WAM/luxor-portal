@@ -319,13 +319,9 @@ export default function OwnerBilling() {
                     <div className="text-xs text-slate-500">A selected invoice is currently processing via ACH.</div>
                   )}
                   <div className="border-t border-slate-100 mt-3 pt-3">
-                    <div className="inline-flex flex-col justify-center h-11 md:h-9 px-3 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs text-slate-800">
-                      <span>
-                        Zelle: {zelleRecipient?.zelleEmail || zelleRecipient?.zellePhone || "—"}
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        Recipient: {zelleRecipient?.zelleRecipient || "—"}
-                      </span>
+                    <div className="inline-flex max-w-full flex-col px-3 py-2 rounded border border-slate-400 bg-slate-100 text-sm md:text-xs leading-tight text-slate-800 break-words">
+                      <span>Zelle: connect@luxordev.com</span>
+                      <span className="text-[11px] text-slate-500">Recipient: Luxor Developments LLC</span>
                       <span className="text-[11px] text-slate-500">No processing fee</span>
                     </div>
                   </div>
