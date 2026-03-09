@@ -3,6 +3,14 @@
     {
       "path": "/api/reminders/payments-due-soon",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/reminders/payments-due-tomorrow",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/reminders/overdue-bills",
+      "schedule": "0 14 * * *"
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { formatDateOnly } from "@/lib/date-only";
+﻿import { formatDateOnly } from "@/lib/date-only";
 
 export type ReminderRecipientType = "owner" | "tenant";
 
@@ -21,17 +21,10 @@ export type PaymentsDueSoonEmail = {
   ctaUrl: string;
 };
 
-const TITLE = "Just a Reminder…";
-const SUBTITLE = "Payments are due soon.";
-const BODY_1 =
-  "You have upcoming payments due at the beginning of next month. Please schedule your payment as soon as possible to avoid delays or late fees.";
-const BODY_2 =
-  "If you have already scheduled your payment, please disregard this reminder.";
+const BODY_2 = "If you have already scheduled your payment, please disregard this reminder.";
 const CTA_LABEL = "SCHEDULE MY PAYMENT";
-const BILL_INTRO =
-  "Here are the payments currently due at the beginning of next month:";
-const FOOTER =
-  "Questions? Contact Luxor Developments at connect@luxordev.com.";
+const BILL_INTRO = "Here are the payments currently due at the beginning of next month:";
+const FOOTER = "Questions? Contact Luxor Developments at connect@luxordev.com.";
 
 const toFirstName = (value?: string | null) => {
   const trimmed = (value || "").trim();
@@ -74,13 +67,21 @@ const buildFieldRow = (label: string, value?: string | null) => {
   `;
 };
 
-export const buildPaymentsDueSoonEmail = (params: {
-  recipientName?: string | null;
-  recipientType: ReminderRecipientType;
-  bills: ReminderBill[];
-  baseUrl: string;
-  logoUrl?: string | null;
-}): PaymentsDueSoonEmail => {
+const buildReminderEmail = (
+  params: {
+    recipientName?: string | null;
+    recipientType: ReminderRecipientType;
+    bills: ReminderBill[];
+    baseUrl: string;
+    logoUrl?: string | null;
+  },
+  options: {
+    title: string;
+    subtitle: string;
+    body1: string;
+    subject: string;
+  }
+): PaymentsDueSoonEmail => {
   const firstName = toFirstName(params.recipientName);
   const greeting = `Hi ${firstName},`;
   const ctaUrl =
@@ -122,10 +123,10 @@ export const buildPaymentsDueSoonEmail = (params: {
       <div style="max-width: 600px; margin: 0 auto; padding: 0 20px 32px;">
         <div style="background-color: #0f172a; height: 8px;"></div>
         <div style="padding: 16px 0;">${logoBlock}</div>
-        <h1 style="font-size: 24px; margin: 0 0 6px; color: #0f172a;">${TITLE}</h1>
-        <h2 style="font-size: 18px; margin: 0 0 18px; color: #334155;">${SUBTITLE}</h2>
+        <h1 style="font-size: 24px; margin: 0 0 6px; color: #0f172a;">${options.title}</h1>
+        <h2 style="font-size: 18px; margin: 0 0 18px; color: #334155;">${options.subtitle}</h2>
         <p style="margin: 0 0 10px; font-size: 14px; color: #0f172a;">${greeting}</p>
-        <p style="margin: 0 0 12px; font-size: 14px; color: #334155;">${BODY_1}</p>
+        <p style="margin: 0 0 12px; font-size: 14px; color: #334155;">${options.body1}</p>
         <p style="margin: 0 0 20px; font-size: 14px; color: #334155;">${BODY_2}</p>
         <a href="${ctaUrl}" style="display: block; text-align: center; background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 600;">
           ${CTA_LABEL}
@@ -138,11 +139,11 @@ export const buildPaymentsDueSoonEmail = (params: {
   `;
 
   const textLines = [
-    TITLE,
-    SUBTITLE,
+    options.title,
+    options.subtitle,
     "",
     greeting,
-    BODY_1,
+    options.body1,
     BODY_2,
     "",
     CTA_LABEL,
@@ -166,9 +167,55 @@ export const buildPaymentsDueSoonEmail = (params: {
   ];
 
   return {
-    subject: "Action Required — Payments Due Soon",
+    subject: options.subject,
     html,
     text: textLines.join("\n"),
     ctaUrl,
   };
 };
+
+export const buildPaymentsDueSoonEmail = (params: {
+  recipientName?: string | null;
+  recipientType: ReminderRecipientType;
+  bills: ReminderBill[];
+  baseUrl: string;
+  logoUrl?: string | null;
+}): PaymentsDueSoonEmail =>
+  buildReminderEmail(params, {
+    title: "Just a Reminder...",
+    subtitle: "Payments are due soon.",
+    body1:
+      "You have upcoming payments due at the beginning of next month. Please schedule your payment as soon as possible to avoid delays or late fees.",
+    subject: "Action Required — Payments Due Soon",
+  });
+
+export const buildPaymentsDueTomorrowEmail = (params: {
+  recipientName?: string | null;
+  recipientType: ReminderRecipientType;
+  bills: ReminderBill[];
+  baseUrl: string;
+  logoUrl?: string | null;
+  dueDateLabel: string;
+}): PaymentsDueSoonEmail =>
+  buildReminderEmail(params, {
+    title: "A Reminder...",
+    subtitle: "Payments are due tomorrow.",
+    body1: `Payments are due tomorrow, ${params.dueDateLabel}.`,
+    subject: "Action Required — Payments Due Tomorrow",
+  });
+
+export const buildOverdueBillsEmail = (params: {
+  recipientName?: string | null;
+  recipientType: ReminderRecipientType;
+  bills: ReminderBill[];
+  baseUrl: string;
+  logoUrl?: string | null;
+}): PaymentsDueSoonEmail =>
+  buildReminderEmail(params, {
+    title: "Payment Overdue",
+    subtitle: "Payment Overdue",
+    body1:
+      "You have overdue bills that still show as unpaid. Please schedule your payment as soon as possible to avoid additional late fees.",
+    subject: "Action Required — Overdue Bills",
+  });
+

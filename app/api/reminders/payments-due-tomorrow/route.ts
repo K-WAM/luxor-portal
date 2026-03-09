@@ -3,32 +3,23 @@ import nodemailer from "nodemailer";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import {
-  buildPaymentsDueSoonEmail,
+  buildPaymentsDueTomorrowEmail,
   ReminderBill,
   ReminderRecipientType,
 } from "@/lib/email/payments-due-soon";
+import { formatDateOnly } from "@/lib/date-only";
 
-const REMINDER_TYPE = "payments_due_soon";
+const REMINDER_TYPE = "payments_due_tomorrow";
 
-const getNextMonthRange = () => {
+const getTomorrow = () => {
   const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth() + 1;
-  const nextMonth = month === 12 ? 1 : month + 1;
-  const nextYear = month === 12 ? year + 1 : year;
-  const targetMonth = `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
-  const day1 = `${targetMonth}-01`;
-  const day3 = `${targetMonth}-03`;
-  return { nextYear, nextMonth, targetMonth, day1, day3 };
-};
-
-const isTriggerDay = () => {
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const triggerDay = lastDay - 5;
-  return now.getUTCDate() === triggerDay;
+  const tomorrow = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)
+  );
+  const iso = `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    tomorrow.getUTCDate()
+  ).padStart(2, "0")}`;
+  return { iso, label: formatDateOnly(iso) || iso };
 };
 
 const createTransport = () => {
@@ -123,24 +114,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "APP_BASE_URL is required" }, { status: 500 });
   }
 
-  if (!isTriggerDay()) {
-    return NextResponse.json({ status: "skipped", reason: "Not trigger day" });
-  }
-
   const transport = createTransport();
   if (!transport) {
     return NextResponse.json({ error: "SMTP configuration missing" }, { status: 500 });
   }
 
-  const { day1, day3, targetMonth } = getNextMonthRange();
+  const { iso: tomorrowIso, label: tomorrowLabel } = getTomorrow();
+  const targetMonth = tomorrowIso;
 
   const { data: ownerBills, error: ownerError } = await supabaseAdmin
     .from("billing_invoices")
     .select(
       `id, owner_id, property_id, total_due, fee_amount, base_rent, description, due_date, status, category, invoice_number, properties ( address )`
     )
-    .gte("due_date", day1)
-    .lte("due_date", day3)
+    .eq("due_date", tomorrowIso)
     .neq("status", "paid")
     .neq("status", "processing")
     .neq("status", "voided");
@@ -154,8 +141,7 @@ export async function POST(request: Request) {
     .select(
       `id, tenant_id, property_id, bill_type, description, amount, due_date, status, properties ( address )`
     )
-    .gte("due_date", day1)
-    .lte("due_date", day3)
+    .eq("due_date", tomorrowIso)
     .neq("status", "paid")
     .neq("status", "processing")
     .neq("status", "voided");
@@ -223,12 +209,13 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const emailPayload = buildPaymentsDueSoonEmail({
+    const emailPayload = buildPaymentsDueTomorrowEmail({
       recipientName: group.name,
       recipientType: group.recipientType,
       bills: group.bills,
       baseUrl,
       logoUrl: `${baseUrl.replace(/\/$/, "")}/luxor-logo.png`,
+      dueDateLabel: tomorrowLabel,
     });
 
     try {
