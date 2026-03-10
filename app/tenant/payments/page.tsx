@@ -51,6 +51,7 @@ export default function TenantPayments() {
   const [checkoutLoading, setCheckoutLoading] = useState<"ach" | "card" | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showCheckoutSuccessBanner, setShowCheckoutSuccessBanner] = useState(false);
+  const [showPaidBills, setShowPaidBills] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -199,6 +200,10 @@ export default function TenantPayments() {
         return aDate.getTime() - bDate.getTime();
       });
   }, [bills, year]);
+
+  const activeBillRows = useMemo(() => billRows.filter((row) => row.status !== "paid"), [billRows]);
+  const paidBillRows = useMemo(() => billRows.filter((row) => row.status === "paid"), [billRows]);
+  const displayedBillRows = showPaidBills ? [...activeBillRows, ...paidBillRows] : activeBillRows;
 
   const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -464,7 +469,7 @@ export default function TenantPayments() {
             ) : (
               <>
                 <div className="md:hidden space-y-3">
-                  {billRows.map((row) => (
+                  {displayedBillRows.map((row) => (
                     <div key={row.id} className="border border-gray-200 rounded-lg p-3">
                       <div className="text-sm font-semibold text-gray-900">{row.monthLabel}</div>
                       <div className="text-sm text-gray-700 mt-1">{row.description}</div>
@@ -516,7 +521,7 @@ export default function TenantPayments() {
                       </tr>
                     </thead>
                     <tbody>
-                      {billRows.map((row) => (
+                      {displayedBillRows.map((row) => (
                         <tr key={row.id} className="border-t text-sm">
                           <td className="py-2 px-3 font-medium">{row.monthLabel}</td>
                           <td className="py-2 px-3">
@@ -559,6 +564,17 @@ export default function TenantPayments() {
                     </tbody>
                   </table>
                 </div>
+                {paidBillRows.length > 0 && (
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowPaidBills((prev) => !prev)}
+                      className="text-xs px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                    >
+                      {showPaidBills ? `Hide Paid Bills (${paidBillRows.length})` : `Show Paid Bills (${paidBillRows.length})`}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>

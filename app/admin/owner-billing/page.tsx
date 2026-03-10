@@ -120,6 +120,7 @@ export default function OwnerBillingDetailsPage() {
   >({});
   const [ownerBillPropertyFilter, setOwnerBillPropertyFilter] = useState("");
   const [ownerBillStatusFilter, setOwnerBillStatusFilter] = useState("");
+  const [showPaidOwnerBills, setShowPaidOwnerBills] = useState(false);
   const [rows, setRows] = useState<OwnerBillingRow[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -173,6 +174,19 @@ export default function OwnerBillingDetailsPage() {
       })
       .sort(compareDueDateAsc);
   }, [bills, showVoidedOwnerBills, ownerBillPropertyFilter, ownerBillStatusFilter]);
+  const paidOwnerBills = useMemo(
+    () => displayedOwnerBills.filter((bill) => bill.status === "paid"),
+    [displayedOwnerBills]
+  );
+  const activeOwnerBills = useMemo(
+    () => displayedOwnerBills.filter((bill) => bill.status !== "paid"),
+    [displayedOwnerBills]
+  );
+  const showPaidOwnerBillsEffective = showPaidOwnerBills || ownerBillStatusFilter === "paid";
+  const visibleOwnerBills = useMemo(
+    () => (showPaidOwnerBillsEffective ? [...activeOwnerBills, ...paidOwnerBills] : activeOwnerBills),
+    [showPaidOwnerBillsEffective, activeOwnerBills, paidOwnerBills]
+  );
 
   const loadBills = async (includeVoided = false) => {
     try {
@@ -920,6 +934,15 @@ export default function OwnerBillingDetailsPage() {
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Owner Bills</h2>
           <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setShowPaidOwnerBills((prev) => !prev)}
+              className="text-xs px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              {showPaidOwnerBillsEffective
+                ? `Hide paid (${paidOwnerBills.length})`
+                : `Show paid (${paidOwnerBills.length})`}
+            </button>
             <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
               <input
                 type="checkbox"
@@ -987,14 +1010,14 @@ export default function OwnerBillingDetailsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {displayedOwnerBills.length === 0 ? (
+              {visibleOwnerBills.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-slate-500" colSpan={9}>
                     No owner bills found.
                   </td>
                 </tr>
               ) : (
-                displayedOwnerBills.map((bill) => {
+                visibleOwnerBills.map((bill) => {
                   const edits = editAmounts[bill.id] || {};
                   const isVoided = bill.status === "voided";
                   return (

@@ -58,6 +58,7 @@ export default function AdminBilling() {
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; description: string } | null>(null);
   const [tenantBillPropertyFilter, setTenantBillPropertyFilter] = useState("");
   const [tenantBillStatusFilter, setTenantBillStatusFilter] = useState("");
+  const [showPaidTenantBills, setShowPaidTenantBills] = useState(false);
   const [tenantBill, setTenantBill] = useState({
     propertyId: "",
     tenantId: "",
@@ -191,6 +192,19 @@ export default function AdminBilling() {
       return true;
     }).sort((a, b) => compareDueDateAsc({ dueDate: a.due_date, id: a.id }, { dueDate: b.due_date, id: b.id }));
   }, [tenantBills, showVoidedTenantBills, tenantBillPropertyFilter, tenantBillStatusFilter]);
+  const paidTenantBills = useMemo(
+    () => displayedTenantBills.filter((bill) => bill.status === "paid"),
+    [displayedTenantBills]
+  );
+  const activeTenantBills = useMemo(
+    () => displayedTenantBills.filter((bill) => bill.status !== "paid"),
+    [displayedTenantBills]
+  );
+  const showPaidTenantBillsEffective = showPaidTenantBills || tenantBillStatusFilter === "paid";
+  const visibleTenantBills = useMemo(
+    () => (showPaidTenantBillsEffective ? [...activeTenantBills, ...paidTenantBills] : activeTenantBills),
+    [showPaidTenantBillsEffective, activeTenantBills, paidTenantBills]
+  );
 
   useEffect(() => {
     if (!tenantBill.propertyId) return;
@@ -589,6 +603,15 @@ export default function AdminBilling() {
             </p>
           </div>
           <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setShowPaidTenantBills((prev) => !prev)}
+              className="text-xs px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              {showPaidTenantBillsEffective
+                ? `Hide paid (${paidTenantBills.length})`
+                : `Show paid (${paidTenantBills.length})`}
+            </button>
             <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
               <input
                 type="checkbox"
@@ -668,14 +691,14 @@ export default function AdminBilling() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {displayedTenantBills.length === 0 ? (
+              {visibleTenantBills.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-slate-500" colSpan={8}>
                     No tenant bills found.
                   </td>
                 </tr>
               ) : (
-                displayedTenantBills.map((bill) => {
+                visibleTenantBills.map((bill) => {
                   const isVoided = bill.status === "voided";
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>

@@ -95,6 +95,7 @@ export default function OwnerBilling() {
   const [checkoutLoading, setCheckoutLoading] = useState<"bank" | "card" | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showCheckoutSuccessBanner, setShowCheckoutSuccessBanner] = useState(false);
+  const [showPaidInvoices, setShowPaidInvoices] = useState(false);
   const [ownerBillingRows, setOwnerBillingRows] = useState<OwnerBillingRecipient[]>([]);
 
   useEffect(() => {
@@ -167,6 +168,9 @@ export default function OwnerBilling() {
       const bTime = bDate ? bDate.getTime() : Number.MAX_SAFE_INTEGER;
       return aTime - bTime;
     });
+  const activeFiltered = filtered.filter((bill) => bill.status !== "paid");
+  const paidFiltered = filtered.filter((bill) => bill.status === "paid");
+  const displayedFiltered = showPaidInvoices ? [...activeFiltered, ...paidFiltered] : activeFiltered;
 
   const nowMs = Date.now();
   const qualifyingBills = getQualifyingBills(filtered, nowMs);
@@ -391,7 +395,7 @@ export default function OwnerBilling() {
         ) : (
           <>
             <div className="md:hidden space-y-3 p-4">
-              {filtered.map((bill) => (
+              {displayedFiltered.map((bill) => (
                 <div key={bill.id} className="border border-slate-200 rounded-lg p-3">
                   <div className="text-sm font-semibold text-slate-900">{bill.propertyAddress}</div>
                   <div className="text-sm text-slate-700 mt-1">{bill.description}</div>
@@ -448,7 +452,7 @@ export default function OwnerBilling() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filtered.map((bill) => (
+                  {displayedFiltered.map((bill) => (
                     <tr key={bill.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 text-slate-900">{bill.propertyAddress}</td>
                       <td className="px-4 py-3 text-slate-700">{bill.description}</td>
@@ -487,6 +491,17 @@ export default function OwnerBilling() {
                 </tbody>
               </table>
             </div>
+            {paidFiltered.length > 0 && (
+              <div className="px-4 py-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowPaidInvoices((prev) => !prev)}
+                  className="text-xs px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                >
+                  {showPaidInvoices ? `Hide Paid Invoices (${paidFiltered.length})` : `Show Paid Invoices (${paidFiltered.length})`}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
