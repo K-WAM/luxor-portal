@@ -213,9 +213,9 @@ export async function POST(request: NextRequest) {
     const owner = await supabaseAdmin.auth.admin.getUserById(bill.owner_id);
     const ownerEmail = owner?.data?.user?.email || bill.owner_id;
     const ownerName =
+      property?.owner_name ||
       (owner?.data?.user?.user_metadata as any)?.full_name ||
       (owner?.data?.user?.user_metadata as any)?.name ||
-      property?.owner_name ||
       "";
 
     const { invoiceNumber, invoiceDate: storedInvoiceDate } = await getOrCreateInvoiceMeta(bill.id, bill.due_date);
