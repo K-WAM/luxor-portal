@@ -6,6 +6,7 @@ import Image from "next/image";
 import GaugeChart from "@/app/components/charts/GaugeChart";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { calculateExpectedRoi } from "@/lib/financial-calculations";
+import InvestmentPerformanceTable from "@/app/components/InvestmentPerformanceTable";
 import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
 import { usePeriodFilter } from "@/app/hooks/usePeriodFilter";
 import { getDateOnlyParts } from "@/lib/date-only";
@@ -117,6 +118,7 @@ export default function OwnerDashboard() {
   const [rawMetrics, setRawMetrics] = useState<CalculatedMetrics | null>(null);
   const [yeTarget, setYeTarget] = useState<YeTarget>(null);
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [saleClosingCosts, setSaleClosingCosts] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -214,6 +216,23 @@ export default function OwnerDashboard() {
       return hasValue && notFuture;
     });
   }, [chronologicalMonthly]);
+
+  // YTD appreciation: earliest → latest market value in selectedYear
+  const ytdAppreciationData = useMemo(() => {
+    const yearData = monthly
+      .filter((m) => m.year === selectedYear && (m.property_market_estimate || 0) > 0)
+      .sort((a, b) => a.month - b.month);
+    if (yearData.length === 0) return { value: 0, pct: 0, hasData: false, label: null as string | null };
+    const earliest = parseFloat(String(yearData[0].property_market_estimate ?? 0)) || 0;
+    const latest = parseFloat(String(yearData[yearData.length - 1].property_market_estimate ?? 0)) || 0;
+    const value = latest - earliest;
+    return {
+      value,
+      pct: 0, // computed after metrics is available; handled at render time
+      hasData: true,
+      label: new Date(selectedYear, yearData[0].month - 1).toLocaleString("default", { month: "short" }),
+    };
+  }, [monthly, selectedYear]);
 
   // Recalculate metrics when period type or data changes
   const metrics = useMemo(() => {
@@ -564,25 +583,13 @@ Use the provided property and document context from the server; do not guess.`;
     ? (planNetIncomePeriod / metrics.cost_basis) * 100
     : 0;
 
-  // Delta helpers: (actual - plan) / |plan| * 100 — positive means ahead of plan
-  const delta = (actual: number, plan: number) =>
-    plan !== 0 ? ((actual - plan) / Math.abs(plan)) * 100 : null;
   const fmt$ = formatCurrency;
   const fmtPct = (v: number) => `${v.toFixed(2)}%`;
-  const deltaCell = (actual: number, plan: number, lowerIsBetter = false) => {
-    const d = delta(actual, plan);
-    if (d === null) return { text: "—", color: "text-slate-400" };
-    const good = lowerIsBetter ? d <= 0 : d >= 0;
-    return {
-      text: `${d >= 0 ? "+" : ""}${d.toFixed(2)}%`,
-      color: good ? "text-emerald-600" : "text-red-600",
-    };
-  };
 
   // Performance: uses projectedRoi + updated maintenance thresholds
   const performanceStatus =
-    projectedRoi >= 5 && metrics.maintenance_pct < 4 ? "green" :
-    projectedRoi >= 3 && metrics.maintenance_pct < 5 ? "yellow" : "red";
+    projectedRoi >= 5 && metrics.maintenance_pct < 5 ? "green" :
+    projectedRoi >= 3 && metrics.maintenance_pct < 7 ? "yellow" : "red";
   const performanceLabel = performanceStatus === "green" ? "Excellent" : performanceStatus === "yellow" ? "Good" : "Needs Attention";
 
   const gaugeRoiTotal = metrics.roi_with_appreciation;
@@ -705,7 +712,7 @@ Use the provided property and document context from the server; do not guess.`;
             </p>
             <p>
               <span className="font-semibold">Operating Income & Expenses: </span>
-              {periodLabel} income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 4 ? "text-green-700" : metrics.maintenance_pct < 5 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> — target is under 4%. Other fees (HOA, pool, garden) are {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. The property is projected to yield <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)} annualized</span> — plan for this period is {formatPercentage(planRoiPeriod)} ({formatPercentage(expectedRoi)} annualized).
+              {periodLabel} income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 4 ? "text-green-700" : metrics.maintenance_pct < 5 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> — target is under 5%. Other fees (HOA, pool, garden) are {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. The property is projected to yield <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)} annualized</span> — plan for this period is {formatPercentage(planRoiPeriod)} ({formatPercentage(expectedRoi)} annualized).
             </p>
             {metrics.ytd_property_tax > 0 ? (
               <p>
@@ -725,194 +732,73 @@ Use the provided property and document context from the server; do not guess.`;
           </div>
         </div>
 
-        {/* 3. Investment Metrics — 5-column table */}
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        {/* 3. Investment Metrics — Excel A29:I43 layout */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Investment Metrics</h2>
             <span className="text-xs text-slate-400">{periodLabel}</span>
           </div>
-
-          {/* Property & Capital */}
-          <div className="divide-y divide-slate-100">
-            <div className="px-6 py-2 bg-slate-50">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Property & Capital</span>
-            </div>
-            {[
-              { label: "Cost Basis", value: fmt$(metrics.cost_basis), note: "Purchase + repairs + closing" },
-              { label: "Current Market Value", value: fmt$(metrics.current_market_value), note: "Latest monthly estimate" },
-              {
-                label: "Appreciation",
-                value: <span className={metrics.appreciation_value >= 0 ? "text-green-600" : "text-red-600"}>
-                  {fmt$(metrics.appreciation_value)} ({fmtPct(metrics.appreciation_pct)})
-                </span>,
-                note: `Since purchase · ${metrics.months_owned} mo`,
-              },
-            ].map(({ label, value, note }) => (
-              <div key={label} className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
-                <span className="col-span-2 text-slate-600">{label}</span>
-                <span className="font-semibold text-slate-900">{value}</span>
-                <span className="col-span-2 text-xs text-slate-400">{note}</span>
-              </div>
-            ))}
-
-            {/* Income & Expenses header */}
-            <div className="px-6 py-2 bg-slate-50">
-              <div className="grid grid-cols-5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                <span className="col-span-2">Income & Expenses</span>
-                <span>YTD Actual</span>
-                <span>Plan</span>
-                {yeTarget ? <span>YE Target</span> : <span />}
-              </div>
-            </div>
-
-            {/* Gross Income */}
-            {(() => {
-              const d = deltaCell(metrics.ytd_rent_income, planRentPeriod, false);
-              return (
-                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
-                  <span className="col-span-2 text-slate-600">Gross Income</span>
-                  <span className="font-semibold text-slate-900">{fmt$(metrics.ytd_rent_income)}</span>
-                  <span className="text-slate-500">{fmt$(planRentPeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
-                  <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.rent_income) : "—"}</span>
-                </div>
-              );
-            })()}
-
-            {/* Maintenance $ */}
-            {(() => {
-              const d = deltaCell(metrics.ytd_maintenance, planMaintenancePeriod, true);
-              return (
-                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
-                  <span className="col-span-2 text-slate-600">Maintenance</span>
-                  <span className={`font-semibold ${metrics.maintenance_pct < 4 ? "text-green-600" : metrics.maintenance_pct < 5 ? "text-yellow-600" : "text-red-600"}`}>
-                    {fmt$(metrics.ytd_maintenance)}
-                  </span>
-                  <span className="text-slate-500">{fmt$(planMaintenancePeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
-                  <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.maintenance) : "—"}</span>
-                </div>
-              );
-            })()}
-
-            {/* Maintenance % */}
-            <div className="grid grid-cols-5 px-6 py-2 text-xs hover:bg-slate-50 items-center bg-slate-50/50">
-              <span className="col-span-2 text-slate-400 pl-3">↳ as % of rent</span>
-              <span className={`font-medium ${metrics.maintenance_pct < 4 ? "text-green-600" : metrics.maintenance_pct < 5 ? "text-yellow-600" : "text-red-600"}`}>
-                {fmtPct(metrics.maintenance_pct)}
-              </span>
-              <span className="text-slate-400">5.00% target</span>
-              <span className="text-slate-400">{yeTarget ? "5.00%" : "—"}</span>
-            </div>
-
-            {/* HOA Pool Garden */}
-            {(() => {
-              const actual = metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden;
-              const d = deltaCell(actual, planOtherPeriod, true);
-              return (
-                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
-                  <span className="col-span-2 text-slate-600">HOA, Pool & Garden</span>
-                  <span className="font-semibold text-slate-900">{fmt$(actual)}</span>
-                  <span className="text-slate-500">{fmt$(planOtherPeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
-                  <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.hoa + yeTarget.pool + yeTarget.garden) : "—"}</span>
-                </div>
-              );
-            })()}
-
-            {/* PM Fee */}
-            {(metrics.ytd_pm_fee > 0 || (yeTarget && yeTarget.net_income > 0)) && (() => {
-              const planPmFee = metrics.ytd_pm_fee; // no separate plan; show actual as reference
-              return (
-                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
-                  <span className="col-span-2 text-slate-600">PM Fee</span>
-                  <span className="font-semibold text-slate-900">{fmt$(metrics.ytd_pm_fee)}</span>
-                  <span className="text-slate-400">—</span>
-                  <span className="text-slate-400">{yeTarget && (yeTarget.net_income < yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden) ? fmt$(yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden - yeTarget.net_income) : "—"}</span>
-                </div>
-              );
-            })()}
-
-            {/* Property Tax */}
-            {metrics.ytd_property_tax > 0 && (
-              <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
-                <span className="col-span-2 text-slate-600">Property Tax</span>
-                <span className="font-semibold text-slate-900">{fmt$(metrics.ytd_property_tax)}</span>
-                <span className="text-slate-400">—</span>
-                <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.property_tax) : "—"}</span>
-              </div>
-            )}
-
-            {/* Net Income */}
-            {(() => {
-              const d = deltaCell(metrics.ytd_net_income, planNetIncomePeriod, false);
-              return (
-                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 font-semibold border-t border-slate-200 items-center">
-                  <span className="col-span-2 text-slate-700">Net Income</span>
-                  <span className={metrics.ytd_net_income >= 0 ? "text-green-600" : "text-red-600"}>{fmt$(metrics.ytd_net_income)}</span>
-                  <span className="text-slate-500">{fmt$(planNetIncomePeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
-                  <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.net_income) : "—"}</span>
-                </div>
-              );
-            })()}
-
-            {/* ROI header */}
-            <div className="px-6 py-2 bg-slate-50">
-              <div className="grid grid-cols-5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                <span className="col-span-2">Investment Performance</span>
-                <span>Actual</span>
-                <span>Plan</span>
-                {yeTarget ? <span>YE Target</span> : <span />}
-              </div>
-            </div>
-
-            {/* ROI (Net Income) */}
-            {(() => {
-              const actualRoi = metrics.roi_pre_tax;
-              const d = deltaCell(actualRoi, planRoiPeriod, false);
-              return (
-                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
-                  <span className="col-span-2 text-slate-600">
-                    Return on Investment (Net Income)
-                    {activeRole === "admin" && <span className="ml-1 text-[10px] text-slate-400">(net÷cost)</span>}
-                  </span>
-                  <span className={`font-semibold ${actualRoi >= 5 ? "text-green-600" : actualRoi >= 3 ? "text-yellow-600" : "text-red-600"}`}>{fmtPct(actualRoi)}</span>
-                  <span className="text-slate-500">{fmtPct(planRoiPeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
-                  <span className="text-slate-400">{yeTarget && metrics.cost_basis > 0 ? fmtPct(yeTarget.net_income / metrics.cost_basis * 100) : "—"}</span>
-                </div>
-              );
-            })()}
-
-            {/* ROI Post Property Tax */}
-            <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
-              <span className="col-span-2 text-slate-600">ROI Post Property Tax</span>
-              <span className="font-semibold text-slate-900">{fmtPct(metrics.roi_post_tax)}</span>
-              <span className="text-slate-400">—</span>
-              <span className="text-slate-400">—</span>
-            </div>
-
-            {/* Home Value Appreciation */}
-            <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
-              <span className="col-span-2 text-slate-600">Home Value Appreciation</span>
-              <span className={`font-semibold ${metrics.appreciation_pct >= 0 ? "text-green-600" : "text-red-600"}`}>{fmtPct(metrics.appreciation_pct)}</span>
-              <span className="text-slate-400">—</span>
-              <span className="text-slate-400">—</span>
-            </div>
-
-            {/* Total ROI incl appreciation */}
-            <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 font-semibold items-center border-t border-slate-200">
-              <span className="col-span-2 text-slate-700">Total ROI (incl. Appreciation)</span>
-              <span className={`font-bold text-base ${metrics.roi_with_appreciation >= 10 ? "text-green-600" : metrics.roi_with_appreciation >= 5 ? "text-yellow-600" : "text-red-600"}`}>
-                {fmtPct(metrics.roi_with_appreciation)}
-              </span>
-              <span className="text-slate-400">—</span>
-              <span className="text-slate-400">—</span>
-            </div>
-          </div>
+          <InvestmentPerformanceTable
+            actual={{
+              grossIncome: metrics.ytd_rent_income,
+              maintenance: metrics.ytd_maintenance,
+              maintenancePct: metrics.maintenance_pct,
+              hoaPoolGarden: metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden,
+              pmFee: metrics.ytd_pm_fee,
+              totalExpenses: metrics.ytd_total_expenses,
+              netIncome: metrics.ytd_net_income,
+              propertyTax: metrics.ytd_property_tax,
+            }}
+            plan={{
+              grossIncome: planRentPeriod,
+              maintenance: planMaintenancePeriod,
+              hoaPoolGarden: planOtherPeriod,
+              pmFee: 0,
+              totalExpenses: planMaintenancePeriod + planOtherPeriod,
+              netIncome: planNetIncomePeriod,
+            }}
+            yeTarget={yeTarget ? {
+              grossIncome: yeTarget.rent_income,
+              maintenance: yeTarget.maintenance,
+              hoaPoolGarden: yeTarget.hoa + yeTarget.pool + yeTarget.garden,
+              pmFee: yeTarget.net_income < yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden
+                ? yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden - yeTarget.net_income
+                : 0,
+              totalExpenses: yeTarget.total_expenses,
+              netIncome: yeTarget.net_income,
+              propertyTax: yeTarget.property_tax,
+            } : null}
+            roi={{
+              preTax: metrics.roi_pre_tax,
+              postTax: metrics.roi_post_tax,
+              appreciationPct: metrics.appreciation_pct,
+              planRoi: planRoiPeriod,
+              yeTargetRoi: yeTarget && metrics.cost_basis > 0 ? yeTarget.net_income / metrics.cost_basis * 100 : null,
+            }}
+            home={{
+              costBasis: metrics.cost_basis,
+              currentMarketValue: metrics.current_market_value,
+              appreciationValue: metrics.appreciation_value,
+              appreciationPct: metrics.appreciation_pct,
+              ytdAppreciationValue: ytdAppreciationData.value,
+              ytdAppreciationPct: metrics.cost_basis > 0 ? (ytdAppreciationData.value / metrics.cost_basis * 100) : 0,
+              ytdLabel: ytdAppreciationData.label,
+              monthlyGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned : 0,
+              monthlyGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned / metrics.cost_basis * 100) : 0,
+              annualizedGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned * 12 : 0,
+              annualizedGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned * 12 / metrics.cost_basis * 100) : 0,
+              monthsOwned: metrics.months_owned,
+            }}
+            closingCosts={saleClosingCosts}
+            onClosingCostsChange={setSaleClosingCosts}
+          />
         </div>
 
         {/* 4. Performance Thresholds — compact, subdued */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500 bg-white border border-slate-100 rounded-lg py-3 px-4">
           <span className="font-semibold text-[10px] text-slate-400 uppercase tracking-wide">Thresholds</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Excellent: Proj ROI ≥5%, Maint &lt;4%</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />Good: ≥3%, Maint &lt;4.5%</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Excellent: Proj ROI ≥5%, Maint &lt;5%</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />Good: ≥3%, Maint &lt;7%</span>
           <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />Needs Attention: below these</span>
           <span className="ml-auto text-slate-400">
             Now: {formatPercentage(projectedRoi)} proj · {formatPercentage(metrics.maintenance_pct)} maint{" → "}

@@ -171,8 +171,8 @@ export async function GET(request: Request) {
           ? (metrics.ytd.net_income / elapsedMonthsCount * 12 / metrics.cost_basis) * 100
           : 0;
         const performance_status: "green" | "yellow" | "red" =
-          projectedRoiActual >= 5 && metrics.maintenance_pct < 4 ? "green" :
-          projectedRoiActual >= 3 && metrics.maintenance_pct < 5 ? "yellow" : "red";
+          projectedRoiActual >= 5 && metrics.maintenance_pct < 5 ? "green" :
+          projectedRoiActual >= 3 && metrics.maintenance_pct < 7 ? "yellow" : "red";
 
         return {
           id: property.id,

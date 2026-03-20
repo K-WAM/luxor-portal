@@ -1,695 +1,232 @@
 # LUXOR ENGINEERING GUARDRAILS
 
-## 1. Purpose and Scope
+## 1. Purpose
 
-This document governs all future development and AI-assisted changes to the Luxor application. It establishes mandatory workflows, reuse-first engineering principles, and backward compatibility requirements.
-
-**Scope:**
-- All code changes to the Luxor codebase
-- All AI-assisted development sessions
-- All new feature implementations
-- All bug fixes and maintenance work
-- All database schema modifications
-
-**Out of Scope:**
-- Infrastructure and deployment configuration (handled separately)
-- Third-party service configurations
-- Local development environment setup
+Governs all development and AI-assisted changes to Luxor (Admin, Owner, Tenant portals). Applies to code changes, bug fixes, features, and DB schema modifications.
 
 ---
 
-## 2. System Stability Statement
+## 2. System Stability
 
-Luxor is a stable, near-production property management portal. The codebase represents months of deliberate architectural decisions and tested business logic.
-
-**Current State:**
-- Three fully functional portals: Admin, Owner, Tenant
-- Established authentication and authorization via Supabase with role-based access
-- Canonical financial calculations validated against Excel workbook formulas
-- Database schema with RLS policies enforcing data security
-- Consistent API route patterns with standardized error handling
-
-**Implications:**
-- The existing architecture is intentional and must be preserved
+Luxor is near-production. Architecture is intentional and must be preserved.
 - Working code is assumed correct unless proven otherwise
-- Refactoring is prohibited unless explicitly requested and approved
-- All changes must integrate with existing patterns, not replace them
+- Refactoring prohibited unless explicitly requested
+- All changes must integrate with existing patterns
 
 ---
 
-## 3. Backward Compatibility and Data Safety Rules
+## 3. Data & API Safety (Non-Negotiable)
 
-### 3.1 Data Safety (Non-Negotiable)
-
-| Rule | Requirement |
-|------|-------------|
-| No data deletion | Never delete historical records from `property_monthly_performance`, `billing_invoices`, `tenant_bills`, or any financial data |
-| Schema changes must be additive | New columns must have defaults or be nullable; existing columns cannot be removed or renamed |
-| RLS policies are immutable | Existing Row Level Security policies cannot be modified without explicit approval |
-| Migration rollback | Every migration must be reversible; document rollback procedure in migration file |
-
-### 3.2 API Backward Compatibility
-
-| Rule | Requirement |
-|------|-------------|
-| Response structure | Existing API response fields cannot be removed or renamed |
-| New fields only | Add new fields to responses; never remove existing ones |
-| Error codes | Existing error codes (401, 403, 400, 404, 500) and messages must remain consistent |
-| Route paths | Existing route paths cannot be changed; add new routes if needed |
-
-### 3.3 Type Backward Compatibility
-
-| Rule | Requirement |
-|------|-------------|
-| Type extensions | Extend existing types with optional properties; never make required properties optional |
-| Interface contracts | `CanonicalMetrics`, `PropertyData`, `MonthlyDataRow` interfaces are frozen |
-| Hook signatures | `useAuth()`, `usePeriodFilter()` return types cannot change |
+- **No deletion** of financial records (`property_monthly_performance`, `billing_invoices`, `tenant_bills`)
+- **Schema changes additive only** — new columns must be nullable or have defaults; no removals/renames
+- **RLS policies immutable** without explicit approval
+- **API responses** — never remove or rename existing fields; add only
+- **Types** — `CanonicalMetrics`, `PropertyData`, `MonthlyDataRow` interfaces are frozen; extend with optional properties only
+- **Hook signatures** — `useAuth()`, `usePeriodFilter()` return types cannot change
 
 ---
 
-## 4. Reuse-First Engineering Rules
+## 4. Reuse-First (Mandatory Order)
 
-### 4.1 Mandatory Reuse Hierarchy
+Before writing new code:
+1. `app/components/` — `GaugeChart`, `PeriodToggle`, `ROISpeedometer`, `InvestmentPerformanceTable`
+2. `app/hooks/` — `usePeriodFilter`, `useAuth`
+3. `lib/` — `canonical-metrics.ts` (ALL financials), `date-only.ts`, `route-helpers.ts`, `supabase/`
+4. Existing pattern in same portal (`app/admin/`, `app/owner/`, `app/tenant/`, `app/api/`)
 
-Before writing any new code, search for and evaluate existing implementations in this order:
-
-1. **Existing component in `app/components/`**
-   - `GaugeChart` for semi-circle gauge visualizations
-   - `PeriodToggle` for YTD/Lease Term/All Time selection
-   - `ROISpeedometer` for ROI visualization
-   - `Navbar` for navigation elements
-
-2. **Existing hook in `app/hooks/`**
-   - `usePeriodFilter` for any period-based filtering
-   - `useAuth` (via `AuthContext`) for all auth state
-
-3. **Existing utility in `lib/`**
-   - `lib/calculations/canonical-metrics.ts` for ALL financial calculations
-   - `lib/date-only.ts` for ALL date parsing and formatting
-   - `lib/auth/route-helpers.ts` for ALL API route authentication
-   - `lib/supabase/client.ts` for client-side Supabase access
-   - `lib/supabase/server.ts` for server-side Supabase access
-
-4. **Existing pattern in similar route/page**
-   - Admin portal patterns in `app/admin/`
-   - Owner portal patterns in `app/owner/`
-   - Tenant portal patterns in `app/tenant/`
-   - API route patterns in `app/api/`
-
-### 4.2 Prohibited Actions
-
-| Action | Status |
-|--------|--------|
-| Creating new financial calculation functions | PROHIBITED - use `canonical-metrics.ts` |
-| Creating new auth validation helpers | PROHIBITED - use `route-helpers.ts` |
-| Creating new date utilities | PROHIBITED - use `date-only.ts` |
-| Creating new Supabase client instances | PROHIBITED - use existing client/server modules |
-| Duplicating form validation logic | PROHIBITED - extract to shared utility if pattern emerges |
-| Creating role-specific calculation variants | PROHIBITED - extend canonical metrics |
-
-### 4.3 Extension Over Duplication
-
-When existing code does not fully meet requirements:
-
-1. **Extend the existing module** with new optional parameters
-2. **Add new exported functions** to the existing file
-3. **Create wrapper functions** that compose existing utilities
-4. **Never copy-paste** existing code into new files
+**Prohibited:** New financial calc functions, new auth helpers, new date utilities, new Supabase clients, duplicating existing logic.
 
 ---
 
-## 5. Required Workflow for All Changes
+## 5. Required Workflow
 
-Every code change must follow this workflow. No exceptions.
-
-### Phase 1: Investigate
-
-**Objective:** Understand existing implementation before proposing changes.
-
-**Required Actions:**
-- [ ] Search for existing implementations that solve the problem
-- [ ] Read all files that will be modified
-- [ ] Identify reusable components, hooks, utilities, and patterns
-- [ ] Document existing data flow and dependencies
-- [ ] List all files that will be affected
-
-**Investigation Checklist:**
-```
-1. Searched app/components/ for existing UI components
-2. Searched app/hooks/ for existing hooks
-3. Searched lib/ for existing utilities
-4. Searched app/api/ for similar API patterns
-5. Reviewed database schema in supabase/migrations/
-6. Checked TypeScript types in lib/types/
-7. Identified test files that require updates
-```
-
-### Phase 2: Execution Plan
-
-**Objective:** Define exactly what will change before writing code.
-
-**Required Format:**
-```
-## Execution Plan
-
-### Files to Modify
-- [file path]: [description of change]
-
-### Files to Create (if any)
-- [file path]: [justification for new file]
-
-### Dependencies
-- [list any new packages or imports]
-
-### Database Changes (if any)
-- [migration name]: [description]
-
-### API Changes (if any)
-- [endpoint]: [method] - [description]
-```
-
-### Phase 3: Impact Analysis
-
-**Objective:** Identify all downstream effects.
-
-**Required Analysis:**
-```
-## Impact Analysis
-
-### Direct Dependencies
-- [files/modules that import the changed code]
-
-### API Consumers
-- [frontend components that call modified APIs]
-
-### Database Implications
-- [RLS policy changes, index considerations]
-
-### Type Safety
-- [TypeScript interfaces affected]
-
-### Breaking Changes
-- [list any breaking changes - should be NONE]
-```
-
-### Phase 4: Test and Verification Plan
-
-**Objective:** Define how changes will be verified.
-
-**Required Format:**
-```
-## Verification Plan
-
-### Unit Tests
-- [ ] [test description]
-
-### Integration Points
-- [ ] [manual verification steps]
-
-### Regression Checks
-- [ ] Existing tests pass
-- [ ] Auth flows unaffected
-- [ ] Financial calculations unchanged
-- [ ] Portal navigation functional
-```
-
-### Phase 5: Explicit Confirmation
-
-**Before executing any code changes, present the following:**
-
-```
-## Change Summary
-
-Files Modified: [count]
-Files Created: [count]
-Database Migrations: [count]
-Breaking Changes: [NONE or list]
-Reused Components: [list]
-New Dependencies: [NONE or list]
-
-Proceed with implementation? (Yes/No)
-```
-
-**Wait for explicit approval before Phase 6.**
-
-### Phase 6: Execute
-
-**Only after receiving explicit "Yes" confirmation:**
-- Implement changes following the approved plan
-- Write tests before or alongside implementation
-- Validate all verification steps
-- Report completion status
+1. **Investigate** — read all files to be modified, find reusable code
+2. **Plan** — list files to modify/create, dependencies, DB changes
+3. **Impact analysis** — downstream effects, breaking changes (must be NONE)
+4. **Confirm** — present plan, wait for approval
+5. **Execute** — implement, validate
 
 ---
 
-## 6. UX/UI Stability Rules
+## 6. UI Stability
 
-### 6.1 UX is Approved Unless Otherwise Stated
-
-| Element | Rule |
-|---------|------|
-| Portal layouts | Admin, Owner, Tenant layouts are final |
-| Navigation structure | Sidebar items and hierarchy are fixed |
-| Color scheme | Existing Tailwind classes and CSS variables are final |
-| Component styling | GaugeChart, PeriodToggle styling is approved |
-| Form layouts | Existing form structures are approved |
-| Error displays | Current error presentation is approved |
-
-### 6.2 Prohibited UI Changes
-
-- Moving sidebar navigation items
-- Changing color schemes or themes
-- Altering existing component dimensions
-- Modifying responsive breakpoints
-- Adding animations to existing components
-- Changing font sizes or typography
-
-### 6.3 Allowed UI Additions
-
-- New components that follow existing patterns
-- New pages that use established layouts
-- New form fields within existing form structures
-- Additional chart types following GaugeChart patterns
+Portal layouts, navigation, color scheme, and component styling are final. No moving sidebar items, changing themes, altering dimensions, or adding animations without request.
 
 ---
 
-## 7. Stack Assumptions
+## 7. Locked Stack
 
-The following technology choices are final. Do not propose alternatives.
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 15 (App Router) |
+| Runtime | React 18, TypeScript 5 strict |
+| Database | Supabase (PostgreSQL) + RLS |
+| Styling | Tailwind CSS 4 |
+| Charts | Chart.js, Recharts |
 
-### 7.1 Locked Stack
-
-| Layer | Technology | Version |
-|-------|------------|---------|
-| Framework | Next.js (App Router) | 15.x |
-| Runtime | React | 18.x |
-| Language | TypeScript | 5.x (strict mode) |
-| Database | Supabase (PostgreSQL) | Current |
-| Auth | Supabase Auth | Current |
-| Styling | Tailwind CSS | 4.x |
-| Charts | Chart.js, Recharts | Current |
-
-### 7.2 Prohibited Proposals
-
-- State management libraries (Redux, Zustand, Jotai)
-- Alternative auth providers
-- Alternative databases
-- CSS-in-JS libraries
-- Alternative chart libraries
-- ORM layers over Supabase
-- Alternative form libraries
-
-### 7.3 Exception Process
-
-To propose a stack change:
-1. Document technical justification
-2. Provide migration impact analysis
-3. Obtain explicit written approval
-4. This process is expected to be rare
+No state libraries, alternative auth/DB, CSS-in-JS, or ORM layers.
 
 ---
 
-## 8. AI Usage Boundaries
+## 8. AI Boundaries
 
-### 8.1 AI-Assisted Development Rules
+**Must:** Investigate before proposing; reuse existing patterns; present plan before executing; make minimal changes; confirm backward compatibility.
 
-| Rule | Requirement |
-|------|-------------|
-| Investigation first | AI must explore codebase before proposing changes |
-| Reuse mandate | AI must search for and use existing patterns |
-| No invention | AI cannot propose new architectural patterns |
-| Plan approval | AI must present execution plan before implementing |
-| Minimal changes | AI must make smallest possible change to achieve goal |
-
-### 8.2 AI Prohibited Actions
-
-- Refactoring existing working code
-- Proposing "improvements" to established patterns
-- Adding abstractions or utilities "for future use"
-- Modifying code outside the scope of the request
-- Adding comments, docstrings, or documentation to unchanged code
-- Suggesting performance optimizations unless requested
-- Creating new directories or organizational structures
-
-### 8.3 AI Required Behaviors
-
-- State which existing modules will be reused
-- Explain why new code is necessary (if any)
-- Identify all files that will be modified
-- Confirm backward compatibility
-- Request explicit approval before execution
+**Must NOT:** Refactor working code; add abstractions for future use; modify code outside scope; propose architectural changes; add comments/docstrings to unchanged code.
 
 ---
 
-## 9. What This Document Does NOT Do
+## 9. Enforcement
 
-This document does not:
-
-- Authorize architectural redesigns
-- Permit refactoring of working code
-- Allow technology stack changes
-- Enable "improvement" initiatives
-- Justify speculative development
-- Permit breaking changes under any circumstance
-- Override explicit user instructions (user intent takes precedence)
-- Apply to emergency production hotfixes (follow incident response procedures)
-
-This document is not:
-
-- A design system specification
-- A feature roadmap
-- A technical debt registry
-- A performance optimization guide
-- A testing strategy document
+Violations → automatic rejection: missing investigation, breaking API/types, data deletion, duplicating utilities, stack changes, UI modifications without request.
 
 ---
 
-## 10. Enforcement
+## Appendix A: Code Patterns
 
-### 10.1 Violation Policy
-
-**Violations of these guardrails result in automatic rejection.**
-
-| Violation | Response |
-|-----------|----------|
-| Code submitted without investigation phase | Rejected |
-| Changes without execution plan | Rejected |
-| Breaking changes to API/types | Rejected |
-| Data deletion or schema removal | Rejected |
-| New code duplicating existing utilities | Rejected |
-| Stack changes without approval | Rejected |
-| UI modifications without request | Rejected |
-| Refactoring without explicit approval | Rejected |
-
-### 10.2 Review Requirements
-
-Every change must demonstrate:
-- [ ] Investigation phase completed
-- [ ] Existing patterns reused where applicable
-- [ ] Execution plan approved
-- [ ] Impact analysis documented
-- [ ] Verification plan defined
-- [ ] Backward compatibility confirmed
-- [ ] Minimal scope maintained
-
-### 10.3 Escalation Path
-
-If guardrails block legitimate work:
-1. Document the constraint
-2. Explain why exception is needed
-3. Propose minimal exception scope
-4. Obtain explicit written approval
-5. Document exception in commit message
-
----
-
-## Appendix A: Luxor-Specific Patterns Reference
-
-### A.1 Auth Pattern (Route Handlers)
-
+### A.1 Auth (Route Handlers)
 ```typescript
-import { getAuthContext, isAdmin, getAccessiblePropertyIds } from '@/lib/auth/route-helpers';
-
-export async function GET() {
-  const { user, role } = await getAuthContext();
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-  if (!isAdmin(role)) {
-    return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
-  }
-  // Proceed with authorized logic
-}
+import { getAuthContext, isAdmin } from '@/lib/auth/route-helpers';
+const { user, role } = await getAuthContext();
+if (!user || !isAdmin(role)) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
 ```
 
-### A.2 Financial Calculations Pattern
-
+### A.2 Financial Calculations
 ```typescript
 import { calculateCanonicalMetrics } from '@/lib/calculations/canonical-metrics';
-
-const metrics = calculateCanonicalMetrics(property, monthlyData, {
-  asOf: new Date(),
-  monthsFilter: [1, 2, 3, 4, 5, 6],
-  multiYear: false,
-});
+const metrics = calculateCanonicalMetrics(property, monthlyData, { estimatedAnnualPropertyTax });
 ```
 
-### A.3 Date Handling Pattern
-
+### A.3 Date Handling
 ```typescript
-import { parseDateOnly, formatDateOnly, formatMonthYear } from '@/lib/date-only';
-
-const date = parseDateOnly('2024-06-15');
-const formatted = formatDateOnly(date);
-const monthYear = formatMonthYear(2024, 6);
+import { parseDateOnly, formatDateOnly, getDateOnlyParts } from '@/lib/date-only';
 ```
 
-### A.4 Period Filter Pattern
-
+### A.4 Period Filter
 ```typescript
 import { usePeriodFilter } from '@/app/hooks/usePeriodFilter';
-
-const { periodType, setPeriodType, startMonth, endMonth, monthsInPeriod, label } = usePeriodFilter({
-  leaseStart: property.lease_start,
-  leaseEnd: property.lease_end,
-  currentYear: new Date().getFullYear(),
-});
+const { periodType, monthsInPeriod, label } = usePeriodFilter({ leaseStart, leaseEnd, currentYear });
 ```
 
-### A.5 API Response Pattern
-
+### A.5 API Responses
 ```typescript
-// Success
-return NextResponse.json(data);
-return NextResponse.json({ success: true });
-
-// Errors
+return NextResponse.json(data);                                         // 200
 return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
-return NextResponse.json({ error: 'Property ID required' }, { status: 400 });
-return NextResponse.json({ error: 'Property not found' }, { status: 404 });
 return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
 ```
 
-### A.6 Supabase Query Pattern
-
-```typescript
-// Client-side
-import { supabase } from '@/lib/supabase/client';
-
-// Server-side (admin operations)
-import { supabaseAdmin } from '@/lib/supabase/server';
-
-const { data, error } = await supabase
-  .from('properties')
-  .select('*')
-  .eq('id', propertyId)
-  .single();
-
-if (error) {
-  return NextResponse.json({ error: 'Failed to fetch property' }, { status: 500 });
-}
-```
-
 ---
 
-## Appendix B: File Location Reference
+## Appendix B: File Locations
 
 | Purpose | Location |
 |---------|----------|
 | Page components | `app/[portal]/[feature]/page.tsx` |
-| Layout components | `app/[portal]/layout.tsx` |
 | API routes | `app/api/[domain]/route.ts` |
 | Reusable components | `app/components/` |
-| UI components | `app/components/ui/` |
-| Chart components | `app/components/charts/` |
-| Custom hooks | `app/hooks/` |
-| Auth context | `app/context/AuthContext.tsx` |
+| Financial calculations | `lib/calculations/canonical-metrics.ts` |
+| Date utilities | `lib/date-only.ts` |
 | Auth helpers | `lib/auth/route-helpers.ts` |
 | Supabase clients | `lib/supabase/` |
-| Financial calculations | `lib/calculations/` |
-| Date utilities | `lib/date-only.ts` |
-| TypeScript types | `lib/types/` |
-| Database migrations | `supabase/migrations/` |
+| SQL migrations | `supabase/migrations/` |
+| Docs/planning | `docs/` |
 
 ---
 
----
+## Appendix C: Operational Lessons
 
-## Appendix C: Operational Lessons (Updated as We Go)
-
-### C.1 TypeScript: Supabase Column Type Coercion
-
-Supabase can return numeric columns as `number` OR `string` depending on schema type. Never pass a raw column value to `parseFloat()` directly.
-
-**Wrong:** `parseFloat(row?.some_column || '0')` — breaks if column is already a number.
-**Correct:** `parseFloat(String(row?.some_column ?? 0))`
+### C.1 Supabase Column Type Coercion
+Numeric columns may return `string` or `number`. Always: `parseFloat(String(row?.col ?? 0))`
 
 ### C.2 Email: Resend Only, Non-Blocking
-
-Resend REST API via raw `fetch` only — no nodemailer, no SDK package. All email calls must be non-blocking and non-fatal:
 ```typescript
-sendEmail({ ... }).catch(() => { /* already logged inside */ });
+sendEmail({ ... }).catch(() => {});  // non-blocking, never fatal
 ```
-Env: `RESEND_API_KEY` (required), `MAINTENANCE_EMAIL_TO` (defaults to connect@luxordev.com).
+Env: `RESEND_API_KEY`, `MAINTENANCE_EMAIL_TO` (default: connect@luxordev.com).
 
-### C.3 Computed Fields: Query-Time Over Stored
-
-Derived aggregates (e.g., maintenance open/closed/red counts per property) are computed in the API route at query time — not stored as columns. Keeps schema clean and counts always accurate.
+### C.3 Computed Fields at Query Time
+Derived aggregates (maintenance open/closed/red counts) computed in API routes, not stored as columns.
 
 ### C.4 Repo Cleanliness
+Single logo: `public/luxor-logo.svg`. No duplicate assets. New files go in correct locations per Appendix B.
 
-- **Portal root should be clean.** Delete untracked noise (dev logs, duplicate assets) promptly. Check `git status --short` before committing.
-- **Single logo source:** `public/luxor-logo.svg` via `next/image`. Do not duplicate elsewhere.
-- **File homes:** planning docs → `docs/`, utility scripts → `scripts/`, old HTML → `legacy/`.
+### C.5 Disabling Dead JSX
+Wrap in `{false && (...)}` temporarily. Clean up in a dedicated pass.
 
-### C.5 Disabling Dead JSX Safely
-
-When a large JSX block needs to be disabled but deletion is risky (complex nesting), wrap in `{false && (...)}` temporarily. Clean up in a dedicated pass.
-
-### C.6 Batch Save Over onBlur Auto-Save
-
-For multi-input forms (monthly performance, property financials), use a single "Save" button. Avoid `onBlur` per-field handlers — they create race conditions and hidden failures.
+### C.6 Batch Save Over onBlur
+Multi-input forms use a single Save button. Avoid per-field `onBlur` handlers.
 
 ### C.7 Git: Verify Before Rebasing
-
-Before rebasing, confirm your local changes are not already on remote:
 ```bash
 git log --oneline origin/main -10
 git show --name-only <commit-hash>
 ```
-If remote already contains equivalent work, abort the rebase and `git reset --hard origin/main` instead.
 
 ### C.9 Owner Dashboard Design Conventions
-
-- **Section order:** ROI Gauges → Narrative → Metrics → Thresholds → Luxor AI → Charts
-- **Performance thresholds are a compact footnote strip**, not a table. Keep them unobtrusive.
-- **ROI for thresholds = Projected ROI** (annualized from elapsed months): `(ytdNetIncome / elapsedMonths * 12) / costBasis * 100`. Do NOT use raw YTD roi_pre_tax — it will be low early in the year.
-- **Maintenance thresholds:** Excellent <4%, Good <4.5%, Needs Attention ≥5%.
-- **Projected ROI calc shown for admin role only** (inline `text-[10px]` note in gauge card and metrics row).
-- **Middle gauge** = Projected ROI with colored border (green/yellow/red). Outer two gauges use default border.
-- **Investment Report narrative** should read like the Feb report doc: income vs plan, maintenance %, projected vs expected ROI, property tax note, home value with appreciation and months owned.
-- **Metrics table uses 3-column grid layout** (label / actual / plan or note) with section headers.
-- **Chart.js sharpness:** Always add `devicePixelRatio: 2` to options. Use `borderRadius: 3-4` on bar datasets. Line charts: `borderWidth: 2.5`, `pointRadius: 4`, `pointHoverRadius: 6`. Grid color `#f1f5f9` (lighter). Tooltip background `rgba(15,23,42,0.92)`.
-
-### C.11 Narrative Grammar — Performance Labels
-
-- When embedding a performance label inline (e.g., "Needs Attention"), use "is rated **{label}**" not "is **{label}**" to avoid broken English.
-- Plan ROI in narrative = period-proportional: `planNetIncomePeriod / costBasis * 100`. Show annualized plan separately as "({annualized}% annualized)". Never compare period-actual vs annualized-plan.
-
-### C.12 Admin Dashboard — Column & API Conventions
-
-- `performance_status` ("green"/"yellow"/"red") computed server-side in the API using same thresholds as owner page; do NOT recompute on client.
-- `current_month_rent_paid`: check `monthlyData.find(r => r.month === currentMonth)?.rent_income > 0`.
-- `ytd_net_income`: read directly from `metrics.ytd_net_income` (canonical metrics).
-- Remove ROI Post-Tax column from admin table — too granular for overview; show YTD Net Income + Projected ROI instead.
-- Action links per property row: Maint. → `/admin/maintenance?propertyId=`, Financials → `/admin/financials?propertyId=`, Dashboard → `/owner?propertyId=`. Same pattern as admin/properties page.
-
-### C.13 Admin Financials — Projected Summary Table
-
-- Show projected income summary when `financialsLoaded && calculatedTotalCost > 0` (not only after save).
-- Reuse `annualPlan` useMemo (rent, maintenance, pool, garden, hoa, propertyTax, totalExpenses, netIncome). Do NOT recompute.
-- ROI pre-tax = `annualPlan.netIncome / calculatedTotalCost * 100`. ROI post-tax only shown if `annualPlan.propertyTax > 0`.
-- Property tax input is in `yeTarget.property_tax` (amber-highlighted row in property financials form).
-
-### C.14 Sidebar Logos
-
-- Logo size: 48×48px across all 3 layouts (admin, owner, tenant). No subtitle text under logo — only the portal name ("Luxor Admin", "Luxor Owner", "Luxor").
-
-### C.15 Tenant Payments — Future Month Status
-
-- Bills with `status !== "paid"` and `status !== "processing"` where `dueDate > now + 10 days` → show blank ("—") status badge. Admin billing page is unaffected (different page).
-- Compute `isFutureUnpaid` in `billRows` useMemo using `nowMs + 10 * DAY_MS` (already memoized to avoid render loops).
-
-### C.16 Owner Dashboard — 5-Column Metrics Table
-
-- Investment Metrics table: 5 columns — label (col-span-2) | YTD Actual | Plan (period) | YE Target | Δ vs Plan.
-- `yeTarget` state is populated from `data.yeTarget` returned by `/api/owner/financial-metrics`.
-- `delta = (actual - plan) / |plan| * 100`. Higher-is-better rows: green when positive. Lower-is-better rows (maintenance, expenses): green when negative.
-- Show YE Target column only when `yeTarget` is non-null. Use "—" for cells without a plan value.
-- PM Fee row: show actual from `metrics.ytd_pm_fee` (canonical metrics via `canonicalMetrics.ytd.pm_fee`). Must be in `CalculatedMetrics` type.
-
-### C.17 Monthly Tab — YTD Summary Cards + No Nested Scroll
-
-- Remove `max-h-[600px] overflow-y-auto` from monthly input table wrapper. Keep `overflow-x-auto` for horizontal scroll only.
-- YTD summary cards (4 tiles): YTD Income ROI, YTD Home Appreciation (YTD), Appreciation Since Purchase, Total YTD ROI.
-- `actualYtd = canonicalMetrics.ytd` — includes last-month deposit bonus. Always subtract `lastMonthRentBonus` for display (`displayYtd`); show footnote when bonus > 0.
-- `ytdAppreciation` = earliest→latest `property_market_estimate` in `performanceYear` from `allMonthlyData`. NOT since-purchase. Show "—" if no data.
-- `purchaseAppreciation` = since purchase (cost basis → current market value). Shown as separate "Appreciation Since Purchase" card — do NOT confuse with YTD.
-- ROI section: use `yearMarketEntries` (earliest market value in year, not Jan-only) for YTD appreciation. Show `from {month}` label. Never show "No Jan data".
-
-### C.18 SQL Disclosure Rule
-
-**ALWAYS** end every response with a "SQL to run" section — even if none is required. If no SQL is needed, explicitly say so: _"No SQL required for these changes."_
-
-This prevents the user from having to ask and ensures database state is always in sync.
-
-### C.19 Temporal Dead Zone (TDZ) in React Components
-
-`const` declarations are hoisted but not initialized. If a `useMemo` callback references a `const` declared later in the same function body, it will throw a ReferenceError at runtime (TDZ). Always declare `const`/helper variables BEFORE the `useMemo` that uses them.
-
-### C.20 YTD Calculations — Appreciation vs Since Purchase
-
-- **YTD Appreciation** = `(latest market value this year) - (earliest market value this year)` from `property_monthly_performance`. Use `allMonthlyData.filter(m => m.year === performanceYear && m.property_market_estimate > 0)`.
-- **Since Purchase Appreciation** = `current_market_value - cost_basis` from canonical metrics.
-- These are distinct values. Never use since-purchase as a proxy for YTD.
+- **Section order:** ROI Gauges → Narrative → Metrics (InvestmentPerformanceTable) → Thresholds → Luxor AI → Charts
+- **Performance thresholds:** Excellent: ROI ≥5% AND Maint <5%; Good: ROI ≥3% AND Maint <7%; Needs Attention: below these
+- **Maintenance target is <5%.** Do not use 4% as the target anywhere in narratives or thresholds.
+- **Projected ROI calc** (annualized from elapsed months): `(ytdNetIncome / elapsedMonths * 12) / costBasis * 100`
+- **InvestmentPerformanceTable** is the single shared component for the Excel A29:I43 layout — used in owner dashboard and admin financials monthly tab. Never rebuild this table inline.
+- **Investment Report narrative** reads: income vs plan, maintenance % (target <5%), projected vs expected ROI, property tax note, home value with appreciation and months owned.
+- **Chart.js:** `devicePixelRatio: 2`, `borderRadius: 3-4`, grid `#f1f5f9`, tooltip `rgba(15,23,42,0.92)`.
 
 ### C.10 Context File for New Chats
-
 Stack summary: `C:\Users\karee\.claude\projects\c--Users-karee-Desktop-LuxApp\memory\project_stack.md`
-Paste it at the start of any new chat session. Keep it updated when the stack changes.
+
+### C.11 Narrative Grammar
+"is rated **{label}**" not "is **{label}**". Plan ROI in narrative = period-proportional.
+
+### C.12 Admin Dashboard — API Conventions
+- `performance_status` computed server-side in `/api/admin/dashboard`; do NOT recompute client-side.
+- `current_month_rent_paid`: `monthlyData.find(r => r.month === currentMonth)?.rent_income > 0`.
+
+### C.13 Admin Financials — Projected Summary
+Reuse `annualPlan` useMemo. Do NOT recompute inline. `annualPlan.maintenance = rent * 0.05`.
+
+### C.14 Sidebar Logos
+48×48px across all 3 portals. No subtitle text.
+
+### C.15 Tenant Payments — Future Month Status
+Bills unpaid where `dueDate > now + 10 days` → show blank status badge.
+
+### C.16 Owner Dashboard — Investment Metrics Table
+5-column: label | YTD Actual | Plan (period) | YE Target | Δ vs Plan. Delta: `(actual - plan) / |plan| * 100`.
+
+### C.17 Monthly Tab — YTD Summary Cards
+- `actualYtd = canonicalMetrics.ytd`. Subtract `lastMonthRentBonus` for display; show footnote.
+- `ytdAppreciation` = earliest→latest `property_market_estimate` in `performanceYear`. NOT since-purchase.
+
+### C.18 SQL Disclosure Rule
+End every response with "SQL to run" — even if none: _"No SQL required."_
+
+### C.19 Temporal Dead Zone (TDZ)
+`const` in `useMemo` callback referencing a later `const` = ReferenceError. Declare before the useMemo that uses them.
+
+### C.20 YTD vs Since-Purchase Appreciation
+- **YTD** = latest − earliest `property_market_estimate` in current year. Use cost_basis as % denominator.
+- **Since Purchase** = `current_market_value − cost_basis`. Never confuse these.
 
 ---
 
 ## 11. Recurring Session Checklist
 
-At the end of every development session, before closing, run through the following:
+### 11.1 After Every Prompt
+New files go in correct locations (Appendix B). No new files at root of `luxor-portal/` unless framework config.
 
-### 11.1 After Every Prompt Completion
+### 11.2 After Any DB Schema Change
+- Migration file in `supabase/migrations/` with timestamp prefix
+- Uses `IF NOT EXISTS` guards; has defaults/nullable; includes rollback SQL comment
+- Tell user: "Run this SQL in Supabase Dashboard > SQL Editor"
 
-**File Organization** — Any new file created must be placed in the correct location:
+**Pending migrations:** `supabase/migrations/20241211_add_roi_and_timestamps.sql`
 
-| File Type | Location |
-|-----------|----------|
-| Feature pages | `app/[portal]/[feature]/page.tsx` |
-| API routes | `app/api/[domain]/route.ts` |
-| Reusable components | `app/components/` or `app/components/ui/` |
-| Financial calc functions | `lib/calculations/canonical-metrics.ts` |
-| SQL migration files | `supabase/migrations/` |
-| Planning/status docs | `luxor-portal/docs/` |
-| Utility/migration scripts | `luxor-portal/scripts/` |
-| Root-level onboarding docs | `docs/` (LuxApp root) |
-| Logo/brand assets | `logos/` (LuxApp root) or `public/` (if used in portal) |
-| Reference/legacy HTML | `legacy/` |
-
-Do **not** create new files at the root of `luxor-portal/` unless they are config files required by the framework (e.g., `next.config.ts`, `middleware.ts`, `.gitignore`).
-
-### 11.2 After Any Database Schema Change
-
-**SQL Migration Check** — Before pushing or declaring work complete, verify:
-
-- [ ] Any new table columns are covered by a migration file in `supabase/migrations/`
-- [ ] Migration file is named with timestamp prefix: `YYYYMMDD_description.sql`
-- [ ] Migration uses `IF NOT EXISTS` / `IF EXISTS` guards to be idempotent
-- [ ] New columns have sensible defaults or are nullable
-- [ ] Migration is reversible (include rollback SQL as a comment if non-trivial)
-- [ ] Report to user: "Run this SQL in Supabase Dashboard > SQL Editor: `supabase/migrations/[filename].sql`"
-
-**Current pending migrations for user to run manually:**
-- `supabase/migrations/20241211_add_roi_and_timestamps.sql` — adds `roi_target_percentage` and `financials_updated_at` to properties table (if not already applied)
-
-### 11.3 After Every Session (Git)
-
-- Stage all changed/new files: `git add [specific files]` (avoid `git add .` for safety)
-- Commit with a clear message describing what changed and why
-- Push to `origin main`: `git push origin main`
-- Confirm push succeeded before ending session
+### 11.3 After Every Session
+Stage specific files, commit with clear message, push to `origin main`, confirm success.
 
 ### 11.4 Guardrails Self-Update
-
-If a new recurring pattern, standard, or hard-learned lesson emerges from the session:
-- Add it to the appropriate section of `LUXOR_ENGINEERING_GUARDRAILS.md`
-- Update the version number and note the change in Document Control
+Add new lessons to Appendix C. Update version and Document Control.
 
 ---
 
@@ -697,8 +234,6 @@ If a new recurring pattern, standard, or hard-learned lesson emerges from the se
 
 | Field | Value |
 |-------|-------|
-| Version | 1.2 |
+| Version | 1.3 |
 | Status | Active |
-| Applies To | All Luxor development |
-| Review Cycle | On significant system changes |
-| Last Updated | 2026-03-20 — Merged Section 11 (Recurring Session Checklist) from root guardrails file |
+| Last Updated | 2026-03-20 — Condensed to ultra-concise; fixed C.9 maintenance threshold to 5%; added InvestmentPerformanceTable to reuse list |

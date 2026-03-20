@@ -2,12 +2,10 @@
 
 import { useEffect, useState, useMemo } from "react";
 import {
-  calculateLeaseAppreciation,
   calculateAppreciationDuringLeaseTerm,
-  calculateComprehensiveROI,
   calculateTotalAppreciation,
-  calculateROIIfSoldToday,
 } from "@/lib/financial-calculations";
+import InvestmentPerformanceTable from "@/app/components/InvestmentPerformanceTable";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { PeriodToggle } from "@/app/components/ui/PeriodToggle";
 import { getLeaseTermMonths, usePeriodFilter } from "@/app/hooks/usePeriodFilter";
@@ -427,6 +425,26 @@ export default function FinancialsPage() {
     return { value, pct, hasData: true, earliestMonth: yearData[0].month as number };
   }, [allMonthlyData, performanceYear]);
 
+  const ytdAppreciationLabel = useMemo(() => {
+    if (!ytdAppreciation.hasData || !ytdAppreciation.earliestMonth) return null;
+    return new Date(performanceYear, ytdAppreciation.earliestMonth - 1).toLocaleString("default", { month: "short" });
+  }, [ytdAppreciation.hasData, ytdAppreciation.earliestMonth, performanceYear]);
+
+  // Appreciation gain metrics (used in InvestmentPerformanceTable)
+  const appreciationGains = useMemo(() => {
+    const monthsOwned = canonicalMetrics.months_owned;
+    const appreciationValue = canonicalMetrics.appreciation_value;
+    const costBasis = canonicalMetrics.cost_basis;
+    const monthly = monthsOwned > 0 ? appreciationValue / monthsOwned : 0;
+    const annualized = monthly * 12;
+    return {
+      monthlyGain: monthly,
+      monthlyGainPct: costBasis > 0 ? (monthly / costBasis * 100) : 0,
+      annualizedGain: annualized,
+      annualizedGainPct: costBasis > 0 ? (annualized / costBasis * 100) : 0,
+    };
+  }, [canonicalMetrics.months_owned, canonicalMetrics.appreciation_value, canonicalMetrics.cost_basis]);
+
   // Expected full-year plan (based on planned inputs) - shown in post-save summary
   const annualPlan = useMemo(() => {
     const rent = (parseFloat(propertyFinancials.target_monthly_rent) || 0) * 12;
@@ -441,22 +459,6 @@ export default function FinancialsPage() {
   }, [propertyFinancials.target_monthly_rent, propertyFinancials.planned_pool_cost, propertyFinancials.planned_garden_cost, calculatedAnnualHoa, yeTarget.property_tax]);
 
   // Calculate appreciation metrics using helper functions
-  const leaseAppreciation = useMemo(() => {
-    const marketValues = allMonthlyData.map(m => ({
-      year: m.year,
-      month: m.month,
-      value: m.property_market_estimate || null,
-    }));
-
-    return calculateLeaseAppreciation(
-      marketValues,
-      propertyFinancials.lease_start,
-      propertyFinancials.lease_end,
-      calculatedTotalCost,
-      parseFloat(propertyFinancials.current_market_estimate) || calculatedTotalCost
-    );
-  }, [allMonthlyData, propertyFinancials.current_market_estimate, propertyFinancials.lease_start, propertyFinancials.lease_end, calculatedTotalCost]);
-
   const purchaseAppreciation = useMemo(() => {
     // Get most recent market value from monthly data
     const sortedMonthlyData = [...allMonthlyData].sort((a, b) => {
@@ -1969,201 +1971,76 @@ export default function FinancialsPage() {
             </div>
           )}
 
-          {/* ROI Display */}
+          {/* ROI Display — Excel A29:I43 layout */}
           {!loadingMonthly && allMonthlyData.length > 0 && (
             <div className="mt-6 p-6 bg-slate-50 border border-slate-200 rounded-lg">
+              <h3 className="font-semibold text-slate-900 mb-4 text-lg">
+                Investment Performance ({periodLabelShort})
+              </h3>
               {(() => {
-                const ytdNetIncome = canonicalMetrics.ytd.net_income;
                 const costBasis = canonicalMetrics.cost_basis;
-
-                const mostRecentMarketValue = canonicalMetrics.current_market_value || costBasis;
-                const appreciationValue = canonicalMetrics.appreciation_value;
-                const appreciationPct = canonicalMetrics.appreciation_pct;
-
-                // Calculate appreciation during lease term (for display)
-                const leaseTermAppreciation = appreciationDuringLeaseTerm.value;
-
-                // Canonical single-source ROI values
-                const preTaxROI = canonicalMetrics.roi_pre_tax;
-
-                // Total ROI including appreciation (pre-tax)
-                const comprehensivePreTaxROI = canonicalMetrics.roi_with_appreciation;
-
-                // Appreciation YTD: earliest market value in year vs most recent
-                const yearMarketEntries = allMonthlyData
-                  .filter((m: any) => m.year === performanceYear && m.property_market_estimate && m.property_market_estimate > 0)
-                  .sort((a: any, b: any) => a.month - b.month);
-                const earliestYtdEntry = yearMarketEntries[0];
-                const earliestYtdValue = parseFloat(String(earliestYtdEntry?.property_market_estimate ?? 0)) || 0;
-                const earliestYtdMonthName = earliestYtdEntry
-                  ? new Date(performanceYear, earliestYtdEntry.month - 1).toLocaleString("default", { month: "short" })
-                  : null;
-                const appreciationYTD = earliestYtdValue > 0 ? mostRecentMarketValue - earliestYtdValue : 0;
-                // Excel I33: pct = delta / cost_basis (not / earliest market value)
-                const appreciationYTDPct = costBasis > 0 ? (appreciationYTD / costBasis) * 100 : 0;
-
-                // Calculate ROI if sold today
-                const closingCosts = parseFloat(saleClosingCosts) || 0;
-                const roiIfSold = calculateROIIfSoldToday(ytdNetIncome, closingCosts, appreciationValue, costBasis);
-
-                const monthsOwned = canonicalMetrics.months_owned;
-                const monthlyAppreciationGain = monthsOwned > 0 ? appreciationValue / monthsOwned : 0;
-                const annualizedAppreciationGain = monthlyAppreciationGain * 12;
-
+                const yeTargetRent = parseFloat(yeTarget.rent_income) || 0;
+                const yeTargetMaint = parseFloat(yeTarget.maintenance) || 0;
+                const yeTargetPool = parseFloat(yeTarget.pool) || 0;
+                const yeTargetGarden = parseFloat(yeTarget.garden) || 0;
+                const yeTargetHoa = parseFloat(yeTarget.hoa) || 0;
+                const yeTargetTax = parseFloat(yeTarget.property_tax) || 0;
+                const yeTargetTotalExp = yeTargetMaint + yeTargetPool + yeTargetGarden + yeTargetHoa;
+                const yeTargetNet = yeTargetRent - yeTargetTotalExp;
+                const hasYeTargetData = yeTargetRent > 0;
                 return (
-                  <>
-                    <h3 className="font-semibold text-slate-900 mb-4 text-lg">
-                      Investment Performance ({periodLabelShort})
-                    </h3>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                      {/* LEFT: Income & Returns */}
-                      <div>
-                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Income &amp; Returns</div>
-                        <table className="w-full text-sm border-collapse">
-                          <thead>
-                            <tr className="bg-slate-100 text-slate-600">
-                              <th className="px-3 py-2 text-left font-medium">Metric</th>
-                              <th className="px-3 py-2 text-right font-medium">Actual</th>
-                              <th className="px-3 py-2 text-right font-medium">Plan</th>
-                              <th className="px-3 py-2 text-right font-medium">Δ</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">Gross Rent</td>
-                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{formatCurrency(actualYtd.rent_income)}</td>
-                              <td className="px-3 py-2 text-right text-slate-500">{formatCurrency(annualPlan.rent)}</td>
-                              <td className={`px-3 py-2 text-right text-xs font-medium ${actualYtd.rent_income >= annualPlan.rent ? 'text-green-600' : 'text-red-600'}`}>
-                                {actualYtd.rent_income >= annualPlan.rent ? '+' : ''}{formatCurrency(actualYtd.rent_income - annualPlan.rent)}
-                              </td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">Net Income</td>
-                              <td className={`px-3 py-2 text-right font-semibold ${ytdNetIncome >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatCurrency(ytdNetIncome)}</td>
-                              <td className="px-3 py-2 text-right text-slate-500">{formatCurrency(annualPlan.netIncome)}</td>
-                              <td className={`px-3 py-2 text-right text-xs font-medium ${ytdNetIncome >= annualPlan.netIncome ? 'text-green-600' : 'text-red-600'}`}>
-                                {ytdNetIncome >= annualPlan.netIncome ? '+' : ''}{formatCurrency(ytdNetIncome - annualPlan.netIncome)}
-                              </td>
-                            </tr>
-                            <tr className="bg-slate-50 border-t border-slate-200 hover:bg-slate-100">
-                              <td className="px-3 py-2 font-medium text-slate-700">ROI (Net Income)</td>
-                              <td className={`px-3 py-2 text-right font-bold ${preTaxROI >= 5 ? 'text-green-700' : preTaxROI >= 3 ? 'text-yellow-600' : 'text-red-700'}`}>{preTaxROI.toFixed(2)}%</td>
-                              <td className="px-3 py-2 text-right text-slate-500">{costBasis > 0 ? (annualPlan.netIncome / costBasis * 100).toFixed(2) : '—'}%</td>
-                              <td className={`px-3 py-2 text-right text-xs font-medium ${preTaxROI >= (annualPlan.netIncome / costBasis * 100) ? 'text-green-600' : 'text-red-600'}`}>
-                                {costBasis > 0 ? `${(preTaxROI - annualPlan.netIncome / costBasis * 100) >= 0 ? '+' : ''}${(preTaxROI - annualPlan.netIncome / costBasis * 100).toFixed(2)}%` : '—'}
-                              </td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">ROI Post Property Tax</td>
-                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{canonicalMetrics.roi_post_tax.toFixed(2)}%</td>
-                              <td className="px-3 py-2 text-right text-slate-400">—</td>
-                              <td className="px-3 py-2 text-right text-slate-400">—</td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">Home Value Appreciation</td>
-                              <td className={`px-3 py-2 text-right font-semibold ${appreciationPct >= 0 ? 'text-green-700' : 'text-red-700'}`}>{appreciationPct >= 0 ? '+' : ''}{appreciationPct.toFixed(2)}%</td>
-                              <td className="px-3 py-2 text-right text-slate-400">—</td>
-                              <td className="px-3 py-2 text-right text-slate-400">—</td>
-                            </tr>
-                            <tr className="bg-slate-50 border-t border-slate-200 hover:bg-slate-100">
-                              <td className="px-3 py-2 font-semibold text-slate-800">Total ROI (incl. Appr.)</td>
-                              <td className={`px-3 py-2 text-right font-bold text-base ${comprehensivePreTaxROI >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                {comprehensivePreTaxROI >= 0 ? '+' : ''}{comprehensivePreTaxROI.toFixed(2)}%
-                              </td>
-                              <td className="px-3 py-2 text-right text-slate-400">—</td>
-                              <td className="px-3 py-2 text-right text-slate-400">—</td>
-                            </tr>
-                          </tbody>
-                        </table>
-
-                        {/* ROI if Sold */}
-                        <div className="mt-4 pt-3 border-t border-slate-200">
-                          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">If Sold Today</div>
-                          <div className="flex items-center gap-3 mb-2">
-                            <label className="text-sm text-slate-600 whitespace-nowrap">Closing Costs:</label>
-                            <input
-                              type="number"
-                              value={saleClosingCosts}
-                              onChange={(e) => setSaleClosingCosts(e.target.value)}
-                              className="w-32 px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="0"
-                            />
-                          </div>
-                          <div className="flex justify-between items-center bg-slate-100 rounded px-3 py-2">
-                            <span className="text-sm font-semibold text-slate-700">ROI if Sold Today</span>
-                            <span className={`font-bold text-lg ${roiIfSold >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                              {roiIfSold >= 0 ? '+' : ''}{roiIfSold.toFixed(2)}%
-                            </span>
-                          </div>
-                          <div className="mt-1 text-xs text-slate-400">
-                            (Net Income − Closing Costs + Total Appr.) ÷ Cost Basis
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* RIGHT: Home Performance */}
-                      <div>
-                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Home Performance</div>
-                        <table className="w-full text-sm border-collapse">
-                          <tbody className="divide-y divide-slate-100">
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">Cost Basis</td>
-                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{formatCurrency(costBasis)}</td>
-                              <td className="px-3 py-2 text-right text-xs text-slate-400">Purchase + repairs + closing</td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">Current Market Value</td>
-                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{formatCurrency(mostRecentMarketValue)}</td>
-                              <td className="px-3 py-2 text-right text-xs text-slate-400">Latest estimate</td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">Appreciation (since purchase)</td>
-                              <td className={`px-3 py-2 text-right font-semibold ${appreciationValue >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                {formatCurrency(appreciationValue)}
-                              </td>
-                              <td className={`px-3 py-2 text-right text-xs font-medium ${appreciationPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {appreciationPct >= 0 ? '+' : ''}{appreciationPct.toFixed(2)}%
-                              </td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">
-                                YTD Appreciation {earliestYtdMonthName ? `(from ${earliestYtdMonthName})` : ""}
-                              </td>
-                              <td className={`px-3 py-2 text-right font-semibold ${appreciationYTD >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                {earliestYtdValue > 0 ? formatCurrency(appreciationYTD) : '—'}
-                              </td>
-                              <td className={`px-3 py-2 text-right text-xs font-medium ${appreciationYTDPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {earliestYtdValue > 0 ? `${appreciationYTDPct >= 0 ? '+' : ''}${appreciationYTDPct.toFixed(2)}%` : 'No data'}
-                              </td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">Monthly Appreciation Gain</td>
-                              <td className={`px-3 py-2 text-right font-semibold ${monthlyAppreciationGain >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                {monthsOwned > 0 ? formatCurrency(monthlyAppreciationGain) : '—'}
-                              </td>
-                              <td className="px-3 py-2 text-right text-xs text-slate-400">
-                                {monthsOwned > 0 ? `Appr. ÷ ${monthsOwned} mo` : '—'}
-                              </td>
-                            </tr>
-                            <tr className="hover:bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">Annualized Appreciation Gain</td>
-                              <td className={`px-3 py-2 text-right font-semibold ${annualizedAppreciationGain >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                {monthsOwned > 0 ? formatCurrency(annualizedAppreciationGain) : '—'}
-                              </td>
-                              <td className="px-3 py-2 text-right text-xs text-slate-400">Monthly × 12</td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                              <td className="px-3 py-2 text-slate-600">Months Owned</td>
-                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{monthsOwned > 0 ? monthsOwned : '—'}</td>
-                              <td className="px-3 py-2 text-right text-xs text-slate-400">Since purchase date</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </>
+                  <InvestmentPerformanceTable
+                    actual={{
+                      grossIncome: actualYtd.rent_income,
+                      maintenance: actualYtd.maintenance,
+                      maintenancePct: canonicalMetrics.maintenance_pct,
+                      hoaPoolGarden: actualYtd.hoa_payments + actualYtd.pool + actualYtd.garden,
+                      pmFee: actualYtd.pm_fee || 0,
+                      totalExpenses: actualYtd.total_expenses,
+                      netIncome: actualYtd.net_income,
+                      propertyTax: actualYtd.property_tax,
+                    }}
+                    plan={{
+                      grossIncome: plannedYtd.rent_income,
+                      maintenance: plannedYtd.maintenance,
+                      hoaPoolGarden: plannedYtd.hoa_payments + plannedYtd.pool + plannedYtd.garden,
+                      pmFee: plannedYtd.pm_fee || 0,
+                      totalExpenses: plannedYtd.total_expenses,
+                      netIncome: plannedYtd.net_income,
+                    }}
+                    yeTarget={hasYeTargetData ? {
+                      grossIncome: yeTargetRent,
+                      maintenance: yeTargetMaint,
+                      hoaPoolGarden: yeTargetPool + yeTargetGarden + yeTargetHoa,
+                      pmFee: 0,
+                      totalExpenses: yeTargetTotalExp,
+                      netIncome: yeTargetNet,
+                      propertyTax: yeTargetTax,
+                    } : null}
+                    roi={{
+                      preTax: canonicalMetrics.roi_pre_tax,
+                      postTax: canonicalMetrics.roi_post_tax,
+                      appreciationPct: canonicalMetrics.appreciation_pct,
+                      planRoi: costBasis > 0 ? (plannedYtd.net_income / costBasis * 100) : 0,
+                      yeTargetRoi: hasYeTargetData && costBasis > 0 ? (yeTargetNet / costBasis * 100) : null,
+                    }}
+                    home={{
+                      costBasis,
+                      currentMarketValue: canonicalMetrics.current_market_value,
+                      appreciationValue: canonicalMetrics.appreciation_value,
+                      appreciationPct: canonicalMetrics.appreciation_pct,
+                      ytdAppreciationValue: ytdAppreciation.value,
+                      ytdAppreciationPct: ytdAppreciation.pct,
+                      ytdLabel: ytdAppreciationLabel,
+                      monthlyGain: appreciationGains.monthlyGain,
+                      monthlyGainPct: appreciationGains.monthlyGainPct,
+                      annualizedGain: appreciationGains.annualizedGain,
+                      annualizedGainPct: appreciationGains.annualizedGainPct,
+                      monthsOwned: canonicalMetrics.months_owned,
+                    }}
+                    closingCosts={saleClosingCosts}
+                    onClosingCostsChange={setSaleClosingCosts}
+                  />
                 );
               })()}
             </div>
