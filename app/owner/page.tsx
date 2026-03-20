@@ -518,13 +518,6 @@ Use the provided property and document context from the server; do not guess.`;
     );
   }
 
-  const performanceStatus =
-    metrics.roi_pre_tax >= 5 && metrics.maintenance_pct < 5 ? "green" :
-    metrics.roi_pre_tax >= 3 && metrics.maintenance_pct < 7 ? "yellow" : "red";
-  const performanceLabel = performanceStatus === "green" ? "Excellent" : performanceStatus === "yellow" ? "Good" : "Needs Attention";
-
-  const gaugeRoiPre = metrics.roi_pre_tax;
-  const gaugeRoiTotal = metrics.roi_with_appreciation;
   const expectedRoi = calculateExpectedRoi({
     targetMonthlyRent: property.target_monthly_rent || 0,
     plannedPoolMonthly: property.planned_pool_cost || 0,
@@ -532,6 +525,33 @@ Use the provided property and document context from the server; do not guess.`;
     plannedHoaMonthly: property.planned_hoa_cost || 0,
     costBasis: metrics.cost_basis || 0,
   });
+
+  // Projected ROI: annualize from elapsed months with actual data
+  const elapsedMonths = Math.max(
+    filteredMonthly.filter(m => (m.rent_income || 0) > 0 || (m.total_expenses || 0) > 0).length,
+    1
+  );
+  const projectedRoi = metrics.cost_basis > 0
+    ? ((metrics.ytd_net_income / elapsedMonths) * 12 / metrics.cost_basis) * 100
+    : 0;
+
+  // Plan values for the same elapsed period
+  const planRentPeriod = (property.target_monthly_rent || 0) * elapsedMonths;
+  const planMaintenancePeriod = planRentPeriod * 0.05;
+  const planOtherPeriod = (
+    (property.planned_pool_cost || 0) +
+    (property.planned_garden_cost || 0) +
+    (property.planned_hoa_cost || 0)
+  ) * elapsedMonths;
+  const planNetIncomePeriod = planRentPeriod - planMaintenancePeriod - planOtherPeriod;
+
+  // Performance: uses projectedRoi + updated maintenance thresholds
+  const performanceStatus =
+    projectedRoi >= 5 && metrics.maintenance_pct < 4 ? "green" :
+    projectedRoi >= 3 && metrics.maintenance_pct < 5 ? "yellow" : "red";
+  const performanceLabel = performanceStatus === "green" ? "Excellent" : performanceStatus === "yellow" ? "Good" : "Needs Attention";
+
+  const gaugeRoiTotal = metrics.roi_with_appreciation;
   const activeRole = (meInfo?.role || role || "unknown") as string;
   const roleBadgeClass =
     activeRole === "admin"
@@ -546,7 +566,7 @@ Use the provided property and document context from the server; do not guess.`;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
+      {/* Header — unchanged */}
       <div className="bg-white border-b border-slate-200 py-6 px-8 shadow-sm">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between gap-8 mb-4">
@@ -601,17 +621,186 @@ Use the provided property and document context from the server; do not guess.`;
       </div>
 
       <div className="max-w-7xl mx-auto p-8 space-y-8">
-        {/* Luxor AI */}
+
+        {/* 1. ROI Speedometers — top */}
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Return on Investment</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div
+              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
+              title="Expected: (Target Rent − Planned Expenses) / Cost Basis × 100 — annualized from plan"
+            >
+              <GaugeChart value={expectedRoi} target={0} label="Expected ROI (Plan)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
+            </div>
+            <div
+              className={`bg-white border-2 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help ${projectedRoi >= 5 ? "border-green-400" : projectedRoi >= 3 ? "border-yellow-400" : "border-red-400"}`}
+              title={`Projected: (Net Income ÷ ${elapsedMonths} months × 12) / Cost Basis × 100`}
+            >
+              <GaugeChart value={projectedRoi} target={0} label="Projected ROI (Annualized)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
+              {activeRole === "admin" && (
+                <div className="mt-1 text-center text-[10px] text-slate-400 leading-tight">
+                  ({formatCurrency(metrics.ytd_net_income)} ÷ {elapsedMonths}mo × 12) ÷ {formatCurrency(metrics.cost_basis)}
+                </div>
+              )}
+            </div>
+            <div
+              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
+              title="Total ROI: (Net Income + Appreciation) / Cost Basis × 100"
+            >
+              <GaugeChart value={gaugeRoiTotal} target={0} label="Total ROI (with Appreciation)" unit="%" maxValue={40} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Investment Report Narrative */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Investment Report</h2>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
+              performanceStatus === "green" ? "bg-green-50 border-green-200 text-green-700" :
+              performanceStatus === "yellow" ? "bg-yellow-50 border-yellow-200 text-yellow-700" :
+              "bg-red-50 border-red-200 text-red-700"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full inline-block ${performanceStatus === "green" ? "bg-green-500" : performanceStatus === "yellow" ? "bg-yellow-500" : "bg-red-500"}`} />
+              {performanceLabel}
+            </span>
+          </div>
+          <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
+            <p>
+              Investment performance is <span className={`font-semibold ${performanceStatus === "green" ? "text-green-700" : performanceStatus === "yellow" ? "text-yellow-700" : "text-red-700"}`}>{performanceLabel}</span> based on income, maintenance, expenses, and asset appreciation.
+            </p>
+            <p>
+              <span className="font-semibold">Operating Income & Expenses: </span>
+              {periodLabel} income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 4 ? "text-green-700" : metrics.maintenance_pct < 5 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> — target is under 4%. Other fees (HOA, pool, garden) are {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. The property is projected to yield <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)} annualized</span> — plan is {formatPercentage(expectedRoi)}.
+            </p>
+            {metrics.ytd_property_tax > 0 ? (
+              <p>
+                <span className="font-semibold">Property Taxes: </span>
+                Property taxes of {formatCurrency(metrics.ytd_property_tax)} have been collected this period, reducing after-tax net income to {formatCurrency(metrics.ytd_net_income - metrics.ytd_property_tax)}.
+              </p>
+            ) : (
+              <p>
+                <span className="font-semibold">Property Taxes: </span>
+                Property taxes have not been collected yet this period and are not reflected in the figures above.
+              </p>
+            )}
+            <p>
+              <span className="font-semibold">Home Value: </span>
+              The property was acquired for {formatCurrency(metrics.cost_basis)} and is currently valued at <span className="font-medium">{formatCurrency(metrics.current_market_value)}</span>{metrics.appreciation_value !== 0 ? `, ${metrics.appreciation_value >= 0 ? "an increase" : "a decrease"} of ${formatCurrency(Math.abs(metrics.appreciation_value))} (${formatPercentage(Math.abs(metrics.appreciation_pct))})` : ""}{ metrics.months_owned > 0 ? ` over ${metrics.months_owned} months of ownership` : ""}. Total return including appreciation is <span className={`font-semibold ${metrics.roi_with_appreciation >= 10 ? "text-green-700" : metrics.roi_with_appreciation >= 5 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(metrics.roi_with_appreciation)}</span>.
+            </p>
+          </div>
+        </div>
+
+        {/* 3. Investment Metrics — sectioned, actual vs plan */}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-6 py-4 border-b border-slate-100">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Investment Metrics</h2>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {/* Property & Capital */}
+            <div className="px-6 py-2 bg-slate-50">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Property & Capital</span>
+            </div>
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+              <span className="text-slate-600">Cost Basis</span>
+              <span className="font-semibold text-slate-900">{formatCurrency(metrics.cost_basis)}</span>
+              <span className="text-xs text-slate-400">Purchase + repairs + closing costs</span>
+            </div>
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+              <span className="text-slate-600">Current Market Value</span>
+              <span className="font-semibold text-slate-900">{formatCurrency(metrics.current_market_value)}</span>
+              <span className="text-xs text-slate-400">Latest monthly estimate</span>
+            </div>
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+              <span className="text-slate-600">Appreciation</span>
+              <span className={`font-semibold ${metrics.appreciation_value >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {formatCurrency(metrics.appreciation_value)} ({formatPercentage(metrics.appreciation_pct)})
+              </span>
+              <span className="text-xs text-slate-400">Since purchase · {metrics.months_owned} months owned</span>
+            </div>
+
+            {/* Income & Expenses */}
+            <div className="px-6 py-2 bg-slate-50">
+              <div className="grid grid-cols-3">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Income & Expenses — {periodLabel}</span>
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Actual</span>
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Plan</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+              <span className="text-slate-600">Gross Rent Income</span>
+              <span className="font-semibold text-slate-900">{formatCurrency(metrics.ytd_rent_income)}</span>
+              <span className="text-slate-400">{formatCurrency(planRentPeriod)}</span>
+            </div>
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+              <span className="text-slate-600">Maintenance</span>
+              <span className={`font-semibold ${metrics.maintenance_pct < 4 ? "text-green-600" : metrics.maintenance_pct < 5 ? "text-yellow-600" : "text-red-600"}`}>
+                {formatCurrency(metrics.ytd_maintenance)} <span className="text-xs">({formatPercentage(metrics.maintenance_pct)})</span>
+              </span>
+              <span className="text-slate-400">{formatCurrency(planMaintenancePeriod)} <span className="text-xs">(5% target)</span></span>
+            </div>
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+              <span className="text-slate-600">HOA, Pool & Garden</span>
+              <span className="font-semibold text-slate-900">{formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden)}</span>
+              <span className="text-slate-400">{formatCurrency(planOtherPeriod)}</span>
+            </div>
+            {metrics.ytd_property_tax > 0 && (
+              <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+                <span className="text-slate-600">Property Tax</span>
+                <span className="font-semibold text-slate-900">{formatCurrency(metrics.ytd_property_tax)}</span>
+                <span className="text-xs text-slate-400">—</span>
+              </div>
+            )}
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50 font-semibold border-t border-slate-200">
+              <span className="text-slate-700">Net Income</span>
+              <span className={metrics.ytd_net_income >= 0 ? "text-green-600" : "text-red-600"}>{formatCurrency(metrics.ytd_net_income)}</span>
+              <span className={planNetIncomePeriod >= 0 ? "text-slate-500" : "text-red-500"}>{formatCurrency(planNetIncomePeriod)}</span>
+            </div>
+
+            {/* ROI */}
+            <div className="px-6 py-2 bg-slate-50">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Return on Investment</span>
+            </div>
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+              <span className="text-slate-600">Projected ROI (annualized)</span>
+              <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-600" : projectedRoi >= 3 ? "text-yellow-600" : "text-red-600"}`}>
+                {formatPercentage(projectedRoi)}
+                {activeRole === "admin" && <span className="ml-1 text-[10px] font-normal text-slate-400">(net ÷ {elapsedMonths}mo × 12 ÷ cost)</span>}
+              </span>
+              <span className="text-xs text-slate-400">Based on {elapsedMonths} months of actual data</span>
+            </div>
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+              <span className="text-slate-600">Expected ROI (plan)</span>
+              <span className={`font-semibold ${expectedRoi >= 5 ? "text-green-600" : expectedRoi >= 3 ? "text-yellow-600" : "text-red-600"}`}>{formatPercentage(expectedRoi)}</span>
+              <span className="text-xs text-slate-400">From target rent & planned expenses</span>
+            </div>
+            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
+              <span className="text-slate-700 font-semibold">Total ROI (incl. appreciation)</span>
+              <span className={`font-bold text-base ${metrics.roi_with_appreciation >= 10 ? "text-green-600" : metrics.roi_with_appreciation >= 5 ? "text-yellow-600" : "text-red-600"}`}>
+                {formatPercentage(metrics.roi_with_appreciation)}
+              </span>
+              <span className="text-xs text-slate-400">(Net Income + Appreciation) / Cost Basis</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Performance Thresholds — compact, subdued */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500 bg-white border border-slate-100 rounded-lg py-3 px-4">
+          <span className="font-semibold text-[10px] text-slate-400 uppercase tracking-wide">Thresholds</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Excellent: Proj ROI ≥5%, Maint &lt;4%</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />Good: ≥3%, Maint &lt;4.5%</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />Needs Attention: below these</span>
+          <span className="ml-auto text-slate-400">
+            Now: {formatPercentage(projectedRoi)} proj · {formatPercentage(metrics.maintenance_pct)} maint{" → "}
+            <span className={`font-semibold ${performanceStatus === "green" ? "text-green-600" : performanceStatus === "yellow" ? "text-yellow-600" : "text-red-600"}`}>{performanceLabel}</span>
+          </span>
+        </div>
+
+        {/* 5. Luxor AI */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-lg">
           <div className="p-6 border-b border-slate-200 flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#1f2937] via-[#0f172a] to-[#1e293b] flex items-center justify-center overflow-hidden shadow-sm">
-              <Image
-                src="/luxor-ai.png"
-                alt="Luxor logo"
-                width={52}
-                height={52}
-                className="object-contain mix-blend-lighten opacity-90"
-              />
+              <Image src="/luxor-ai.png" alt="Luxor logo" width={52} height={52} className="object-contain mix-blend-lighten opacity-90" />
             </div>
             <div>
               <h2 className="text-2xl font-semibold text-slate-900">Luxor AI</h2>
@@ -636,370 +825,90 @@ Use the provided property and document context from the server; do not guess.`;
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
               />
-              <button
-                onClick={handleChatSend}
-                disabled={chatLoading}
-                className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm h-fit"
-              >
+              <button onClick={handleChatSend} disabled={chatLoading} className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm h-fit">
                 {chatLoading ? "Sending..." : "Send"}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Performance Status Badge */}
-        <div className="text-center">
-          <div className={`inline-block px-6 py-3 rounded-lg border ${
-            performanceStatus === "green" ? "bg-green-50 border-green-200 text-green-700" :
-            performanceStatus === "yellow" ? "bg-yellow-50 border-yellow-200 text-yellow-700" :
-            "bg-red-50 border-red-200 text-red-700"
-          }`}>
-            <div className="text-xs uppercase tracking-wider font-medium mb-1">Overall Performance</div>
-            <div className="text-2xl font-semibold">{performanceLabel}</div>
-          </div>
-        </div>
-
-        {/* Investment Narrative */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Investment Report</h2>
-          <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
-            <p>
-              <span className="font-semibold">Performance: </span>
-              Investment performance is <span className={`font-semibold ${performanceStatus === "green" ? "text-green-700" : performanceStatus === "yellow" ? "text-yellow-700" : "text-red-700"}`}>{performanceLabel}</span> based on income, maintenance, and asset appreciation.
-            </p>
-            <p>
-              <span className="font-semibold">Operating Income: </span>
-              Gross income is {formatCurrency(metrics.ytd_rent_income)}, total expenses are {formatCurrency(metrics.ytd_total_expenses)}{metrics.ytd_maintenance > 0 ? ` (including ${formatCurrency(metrics.ytd_maintenance)} maintenance)` : ""}, creating a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span>. ROI is {formatPercentage(metrics.roi_pre_tax)}. Maintenance is {formatPercentage(metrics.maintenance_pct)} of income.
-            </p>
-            {metrics.ytd_property_tax > 0 && (
-              <p>
-                <span className="font-semibold">Property Taxes: </span>
-                After property taxes of {formatCurrency(metrics.ytd_property_tax)}, net income is {formatCurrency(metrics.ytd_net_income - metrics.ytd_property_tax)}.
-              </p>
-            )}
-            <p>
-              <span className="font-semibold">Home Value: </span>
-              The property is valued at {formatCurrency(metrics.current_market_value)}, {metrics.appreciation_value >= 0 ? "up" : "down"} {formatCurrency(Math.abs(metrics.appreciation_value))} ({formatPercentage(Math.abs(metrics.appreciation_pct))}) from the {formatCurrency(metrics.cost_basis)} cost basis. Total ROI including appreciation is <span className={`font-semibold ${metrics.roi_with_appreciation >= 0 ? "text-green-700" : "text-red-700"}`}>{formatPercentage(metrics.roi_with_appreciation)}</span>.
-            </p>
-          </div>
-        </div>
-
-        {/* Performance Thresholds */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Performance Thresholds</h2>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Status</th>
-                <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">ROI Threshold</th>
-                <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Maintenance Threshold</th>
-                <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Current</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className={`border-b border-slate-100 ${performanceStatus === "green" ? "bg-green-50" : ""}`}>
-                <td className="py-3 px-4"><span className="inline-flex items-center gap-1.5 font-semibold text-green-700"><span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>Excellent</span></td>
-                <td className="py-3 px-4 text-slate-600">≥ 5%</td>
-                <td className="py-3 px-4 text-slate-600">&lt; 5% of rent</td>
-                <td className="py-3 px-4">{performanceStatus === "green" ? <span className="text-green-700 font-semibold">✓ You are here</span> : ""}</td>
-              </tr>
-              <tr className={`border-b border-slate-100 ${performanceStatus === "yellow" ? "bg-yellow-50" : ""}`}>
-                <td className="py-3 px-4"><span className="inline-flex items-center gap-1.5 font-semibold text-yellow-700"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span>Good</span></td>
-                <td className="py-3 px-4 text-slate-600">≥ 3%</td>
-                <td className="py-3 px-4 text-slate-600">&lt; 7% of rent</td>
-                <td className="py-3 px-4">{performanceStatus === "yellow" ? <span className="text-yellow-700 font-semibold">✓ You are here</span> : ""}</td>
-              </tr>
-              <tr className={`${performanceStatus === "red" ? "bg-red-50" : ""}`}>
-                <td className="py-3 px-4"><span className="inline-flex items-center gap-1.5 font-semibold text-red-700"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Needs Attention</span></td>
-                <td className="py-3 px-4 text-slate-600">&lt; 3%</td>
-                <td className="py-3 px-4 text-slate-600">≥ 7% of rent</td>
-                <td className="py-3 px-4">{performanceStatus === "red" ? <span className="text-red-700 font-semibold">✓ You are here</span> : ""}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
-            Current: ROI {formatPercentage(metrics.roi_pre_tax)} · Maintenance {formatPercentage(metrics.maintenance_pct)} of rent
-          </div>
-        </div>
-
-        {/* ROI Speedometer Gauges */}
-        <div>
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">
-            Return on Investment
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div
-              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Formula: Expected Rent Income - Expected Expenses / Cost Basis × 100"
-            >
-              <GaugeChart
-                value={expectedRoi}
-                target={0}
-                label="Expected ROI"
-                unit="%"
-                maxValue={15}
-                colorThresholds={{ green: 80, yellow: 60 }}
-                showTarget={false}
-              />
-            </div>
-            <div
-              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Formula: Net Income / Cost Basis × 100"
-            >
-              <GaugeChart
-                value={gaugeRoiPre}
-                target={0}
-                label="Actual ROI (YTD)"
-                unit="%"
-                maxValue={15}
-                colorThresholds={{ green: 80, yellow: 60 }}
-                showTarget={false}
-              />
-            </div>
-            <div
-              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Formula: (Net Income + Appreciation) / Cost Basis × 100"
-            >
-              <GaugeChart
-                value={gaugeRoiTotal}
-                target={0}
-                label="Total ROI (with Appreciation)"
-                unit="%"
-                maxValue={40}
-                colorThresholds={{ green: 80, yellow: 60 }}
-                showTarget={false}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Key Metrics Summary Table */}
-        <div>
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">
-            Key Investment Metrics
-          </h2>
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Metric</th>
-                  <th className="py-3 px-4 text-right font-semibold text-slate-700 text-xs uppercase tracking-wider">Value</th>
-                  <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Formula</th>
-                </tr>
-              </thead>
-              <tbody className="text-slate-900">
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">Cost Basis</td>
-                  <td className="py-3 px-4 text-right font-semibold">{formatCurrency(metrics.cost_basis)}</td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Home + Repairs + Closing</td>
-                </tr>
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">Current Market Value</td>
-                  <td className="py-3 px-4 text-right font-semibold">{formatCurrency(metrics.current_market_value)}</td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Latest monthly estimate</td>
-                </tr>
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">Appreciation</td>
-                  <td className={`py-3 px-4 text-right font-semibold ${metrics.appreciation_value >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatCurrency(metrics.appreciation_value)} ({formatPercentage(metrics.appreciation_pct)})
-                  </td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Market Value - Cost Basis</td>
-                </tr>
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">YTD Gross Income</td>
-                  <td className="py-3 px-4 text-right font-semibold">{formatCurrency(metrics.ytd_rent_income)}</td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Sum of monthly rent</td>
-                </tr>
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">YTD Total Expenses</td>
-                  <td className="py-3 px-4 text-right font-semibold">{formatCurrency(metrics.ytd_total_expenses)}</td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Maintenance + Pool + Garden + HOA</td>
-                </tr>
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">YTD Net Income</td>
-                  <td className={`py-3 px-4 text-right font-semibold ${metrics.ytd_net_income >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatCurrency(metrics.ytd_net_income)}
-                  </td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Gross Income - Total Expenses</td>
-                </tr>
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">YTD Property Tax</td>
-                  <td className="py-3 px-4 text-right font-semibold">{formatCurrency(metrics.ytd_property_tax)}</td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Sum of monthly property tax</td>
-                </tr>
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">Maintenance % of Rent</td>
-                  <td className={`py-3 px-4 text-right font-semibold ${metrics.maintenance_pct < 5 ? 'text-green-600' : metrics.maintenance_pct < 7 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {formatPercentage(metrics.maintenance_pct)} {metrics.maintenance_pct < 5 ? '✓' : ''}
-                  </td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Maintenance / Gross Income × 100</td>
-                </tr>
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">Pre-Tax ROI</td>
-                  <td className={`py-3 px-4 text-right font-semibold ${metrics.roi_pre_tax >= 5 ? 'text-green-600' : metrics.roi_pre_tax >= 3 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {formatPercentage(metrics.roi_pre_tax)}
-                  </td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Net Income / Cost Basis × 100</td>
-                </tr>
-                <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">Expected ROI</td>
-                  <td className={`py-3 px-4 text-right font-semibold ${expectedRoi >= 5 ? 'text-green-600' : expectedRoi >= 3 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {formatPercentage(expectedRoi)}
-                  </td>
-                  <td className="py-3 px-4 text-xs text-slate-600">Expected (Rent - Expenses) / Cost Basis × 100</td>
-                </tr>
-                <tr className="hover:bg-slate-50">
-                  <td className="py-3 px-4 font-semibold">Total ROI (with Appreciation)</td>
-                  <td className={`py-3 px-4 text-right font-bold text-lg ${metrics.roi_with_appreciation >= 10 ? 'text-green-600' : metrics.roi_with_appreciation >= 5 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {formatPercentage(metrics.roi_with_appreciation)}
-                  </td>
-                  <td className="py-3 px-4 text-xs text-slate-600">(Net Income + Appreciation) / Cost Basis × 100</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Charts Section */}
+        {/* 6. Charts — devicePixelRatio:2 for sharpness */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Income Summary */}
           <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
-            <h3 className="text-sm text-center font-semibold text-slate-700 uppercase tracking-wide mb-6">
-              Income Summary ({selectedYear})
-            </h3>
+            <h3 className="text-sm text-center font-semibold text-slate-700 uppercase tracking-wide mb-6">Income Summary ({selectedYear})</h3>
             <Bar
               data={{
                 labels: ["Gross Income", "Maintenance", "HOA, Pool, Garden", "Total Expenses", "Net Income", "Property Tax"],
-                datasets: [{
-                  data: [
-                    metrics.ytd_rent_income,
-                    metrics.ytd_maintenance,
-                    metrics.ytd_pool + metrics.ytd_garden + metrics.ytd_hoa,
-                    metrics.ytd_total_expenses,
-                    metrics.ytd_net_income,
-                    metrics.ytd_property_tax
-                  ],
-                  backgroundColor: ["#5b9bd5", "#ed7d31", "#70ad47", "#ffc000", "#4472c4", "#7030a0"],
-                }]
+                datasets: [{ data: [metrics.ytd_rent_income, metrics.ytd_maintenance, metrics.ytd_pool + metrics.ytd_garden + metrics.ytd_hoa, metrics.ytd_total_expenses, metrics.ytd_net_income, metrics.ytd_property_tax], backgroundColor: ["#5b9bd5", "#ed7d31", "#70ad47", "#ffc000", "#4472c4", "#7030a0"], borderRadius: 4 }]
               }}
               options={{
-                responsive: true,
-                maintainAspectRatio: true,
+                devicePixelRatio: 2, responsive: true, maintainAspectRatio: true,
                 plugins: {
                   legend: { display: false },
-                  tooltip: {
-                    backgroundColor: "rgba(0, 0, 0, 0.8)",
-                    titleColor: "#fff",
-                    bodyColor: "#fff",
-                    callbacks: { label: (context) => formatCurrency(context.parsed.y || 0) }
-                  }
+                  tooltip: { backgroundColor: "rgba(15,23,42,0.92)", titleColor: "#f8fafc", bodyColor: "#e2e8f0", padding: 10, callbacks: { label: (context) => formatCurrency(context.parsed.y || 0) } }
                 },
                 scales: {
-                  y: {
-                    beginAtZero: true,
-                    ticks: { color: "#64748b", callback: (value) => "$" + value.toLocaleString() },
-                    grid: { color: "#e2e8f0" }
-                  },
-                  x: {
-                    ticks: { color: "#64748b", font: { size: 9 } },
-                    grid: { display: false }
-                  }
+                  y: { beginAtZero: true, ticks: { color: "#64748b", font: { size: 11 }, callback: (value) => "$" + value.toLocaleString() }, grid: { color: "#f1f5f9" } },
+                  x: { ticks: { color: "#64748b", font: { size: 10 } }, grid: { display: false } }
                 }
               }}
             />
           </div>
 
-          {/* Monthly Business Expenses */}
           <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
-            <h3 className="text-sm text-center font-semibold text-slate-700 uppercase tracking-wide mb-6">
-              Monthly Business Expenses
-            </h3>
+            <h3 className="text-sm text-center font-semibold text-slate-700 uppercase tracking-wide mb-6">Monthly Business Expenses</h3>
             <Bar
               data={{
                 labels: chartMonthlyData.map(m => m.month_name),
                 datasets: [
-                  { label: "Maintenance", data: chartMonthlyData.map(m => m.maintenance), backgroundColor: "#ed7d31" },
-                  { label: "Pool", data: chartMonthlyData.map(m => m.pool), backgroundColor: "#5b9bd5" },
-                  { label: "Garden", data: chartMonthlyData.map(m => m.garden), backgroundColor: "#a5a5a5" },
-                  { label: "HOA Payments", data: chartMonthlyData.map(m => m.hoa_payments), backgroundColor: "#ffc000" },
-                  { label: "PM Fee", data: chartMonthlyData.map(m => m.pm_fee || 0), backgroundColor: "#14b8a6" },
+                  { label: "Maintenance", data: chartMonthlyData.map(m => m.maintenance), backgroundColor: "#ed7d31", borderRadius: 2 },
+                  { label: "Pool", data: chartMonthlyData.map(m => m.pool), backgroundColor: "#5b9bd5", borderRadius: 2 },
+                  { label: "Garden", data: chartMonthlyData.map(m => m.garden), backgroundColor: "#a5a5a5", borderRadius: 2 },
+                  { label: "HOA Payments", data: chartMonthlyData.map(m => m.hoa_payments), backgroundColor: "#ffc000", borderRadius: 2 },
+                  { label: "PM Fee", data: chartMonthlyData.map(m => m.pm_fee || 0), backgroundColor: "#14b8a6", borderRadius: 2 },
                 ]
               }}
               options={{
-                responsive: true,
-                maintainAspectRatio: true,
+                devicePixelRatio: 2, responsive: true, maintainAspectRatio: true,
                 plugins: {
-                  legend: { display: true, position: "bottom", labels: { color: "#64748b", font: { size: 9 }, boxWidth: 12 } },
-                  tooltip: {
-                    backgroundColor: "rgba(0, 0, 0, 0.8)",
-                    titleColor: "#fff",
-                    bodyColor: "#fff",
-                    callbacks: { label: (context) => context.dataset.label + ": " + formatCurrency(context.parsed.y || 0) }
-                  }
+                  legend: { display: true, position: "bottom", labels: { color: "#64748b", font: { size: 10 }, boxWidth: 12, padding: 12 } },
+                  tooltip: { backgroundColor: "rgba(15,23,42,0.92)", titleColor: "#f8fafc", bodyColor: "#e2e8f0", padding: 10, callbacks: { label: (context) => context.dataset.label + ": " + formatCurrency(context.parsed.y || 0) } }
                 },
                 scales: {
-                  y: {
-                    beginAtZero: true,
-                    stacked: true,
-                    ticks: { color: "#64748b", callback: (value) => "$" + value.toLocaleString() },
-                    grid: { color: "#e2e8f0" }
-                  },
-                  x: {
-                    stacked: true,
-                    ticks: { color: "#64748b", font: { size: 9 } },
-                    grid: { display: false }
-                  }
+                  y: { beginAtZero: true, stacked: true, ticks: { color: "#64748b", font: { size: 11 }, callback: (value) => "$" + value.toLocaleString() }, grid: { color: "#f1f5f9" } },
+                  x: { stacked: true, ticks: { color: "#64748b", font: { size: 10 } }, grid: { display: false } }
                 }
               }}
             />
           </div>
         </div>
 
-        {/* Trends Section */}
         <div>
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">
-            Monthly Trends
-          </h2>
-
-          {/* Monthly Income and Expense Statement */}
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Monthly Trends</h2>
           <div className="bg-white border border-slate-200 p-6 mb-6 rounded-xl shadow-sm">
             <Bar
               data={{
                 labels: chartMonthlyData.map(m => m.month_name),
                 datasets: [
-                  { label: "Rent Income", data: chartMonthlyData.map(m => m.rent_income), backgroundColor: "#a9d18e" },
-                  { label: "Total Expenses", data: chartMonthlyData.map(m => m.total_expenses), backgroundColor: "#e17055" },
-                  { label: "Net Income", data: chartMonthlyData.map(m => m.net_income), backgroundColor: "#70ad47" },
+                  { label: "Rent Income", data: chartMonthlyData.map(m => m.rent_income), backgroundColor: "#a9d18e", borderRadius: 3 },
+                  { label: "Total Expenses", data: chartMonthlyData.map(m => m.total_expenses), backgroundColor: "#e17055", borderRadius: 3 },
+                  { label: "Net Income", data: chartMonthlyData.map(m => m.net_income), backgroundColor: "#70ad47", borderRadius: 3 },
                 ]
               }}
               options={{
-                responsive: true,
-                maintainAspectRatio: true,
+                devicePixelRatio: 2, responsive: true, maintainAspectRatio: true,
                 plugins: {
-                  title: { display: true, text: "Monthly Income and Expense Statement", color: "#475569", font: { size: 14 } },
-                  legend: { display: true, position: "bottom", labels: { color: "#64748b" } },
-                  tooltip: {
-                    backgroundColor: "rgba(0, 0, 0, 0.8)",
-                    titleColor: "#fff",
-                    bodyColor: "#fff",
-                    callbacks: { label: (context) => context.dataset.label + ": " + formatCurrency(context.parsed.y || 0) }
-                  }
+                  title: { display: true, text: "Monthly Income and Expense Statement", color: "#475569", font: { size: 13 } },
+                  legend: { display: true, position: "bottom", labels: { color: "#64748b", font: { size: 10 }, padding: 12 } },
+                  tooltip: { backgroundColor: "rgba(15,23,42,0.92)", titleColor: "#f8fafc", bodyColor: "#e2e8f0", padding: 10, callbacks: { label: (context) => context.dataset.label + ": " + formatCurrency(context.parsed.y || 0) } }
                 },
                 scales: {
-                  y: {
-                    beginAtZero: true,
-                    ticks: { color: "#64748b", callback: (value) => "$" + value.toLocaleString() },
-                    grid: { color: "#e2e8f0" }
-                  },
-                  x: { ticks: { color: "#64748b" }, grid: { display: false } }
+                  y: { beginAtZero: true, ticks: { color: "#64748b", font: { size: 11 }, callback: (value) => "$" + value.toLocaleString() }, grid: { color: "#f1f5f9" } },
+                  x: { ticks: { color: "#64748b", font: { size: 10 } }, grid: { display: false } }
                 }
               }}
             />
           </div>
-
-          {/* Property Market Estimate */}
           <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
             <Line
               data={{
@@ -1008,30 +917,25 @@ Use the provided property and document context from the server; do not guess.`;
                   label: "Property Market Estimate",
                   data: marketEstimateData.map(m => m.property_market_estimate || 0),
                   borderColor: "#4472c4",
-                  backgroundColor: "rgba(68, 114, 196, 0.1)",
-                  tension: 0.4,
+                  backgroundColor: "rgba(68,114,196,0.07)",
+                  borderWidth: 2.5,
+                  tension: 0.3,
                   fill: true,
+                  pointRadius: 4,
+                  pointHoverRadius: 6,
+                  pointBackgroundColor: "#4472c4",
                 }]
               }}
               options={{
-                responsive: true,
-                maintainAspectRatio: true,
+                devicePixelRatio: 2, responsive: true, maintainAspectRatio: true,
                 plugins: {
-                  title: { display: true, text: "Property Market Estimate", color: "#475569", font: { size: 14 } },
+                  title: { display: true, text: "Property Market Estimate", color: "#475569", font: { size: 13 } },
                   legend: { display: false },
-                  tooltip: {
-                    backgroundColor: "rgba(0, 0, 0, 0.8)",
-                    titleColor: "#fff",
-                    bodyColor: "#fff",
-                    callbacks: { label: (context) => formatCurrency(context.parsed.y || 0) }
-                  }
+                  tooltip: { backgroundColor: "rgba(15,23,42,0.92)", titleColor: "#f8fafc", bodyColor: "#e2e8f0", padding: 10, callbacks: { label: (context) => formatCurrency(context.parsed.y || 0) } }
                 },
                 scales: {
-                  y: {
-                    ticks: { color: "#64748b", callback: (value) => "$" + value.toLocaleString() },
-                    grid: { color: "#e2e8f0" }
-                  },
-                  x: { ticks: { color: "#64748b" }, grid: { display: false } }
+                  y: { ticks: { color: "#64748b", font: { size: 11 }, callback: (value) => "$" + value.toLocaleString() }, grid: { color: "#f1f5f9" } },
+                  x: { ticks: { color: "#64748b", font: { size: 10 } }, grid: { display: false } }
                 }
               }}
             />
@@ -1062,18 +966,8 @@ Use the provided property and document context from the server; do not guess.`;
           </div>
           {chatError && <p className="text-sm text-red-600">{chatError}</p>}
           <div className="flex gap-2">
-            <textarea
-              className="flex-1 border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={2}
-              placeholder="Ask about your lease, expenses, ROI, etc."
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-            />
-            <button
-              onClick={handleChatSend}
-              disabled={chatLoading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60 h-fit"
-            >
+            <textarea className="flex-1 border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" rows={2} placeholder="Ask about your lease, expenses, ROI, etc." value={chatInput} onChange={(e) => setChatInput(e.target.value)} />
+            <button onClick={handleChatSend} disabled={chatLoading} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60 h-fit">
               {chatLoading ? "Sending..." : "Send"}
             </button>
           </div>

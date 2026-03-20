@@ -560,7 +560,19 @@ git show --name-only <commit-hash>
 ```
 If remote already contains equivalent work, abort the rebase and `git reset --hard origin/main` instead.
 
-### C.8 Context File for New Chats
+### C.9 Owner Dashboard Design Conventions
+
+- **Section order:** ROI Gauges → Narrative → Metrics → Thresholds → Luxor AI → Charts
+- **Performance thresholds are a compact footnote strip**, not a table. Keep them unobtrusive.
+- **ROI for thresholds = Projected ROI** (annualized from elapsed months): `(ytdNetIncome / elapsedMonths * 12) / costBasis * 100`. Do NOT use raw YTD roi_pre_tax — it will be low early in the year.
+- **Maintenance thresholds:** Excellent <4%, Good <4.5%, Needs Attention ≥5%.
+- **Projected ROI calc shown for admin role only** (inline `text-[10px]` note in gauge card and metrics row).
+- **Middle gauge** = Projected ROI with colored border (green/yellow/red). Outer two gauges use default border.
+- **Investment Report narrative** should read like the Feb report doc: income vs plan, maintenance %, projected vs expected ROI, property tax note, home value with appreciation and months owned.
+- **Metrics table uses 3-column grid layout** (label / actual / plan or note) with section headers.
+- **Chart.js sharpness:** Always add `devicePixelRatio: 2` to options. Use `borderRadius: 3-4` on bar datasets. Line charts: `borderWidth: 2.5`, `pointRadius: 4`, `pointHoverRadius: 6`. Grid color `#f1f5f9` (lighter). Tooltip background `rgba(15,23,42,0.92)`.
+
+### C.10 Context File for New Chats
 
 Stack summary: `C:\Users\karee\.claude\projects\c--Users-karee-Desktop-LuxApp\memory\project_stack.md`
 Paste it at the start of any new chat session. Keep it updated when the stack changes.
