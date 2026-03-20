@@ -616,36 +616,34 @@ export default function OwnerBillingDetailsPage() {
   if (loading) {
     return (
       <div className="p-8">
-        <h1 className="text-3xl font-bold mb-6">Owner Billing</h1>
-        <p className="text-gray-600">Loading...</p>
+        <h1 className="text-2xl font-semibold text-slate-900 mb-2">Owner Billing</h1>
+        <p className="text-slate-500 text-sm">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">Confirm Hard Delete</h3>
-            <p className="text-sm text-slate-600 mb-4">
-              Are you sure you want to <strong>permanently delete</strong> this bill?
-              <br />
-              <span className="text-red-600 font-medium">{confirmDelete.description}</span>
-              <br />
-              <br />
-              This action cannot be undone. The bill will be completely removed from the system.
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl border border-slate-200">
+            <h3 className="text-base font-semibold text-slate-900 mb-1">Confirm Permanent Delete</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              This cannot be undone. The bill will be permanently removed.
             </p>
+            <div className="rounded-lg bg-red-50 border border-red-100 px-4 py-2 text-sm text-red-700 font-medium mb-5">
+              {confirmDelete.description}
+            </div>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="px-4 py-2 text-sm rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                className="px-4 py-2 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDeleteOwnerBill(confirmDelete.id)}
-                className="px-4 py-2 text-sm rounded bg-red-600 text-white hover:bg-red-700"
+                className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700"
               >
                 Delete Permanently
               </button>
@@ -653,68 +651,72 @@ export default function OwnerBillingDetailsPage() {
           </div>
         </div>
       )}
-      <h1 className="text-3xl font-bold mb-2">Owner Billing</h1>
-      <p className="text-slate-600 mb-6">
-        Manage owner billing. All billing is manual.
-      </p>
+
+      {/* Page header */}
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">Owner Billing</h1>
+        <p className="text-slate-500 text-sm mt-1">Manage Zelle payment details and owner invoices.</p>
+      </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
-        </div>
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
       )}
       {success && (
-        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-          {success}
-        </div>
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">{success}</div>
       )}
       {warning && (
-        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-700">
-          {warning}
-        </div>
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">{warning}</div>
       )}
 
-      {propertyGroups.length === 0 ? (
-        <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-gray-500">
-          No properties found.
+      {/* Zelle settings */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Zelle Payment Settings</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Zelle info shown to tenants for each property</p>
+          </div>
         </div>
-      ) : (
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+        {propertyGroups.length === 0 ? (
+          <div className="bg-white rounded-xl border border-slate-200 p-6 text-center text-slate-400 text-sm">
+            No properties found.
+          </div>
+        ) : (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Property</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Zelle Recipient</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Zelle Details</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Property</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Recipient</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Zelle Contact</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-100">
                 {propertyGroups.map((group) => {
                   const isEditing = editingKey === group.propertyId;
                   const isSaving = savingKey === group.propertyId;
                   const activeOwner = group.activeOwner;
 
                   const zelleLabel = activeOwner?.zelleEmail
-                    ? `Email: ${activeOwner.zelleEmail}`
+                    ? activeOwner.zelleEmail
                     : activeOwner?.zellePhone
-                      ? `Phone: ${activeOwner.zellePhone}`
-                      : "Not set";
+                      ? activeOwner.zellePhone
+                      : null;
                   const recipientLabel = activeOwner?.zelleRecipient || "—";
 
                   return (
-                    <tr key={group.propertyId} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-slate-900">
+                    <tr key={group.propertyId} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-5 py-3.5 text-sm font-medium text-slate-900">
                         {group.propertyAddress || group.propertyId}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-900">
+                      <td className="px-5 py-3.5 text-sm text-slate-600">
                         {isEditing ? (
                           <div className="flex flex-col gap-2 min-w-[220px]">
                             <select
                               value={selectedOwner || ""}
                               onChange={(e) => setSelectedOwner(e.target.value)}
-                              className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                              className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white"
                             >
                               {group.owners.map((owner) => (
                                 <option key={owner.userId} value={owner.userId}>
@@ -729,14 +731,14 @@ export default function OwnerBillingDetailsPage() {
                                 setForm((prev) => ({ ...prev, recipient: e.target.value }))
                               }
                               placeholder="e.g. Blue Towers LLC"
-                              className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                              className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white"
                             />
                           </div>
                         ) : (
-                          recipientLabel
+                          <span className={recipientLabel === "—" ? "text-slate-400" : ""}>{recipientLabel}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-700">
+                      <td className="px-5 py-3.5 text-sm text-slate-600">
                         {isEditing ? (
                           <div className="flex flex-col gap-2 max-w-sm">
                             <select
@@ -747,7 +749,7 @@ export default function OwnerBillingDetailsPage() {
                                   type: e.target.value as "email" | "phone",
                                 }))
                               }
-                              className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white"
+                              className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white"
                             >
                               <option value="email">Email</option>
                               <option value="phone">Phone</option>
@@ -759,27 +761,32 @@ export default function OwnerBillingDetailsPage() {
                                 setForm((prev) => ({ ...prev, value: e.target.value }))
                               }
                               placeholder={form.type === "email" ? "owner@example.com" : "+1 555 123 4567"}
-                              className="border border-slate-300 rounded-md px-2 py-1 text-sm"
+                              className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
                             />
                           </div>
+                        ) : zelleLabel ? (
+                          <span className="inline-flex items-center gap-1.5 text-sm text-slate-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
+                            {zelleLabel}
+                          </span>
                         ) : (
-                          zelleLabel
+                          <span className="text-slate-400 text-xs">Not configured</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm">
+                      <td className="px-5 py-3.5 text-sm">
                         {isEditing ? (
                           <div className="flex gap-2">
                             <button
                               onClick={() => saveZelle(group)}
                               disabled={isSaving}
-                              className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs hover:bg-blue-700 disabled:bg-blue-300"
+                              className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
                             >
                               {isSaving ? "Saving..." : "Save"}
                             </button>
                             <button
                               onClick={cancelEdit}
                               disabled={isSaving}
-                              className="px-3 py-1.5 rounded-md bg-slate-200 text-slate-700 text-xs hover:bg-slate-300"
+                              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 text-xs hover:bg-slate-50"
                             >
                               Cancel
                             </button>
@@ -788,7 +795,7 @@ export default function OwnerBillingDetailsPage() {
                           <div className="flex gap-2">
                             <button
                               onClick={() => startEdit(group)}
-                              className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-700 text-xs hover:bg-slate-100"
+                              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-medium hover:bg-slate-50"
                             >
                               {activeOwner ? "Edit" : "Add"}
                             </button>
@@ -796,9 +803,9 @@ export default function OwnerBillingDetailsPage() {
                               <button
                                 onClick={() => deleteZelle(group)}
                                 disabled={isSaving}
-                                className="px-3 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs hover:bg-red-100 disabled:opacity-50"
+                                className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs hover:bg-red-100 disabled:opacity-50"
                               >
-                                Delete
+                                Clear
                               </button>
                             )}
                           </div>
@@ -811,12 +818,13 @@ export default function OwnerBillingDetailsPage() {
             </table>
           </div>
         </div>
-      )}
+        )}
+      </section>
 
-      <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900">Create Owner Bill</h2>
-          <p className="text-xs text-slate-500">Create a new bill for a property owner.</p>
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200">
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Create Owner Bill</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Create a new bill for a property owner.</p>
         </div>
         <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="flex flex-col text-sm">
@@ -930,9 +938,9 @@ export default function OwnerBillingDetailsPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mt-8">
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Owner Bills</h2>
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Owner Bills</h2>
           <div className="flex items-center gap-4">
             <button
               type="button"

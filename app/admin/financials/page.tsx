@@ -397,6 +397,35 @@ export default function FinancialsPage() {
 
   const actualYtd = useMemo(() => canonicalMetrics.ytd, [canonicalMetrics]);
 
+  // Last-month rent deposit bonus (added by canonical metrics, shown separately)
+  const lastMonthRentBonus = useMemo(() => {
+    if (!propertyFinancials.last_month_rent_collected) return 0;
+    const rent = parseFloat(propertyFinancials.target_monthly_rent) || 0;
+    if (rent > 0) return rent;
+    const deposit = parseFloat(propertyFinancials.deposit) || 0;
+    return deposit;
+  }, [propertyFinancials.last_month_rent_collected, propertyFinancials.target_monthly_rent, propertyFinancials.deposit]);
+
+  // YTD totals excluding the last-month rent deposit (for display in YTD cards/tables)
+  const displayYtd = useMemo(() => ({
+    ...actualYtd,
+    rent_income: actualYtd.rent_income - lastMonthRentBonus,
+    net_income: actualYtd.net_income - lastMonthRentBonus,
+  }), [actualYtd, lastMonthRentBonus]);
+
+  // YTD appreciation: earliest → latest market value entered in performanceYear
+  const ytdAppreciation = useMemo(() => {
+    const yearData = allMonthlyData.filter(
+      (m: any) => m.year === performanceYear && m.property_market_estimate && m.property_market_estimate > 0
+    ).sort((a: any, b: any) => a.month - b.month);
+    if (yearData.length === 0) return { value: 0, pct: 0, hasData: false, earliestMonth: null as number | null };
+    const earliest = yearData[0].property_market_estimate as number;
+    const latest = yearData[yearData.length - 1].property_market_estimate as number;
+    const value = latest - earliest;
+    const pct = earliest > 0 ? (value / earliest) * 100 : 0;
+    return { value, pct, hasData: true, earliestMonth: yearData[0].month as number };
+  }, [allMonthlyData, performanceYear]);
+
   // Expected full-year plan (based on planned inputs) - shown in post-save summary
   const annualPlan = useMemo(() => {
     const rent = (parseFloat(propertyFinancials.target_monthly_rent) || 0) * 12;
@@ -1542,15 +1571,19 @@ export default function FinancialsPage() {
                 {[
                   {
                     label: "YTD Income ROI",
-                    value: `${(actualYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
-                    sub: `Net ${formatCurrency(actualYtd.net_income)} ÷ cost basis`,
-                    color: actualYtd.net_income >= 0 ? "text-emerald-700" : "text-red-600",
+                    value: `${(displayYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
+                    sub: `Net ${formatCurrency(displayYtd.net_income)} ÷ cost basis${lastMonthRentBonus > 0 ? " *" : ""}`,
+                    color: displayYtd.net_income >= 0 ? "text-emerald-700" : "text-red-600",
                   },
                   {
-                    label: "YTD Home Appreciation",
-                    value: `${purchaseAppreciation.pct >= 0 ? "+" : ""}${purchaseAppreciation.pct.toFixed(2)}%`,
-                    sub: formatCurrency(purchaseAppreciation.value),
-                    color: purchaseAppreciation.pct >= 0 ? "text-emerald-700" : "text-red-600",
+                    label: `YTD Home Appreciation (${performanceYear})`,
+                    value: ytdAppreciation.hasData
+                      ? `${ytdAppreciation.pct >= 0 ? "+" : ""}${ytdAppreciation.pct.toFixed(2)}%`
+                      : "—",
+                    sub: ytdAppreciation.hasData
+                      ? formatCurrency(ytdAppreciation.value)
+                      : "No market data this year",
+                    color: ytdAppreciation.pct >= 0 ? "text-emerald-700" : "text-red-600",
                   },
                   {
                     label: "Appreciation Since Purchase",
@@ -1560,9 +1593,9 @@ export default function FinancialsPage() {
                   },
                   {
                     label: "Total YTD ROI (incl. Appr.)",
-                    value: `${((actualYtd.net_income + purchaseAppreciation.value) / calculatedTotalCost * 100).toFixed(2)}%`,
+                    value: `${((displayYtd.net_income + purchaseAppreciation.value) / calculatedTotalCost * 100).toFixed(2)}%`,
                     sub: "Net income + appreciation",
-                    color: (actualYtd.net_income + purchaseAppreciation.value) >= 0 ? "text-emerald-700" : "text-red-600",
+                    color: (displayYtd.net_income + purchaseAppreciation.value) >= 0 ? "text-emerald-700" : "text-red-600",
                   },
                 ].map(({ label, value, sub, color }) => (
                   <div key={label} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
@@ -1572,6 +1605,11 @@ export default function FinancialsPage() {
                   </div>
                 ))}
               </div>
+              {lastMonthRentBonus > 0 && (
+                <div className="mt-2 text-xs text-slate-400">
+                  * Excludes last-month deposit ({formatCurrency(lastMonthRentBonus)}) — collected upfront, not in {performanceYear} YTD.
+                </div>
+              )}
             </div>
           )}
 
@@ -1950,13 +1988,17 @@ export default function FinancialsPage() {
                 // Total ROI including appreciation (pre-tax)
                 const comprehensivePreTaxROI = canonicalMetrics.roi_with_appreciation;
 
-                // Appreciation YTD: Jan market value vs current market value
-                const janEntry = allMonthlyData.find(
-                  (m: any) => m.month === 1 && m.year === performanceYear
-                );
-                const janMarketValue = parseFloat(String(janEntry?.property_market_estimate ?? 0)) || 0;
-                const appreciationYTD = janMarketValue > 0 ? mostRecentMarketValue - janMarketValue : 0;
-                const appreciationYTDPct = janMarketValue > 0 ? (appreciationYTD / janMarketValue) * 100 : 0;
+                // Appreciation YTD: earliest market value in year vs most recent
+                const yearMarketEntries = allMonthlyData
+                  .filter((m: any) => m.year === performanceYear && m.property_market_estimate && m.property_market_estimate > 0)
+                  .sort((a: any, b: any) => a.month - b.month);
+                const earliestYtdEntry = yearMarketEntries[0];
+                const earliestYtdValue = parseFloat(String(earliestYtdEntry?.property_market_estimate ?? 0)) || 0;
+                const earliestYtdMonthName = earliestYtdEntry
+                  ? new Date(performanceYear, earliestYtdEntry.month - 1).toLocaleString("default", { month: "short" })
+                  : null;
+                const appreciationYTD = earliestYtdValue > 0 ? mostRecentMarketValue - earliestYtdValue : 0;
+                const appreciationYTDPct = earliestYtdValue > 0 ? (appreciationYTD / earliestYtdValue) * 100 : 0;
 
                 // Calculate ROI if sold today
                 const closingCosts = parseFloat(saleClosingCosts) || 0;
@@ -2006,11 +2048,13 @@ export default function FinancialsPage() {
                             </span>
                           </div>
                           <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">YTD {performanceYear}:</span>
+                            <span className="text-sm text-slate-600">
+                              YTD {performanceYear}{earliestYtdMonthName ? ` (from ${earliestYtdMonthName})` : ""}:
+                            </span>
                             <span className={`font-semibold ${appreciationYTD >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                              {janMarketValue > 0
+                              {earliestYtdValue > 0
                                 ? `${formatCurrency(appreciationYTD)} (${appreciationYTDPct >= 0 ? '+' : ''}${appreciationYTDPct.toFixed(2)}%)`
-                                : 'No Jan data'}
+                                : 'No market data'}
                             </span>
                           </div>
                         </div>

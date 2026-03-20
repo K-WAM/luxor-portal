@@ -169,6 +169,17 @@ export default function TenantPayments() {
     security_deposit: "Security Deposit",
   };
 
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  const getDueDateMs = (dateStr?: string | null) => {
+    const date = parseDateOnly(dateStr);
+    return date ? date.getTime() : null;
+  };
+
+  // Memoize to prevent infinite render loop (windowEndMs → qualifyingBills → useEffect → setState)
+  const nowMs = useMemo(() => Date.now(), []);
+  const windowEndMs = nowMs + 30 * DAY_MS;
+
   const billRows = useMemo(() => {
     const filtered = bills.filter((b) => b.year === year);
     return filtered
@@ -211,17 +222,6 @@ export default function TenantPayments() {
   const activeBillRows = useMemo(() => billRows.filter((row) => row.status !== "paid"), [billRows]);
   const paidBillRows = useMemo(() => billRows.filter((row) => row.status === "paid"), [billRows]);
   const displayedBillRows = showPaidBills ? [...activeBillRows, ...paidBillRows] : activeBillRows;
-
-  const DAY_MS = 24 * 60 * 60 * 1000;
-
-  const getDueDateMs = (dateStr?: string | null) => {
-    const date = parseDateOnly(dateStr);
-    return date ? date.getTime() : null;
-  };
-
-  // Memoize to prevent infinite render loop (windowEndMs → qualifyingBills → useEffect → setState)
-  const nowMs = useMemo(() => Date.now(), []);
-  const windowEndMs = nowMs + 30 * DAY_MS;
 
   const qualifyingBills = useMemo(() => {
     return bills.filter((bill) => {
