@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import ROISpeedometer from "@/app/components/ROISpeedometer";
 import { formatDateOnly } from "@/lib/date-only";
 
@@ -16,6 +17,9 @@ type PropertyMetrics = {
   current_value: number;
   projected_roi: string;
   projected_net_income: number;
+  ytd_net_income: number;
+  current_month_rent_paid: boolean;
+  performance_status: "green" | "yellow" | "red";
 };
 
 type MaintenanceRequest = {
@@ -61,11 +65,13 @@ const STATUS_OPTIONS = [
 ];
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const currentMonthName = new Date().toLocaleString("en-US", { month: "long" });
 
   useEffect(() => {
     loadDashboard();
@@ -222,18 +228,19 @@ export default function AdminDashboard() {
                       <th className="py-3 px-4 text-left font-medium">Property</th>
                       <th className="py-3 px-4 text-right font-medium">Monthly Rent</th>
                       <th className="py-3 px-4 text-right font-medium">Lease End</th>
-                      <th className="py-3 px-4 text-right font-medium">Last Rent Paid</th>
+                      <th className="py-3 px-4 text-center font-medium">{currentMonthName} Rent</th>
                       <th className="py-3 px-4 text-right font-medium">Maint. % of Rent</th>
-                      <th className="py-3 px-4 text-right font-medium">ROI% (Pre-Tax)</th>
-                      <th className="py-3 px-4 text-right font-medium">ROI% (Post-Tax)</th>
+                      <th className="py-3 px-4 text-right font-medium">YTD Net Income</th>
                       <th className="py-3 px-4 text-right font-medium">Projected ROI%</th>
+                      <th className="py-3 px-4 text-center font-medium">Performance</th>
                       <th className="py-3 px-4 text-right font-medium">Current Value</th>
+                      <th className="py-3 px-4 text-center font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800">
                     {data.properties.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="py-8 px-4 text-center text-slate-500">
+                        <td colSpan={10} className="py-8 px-4 text-center text-slate-500">
                           No properties found.
                         </td>
                       </tr>
@@ -243,15 +250,16 @@ export default function AdminDashboard() {
                           <td className="py-3 px-4 font-medium text-slate-900">{property.address}</td>
                           <td className="py-3 px-4 text-right">{formatCurrency(property.monthly_rent)}</td>
                           <td className="py-3 px-4 text-right">{formatDate(property.lease_end)}</td>
-                          <td className="py-3 px-4 text-right text-slate-600">{property.last_rent_paid}</td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${property.current_month_rent_paid ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                              {property.current_month_rent_paid ? "Yes" : "No"}
+                            </span>
+                          </td>
                           <td className="py-3 px-4 text-right font-medium text-slate-700">
                             {property.maintenance_pct.toFixed(2)}%
                           </td>
-                          <td className="py-3 px-4 text-right font-semibold text-emerald-700">
-                            {property.roi_before_tax}%
-                          </td>
-                          <td className="py-3 px-4 text-right font-semibold text-emerald-700">
-                            {property.roi_after_tax}%
+                          <td className={`py-3 px-4 text-right font-semibold ${(property.ytd_net_income ?? 0) >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                            {formatCurrency(property.ytd_net_income ?? 0)}
                           </td>
                           <td
                             className="py-3 px-4 text-right font-semibold text-slate-800"
@@ -259,7 +267,43 @@ export default function AdminDashboard() {
                           >
                             {property.projected_roi}%
                           </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                              property.performance_status === "green" ? "bg-green-100 text-green-700" :
+                              property.performance_status === "yellow" ? "bg-yellow-100 text-yellow-700" :
+                              "bg-red-100 text-red-700"
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full inline-block ${
+                                property.performance_status === "green" ? "bg-green-500" :
+                                property.performance_status === "yellow" ? "bg-yellow-500" :
+                                "bg-red-500"
+                              }`} />
+                              {property.performance_status === "green" ? "Excellent" : property.performance_status === "yellow" ? "Good" : "Attention"}
+                            </span>
+                          </td>
                           <td className="py-3 px-4 text-right">{formatCurrency(property.current_value)}</td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center justify-center gap-3">
+                              <button
+                                onClick={() => router.push(`/admin/maintenance?propertyId=${property.id}`)}
+                                className="text-xs text-amber-600 hover:text-amber-700 font-medium"
+                              >
+                                Maint.
+                              </button>
+                              <button
+                                onClick={() => router.push(`/admin/financials?propertyId=${property.id}`)}
+                                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                              >
+                                Financials
+                              </button>
+                              <button
+                                onClick={() => router.push(`/owner?propertyId=${property.id}`)}
+                                className="text-xs text-purple-600 hover:text-purple-700 font-medium"
+                              >
+                                Dashboard
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))
                     )}

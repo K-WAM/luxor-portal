@@ -158,6 +158,22 @@ export async function GET(request: Request) {
           }
         }
 
+        // Current month rent paid
+        const currentMonthRow = (monthlyData || []).find(r => r.month === currentMonth);
+        const current_month_rent_paid = (currentMonthRow?.rent_income || 0) > 0;
+
+        // Performance status (mirrors owner page logic)
+        const elapsedMonthsCount = Math.max(
+          (monthlyData || []).filter(m => (m.rent_income || 0) > 0 || (m.maintenance || 0) > 0).length,
+          1
+        );
+        const projectedRoiActual = metrics.cost_basis > 0
+          ? (metrics.ytd_net_income / elapsedMonthsCount * 12 / metrics.cost_basis) * 100
+          : 0;
+        const performance_status: "green" | "yellow" | "red" =
+          projectedRoiActual >= 5 && metrics.maintenance_pct < 4 ? "green" :
+          projectedRoiActual >= 3 && metrics.maintenance_pct < 5 ? "yellow" : "red";
+
         return {
           id: property.id,
           address: property.address,
@@ -171,6 +187,9 @@ export async function GET(request: Request) {
           projected_roi: projected_roi.toFixed(2),
           projected_roi_post_tax: projected_roi_post_tax.toFixed(2),
           projected_net_income: expectedNet,
+          ytd_net_income: metrics.ytd_net_income,
+          current_month_rent_paid,
+          performance_status,
         };
       })
     );

@@ -1279,6 +1279,92 @@ export default function FinancialsPage() {
             </div>
           )}
 
+          {/* Projected Income Summary — shown when financials are loaded */}
+          {financialsLoaded && calculatedTotalCost > 0 && (
+            <div className="mt-6 border border-slate-200 rounded-lg overflow-hidden">
+              <div className="bg-slate-800 px-5 py-3">
+                <h3 className="text-white font-semibold text-sm uppercase tracking-wide">Projected Annual Income Summary</h3>
+                <p className="text-slate-300 text-xs mt-0.5">Full-year projection based on current planned costs</p>
+              </div>
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="border border-slate-200 px-4 py-2 text-left font-semibold text-slate-700 w-1/2">Category</th>
+                    <th className="border border-slate-200 px-4 py-2 text-right font-semibold text-slate-700 w-1/4">Annual Amount</th>
+                    <th className="border border-slate-200 px-4 py-2 text-left font-semibold text-slate-500 text-xs w-1/4">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="bg-green-50">
+                    <td className="border border-slate-200 px-4 py-2 font-semibold text-green-800">Projected Gross Income</td>
+                    <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-green-800">{formatCurrency(annualPlan.rent)}</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-500">{formatCurrency(parseFloat(propertyFinancials.target_monthly_rent) || 0)}/mo × 12</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ Maintenance (5% of rent)</td>
+                    <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.maintenance)}</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">5% of gross rent</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ HOA</td>
+                    <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.hoa)}</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">Annual total (all HOAs)</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ Garden</td>
+                    <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.garden)}</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_garden_cost) || 0)}/mo × 12</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ Pool</td>
+                    <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.pool)}</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_pool_cost) || 0)}/mo × 12</td>
+                  </tr>
+                  <tr className="bg-red-50">
+                    <td className="border border-slate-200 px-4 py-2 font-semibold text-red-800">Projected Total Expenses</td>
+                    <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-red-800">{formatCurrency(annualPlan.totalExpenses)}</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-500">Excl. property tax</td>
+                  </tr>
+                  <tr className={annualPlan.netIncome >= 0 ? "bg-blue-50" : "bg-amber-50"}>
+                    <td className={`border border-slate-200 px-4 py-2 font-semibold ${annualPlan.netIncome >= 0 ? "text-blue-800" : "text-amber-800"}`}>Net Income (pre-tax)</td>
+                    <td className={`border border-slate-200 px-4 py-2 text-right font-semibold ${annualPlan.netIncome >= 0 ? "text-blue-800" : "text-amber-800"}`}>{formatCurrency(annualPlan.netIncome)}</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">Gross income minus expenses</td>
+                  </tr>
+                  {annualPlan.propertyTax > 0 && (
+                    <>
+                      <tr>
+                        <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ Property Tax (est.)</td>
+                        <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.propertyTax)}</td>
+                        <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">From YE target input above</td>
+                      </tr>
+                      <tr className={annualPlan.netIncome - annualPlan.propertyTax >= 0 ? "bg-blue-50" : "bg-amber-50"}>
+                        <td className={`border border-slate-200 px-4 py-2 font-semibold ${annualPlan.netIncome - annualPlan.propertyTax >= 0 ? "text-blue-800" : "text-amber-800"}`}>Net Income (post-tax)</td>
+                        <td className={`border border-slate-200 px-4 py-2 text-right font-semibold ${annualPlan.netIncome - annualPlan.propertyTax >= 0 ? "text-blue-800" : "text-amber-800"}`}>{formatCurrency(annualPlan.netIncome - annualPlan.propertyTax)}</td>
+                        <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">After property tax</td>
+                      </tr>
+                    </>
+                  )}
+                  <tr className="bg-slate-100 border-t-2 border-slate-300">
+                    <td className="border border-slate-200 px-4 py-2 font-semibold text-slate-800">Projected ROI (pre-tax)</td>
+                    <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-slate-800">
+                      {`${(annualPlan.netIncome / calculatedTotalCost * 100).toFixed(2)}%`}
+                    </td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">Net income ÷ cost basis ({formatCurrency(calculatedTotalCost)})</td>
+                  </tr>
+                  {annualPlan.propertyTax > 0 && (
+                    <tr className="bg-slate-100">
+                      <td className="border border-slate-200 px-4 py-2 font-semibold text-slate-800">Projected ROI (post-tax)</td>
+                      <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-slate-800">
+                        {`${((annualPlan.netIncome - annualPlan.propertyTax) / calculatedTotalCost * 100).toFixed(2)}%`}
+                      </td>
+                      <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">After property tax ÷ cost basis</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Post-Save Calculated Summary */}
           {success && (
             <div className="mt-6 border border-blue-200 rounded-lg overflow-hidden">

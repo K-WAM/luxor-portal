@@ -572,6 +572,26 @@ If remote already contains equivalent work, abort the rebase and `git reset --ha
 - **Metrics table uses 3-column grid layout** (label / actual / plan or note) with section headers.
 - **Chart.js sharpness:** Always add `devicePixelRatio: 2` to options. Use `borderRadius: 3-4` on bar datasets. Line charts: `borderWidth: 2.5`, `pointRadius: 4`, `pointHoverRadius: 6`. Grid color `#f1f5f9` (lighter). Tooltip background `rgba(15,23,42,0.92)`.
 
+### C.11 Narrative Grammar — Performance Labels
+
+- When embedding a performance label inline (e.g., "Needs Attention"), use "is rated **{label}**" not "is **{label}**" to avoid broken English.
+- Plan ROI in narrative = period-proportional: `planNetIncomePeriod / costBasis * 100`. Show annualized plan separately as "({annualized}% annualized)". Never compare period-actual vs annualized-plan.
+
+### C.12 Admin Dashboard — Column & API Conventions
+
+- `performance_status` ("green"/"yellow"/"red") computed server-side in the API using same thresholds as owner page; do NOT recompute on client.
+- `current_month_rent_paid`: check `monthlyData.find(r => r.month === currentMonth)?.rent_income > 0`.
+- `ytd_net_income`: read directly from `metrics.ytd_net_income` (canonical metrics).
+- Remove ROI Post-Tax column from admin table — too granular for overview; show YTD Net Income + Projected ROI instead.
+- Action links per property row: Maint. → `/admin/maintenance?propertyId=`, Financials → `/admin/financials?propertyId=`, Dashboard → `/owner?propertyId=`. Same pattern as admin/properties page.
+
+### C.13 Admin Financials — Projected Summary Table
+
+- Show projected income summary when `financialsLoaded && calculatedTotalCost > 0` (not only after save).
+- Reuse `annualPlan` useMemo (rent, maintenance, pool, garden, hoa, propertyTax, totalExpenses, netIncome). Do NOT recompute.
+- ROI pre-tax = `annualPlan.netIncome / calculatedTotalCost * 100`. ROI post-tax only shown if `annualPlan.propertyTax > 0`.
+- Property tax input is in `yeTarget.property_tax` (amber-highlighted row in property financials form).
+
 ### C.10 Context File for New Chats
 
 Stack summary: `C:\Users\karee\.claude\projects\c--Users-karee-Desktop-LuxApp\memory\project_stack.md`

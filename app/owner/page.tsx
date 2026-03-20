@@ -544,6 +544,9 @@ Use the provided property and document context from the server; do not guess.`;
     (property.planned_hoa_cost || 0)
   ) * elapsedMonths;
   const planNetIncomePeriod = planRentPeriod - planMaintenancePeriod - planOtherPeriod;
+  const planRoiPeriod = metrics.cost_basis > 0
+    ? (planNetIncomePeriod / metrics.cost_basis) * 100
+    : 0;
 
   // Performance: uses projectedRoi + updated maintenance thresholds
   const performanceStatus =
@@ -667,11 +670,11 @@ Use the provided property and document context from the server; do not guess.`;
           </div>
           <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
             <p>
-              Investment performance is <span className={`font-semibold ${performanceStatus === "green" ? "text-green-700" : performanceStatus === "yellow" ? "text-yellow-700" : "text-red-700"}`}>{performanceLabel}</span> based on income, maintenance, expenses, and asset appreciation.
+              Investment performance is rated <span className={`font-semibold ${performanceStatus === "green" ? "text-green-700" : performanceStatus === "yellow" ? "text-yellow-700" : "text-red-700"}`}>{performanceLabel}</span> based on income, maintenance, expenses, and asset appreciation.
             </p>
             <p>
               <span className="font-semibold">Operating Income & Expenses: </span>
-              {periodLabel} income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 4 ? "text-green-700" : metrics.maintenance_pct < 5 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> — target is under 4%. Other fees (HOA, pool, garden) are {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. The property is projected to yield <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)} annualized</span> — plan is {formatPercentage(expectedRoi)}.
+              {periodLabel} income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 4 ? "text-green-700" : metrics.maintenance_pct < 5 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> — target is under 4%. Other fees (HOA, pool, garden) are {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. The property is projected to yield <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)} annualized</span> — plan for this period is {formatPercentage(planRoiPeriod)} ({formatPercentage(expectedRoi)} annualized).
             </p>
             {metrics.ytd_property_tax > 0 ? (
               <p>
