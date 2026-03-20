@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Luxor – Investment Assessment</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:'Montserrat',sans-serif;
+      background:#0a0a0a;
+      color:#e0e0e0;
+      padding:20px;
+      min-height:100vh;
+    }
+    .container{
+      max-width:1400px;
+      margin:0 auto;
+      background:linear-gradient(145deg,#1a1612,#0f0e0c);
+      border-radius:24px;
+      border:1px solid rgba(212,175,55,.25);
+      box-shadow:0 30px 90px rgba(0,0,0,.8);
+      overflow:visible;
+    }
+    .header{
+      padding:40px;
+      text-align:center;
+      position:relative;
+      border-bottom:3px solid #d4af37;
+      background:linear-gradient(135deg,#050505,#1a1612);
+    }
+    .header::before{
+      content:'';
+      position:absolute;
+      inset:0;
+      background:radial-gradient(circle at top,rgba(212,175,55,.18),transparent 70%);
+      pointer-events:none;
+    }
+    .header-inner{position:relative;z-index:1}
+    .logo{
+      width:220px;
+      max-width:60%;
+      margin-bottom:20px;
+      filter:drop-shadow(0 8px 24px rgba(212,175,55,.5));
+    }
+    h1{
+      font-family:'Playfair Display',serif;
+      font-size:2.6rem;
+      letter-spacing:2px;
+      text-transform:uppercase;
+      background:linear-gradient(135deg,#f4d03f,#d4af37,#c99f2e);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+      background-clip:text;
+      margin-bottom:6px;
+    }
+    .subtitle{
+      font-size:.95rem;
+      color:#bbb;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+    }
+    .layout{
+      padding:30px 40px 40px;
+      display:grid;
+      grid-template-columns: minmax(0,1.2fr) minmax(0,1fr);
+      gap:24px;
+      align-items:start;
+      grid-auto-rows: min-content;
+    }
+    @media (max-width:1000px){
+      .layout{grid-template-columns:1fr}
+    }
+    .section{
+      background:linear-gradient(145deg,rgba(26,22,18,.65),rgba(15,14,12,.9));
+      border-radius:18px;
+      padding:20px 22px 22px;
+      margin-bottom:22px;
+      box-shadow:0 10px 40px rgba(0,0,0,.4);
+      border-left:4px solid #d4af37;
+    }
+    .section h2{
+      font-family:'Playfair Display',serif;
+      font-size:1.2rem;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+      color:#d4af37;
+      margin-bottom:14px;
+    }
+    .two-col{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+      gap:10px 18px;
+    }
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      font-size:.85rem;
+    }
+    .field label{
+      color:#b8b8b8;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+    }
+    .field input{
+      background:rgba(10,10,10,.7);
+      border:2px solid rgba(212,175,55,.22);
+      border-radius:10px;
+      padding:8px 10px;
+      color:#f4d03f;
+      font-weight:600;
+      font-family:'Montserrat',sans-serif;
+    }
+    .field input:focus{
+      outline:none;
+      border-color:#d4af37;
+      box-shadow:0 0 0 3px rgba(212,175,55,.25);
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:6px;
+      font-size:.82rem;
+    }
+    thead{
+      background:rgba(0,0,0,.55);
+    }
+    th,td{
+      padding:6px 8px;
+      text-align:right;
+      border-bottom:1px solid rgba(255,255,255,.03);
+    }
+    th:first-child,td:first-child{text-align:left}
+    th{
+      color:#c8c8c8;
+      font-weight:600;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+    }
+    tbody tr:nth-child(even){
+      background:rgba(0,0,0,.3);
+    }
+    tbody tr:hover{
+      background:rgba(212,175,55,.09);
+    }
+    td input{
+      width:90px;
+      max-width:100%;
+      text-align:right;
+      font-size:.78rem;
+      padding:5px 6px;
+    }
+    .readonly-cell{
+      font-weight:600;
+      color:#f4d03f;
+    }
+
+    .summary-table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0 7px;
+      font-size:.86rem;
+      margin-top:8px;
+    }
+    .summary-table tr{
+      background:rgba(10,10,10,.75);
+    }
+    .summary-table td{
+      padding:7px 10px;
+      border:none;
+    }
+    .summary-table td:first-child{
+      border-radius:10px 0 0 10px;
+      color:#b8b8b8;
+    }
+    .summary-table td:last-child{
+      border-radius:0 10px 10px 0;
+      text-align:right;
+      font-weight:700;
+      color:#f4d03f;
+    }
+
+    .chip-row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:10px;
+      font-size:.8rem;
+    }
+    .chip{
+      border-radius:20px;
+      padding:4px 10px;
+      border:1px solid rgba(212,175,55,.4);
+      background:rgba(10,10,10,.7);
+      color:#e0e0e0;
+    }
+    .chip strong{color:#f4d03f}
+
+    .charts{
+      margin-top:10px;
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+    }
+    .chart-box{
+      background:rgba(10,10,10,.75);
+      border-radius:16px;
+      padding:12px;
+      border:1px solid rgba(255,255,255,.05);
+      position:relative;
+      z-index:1;
+    }
+    .chart-box h3{
+      font-size:.9rem;
+      margin-bottom:4px;
+      color:#d4af37;
+      font-family:'Playfair Display',serif;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+
+    .chart-box canvas{width:100% !important; height:auto !important; max-height:360px; display:block;}
+
+    .report-area{
+      margin-top:10px;
+    }
+    .report-area textarea{
+      width:100%;
+      min-height:230px;
+      background:rgba(5,5,5,.85);
+      border-radius:12px;
+      border:1px solid rgba(212,175,55,.25);
+      color:#e0e0e0;
+      padding:10px 12px;
+      font-size:.9rem;
+      line-height:1.4;
+      resize:vertical;
+    }
+    .actions{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-top:8px;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .actions small{color:#aaa;font-size:.78rem}
+    button{
+      border:none;
+      border-radius:999px;
+      padding:7px 16px;
+      font-size:.8rem;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      font-weight:600;
+      background:linear-gradient(135deg,#d4af37,#f4d03f);
+      color:#000;
+      cursor:pointer;
+      box-shadow:0 8px 24px rgba(212,175,55,.4);
+    }
+    button:hover{
+      transform:translateY(-1px);
+      box-shadow:0 10px 32px rgba(212,175,55,.55);
+    }
+    .storage-note{
+      font-size:0.75rem;
+      color:#999;
+      margin-top:12px;
+      text-align:center;
+    }
+
+    /* PDF Report Hidden */
+    #pdfReport{
+      display:none;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header class="header">
+    <div class="header-inner">
+      <img class="logo" src="https://k-wam.github.io/Airbnb/assets/file_0000000015785230a90868ce0ad620f7_conversation_id_67ea1806-3c50-800e-99cc-93458cce5baa&message_id_2528423f-82b4-4cd4-99ac-21de7fa9037c%20(1).webp" alt="Luxor logo">
+      <h1>Investment Assessment</h1>
+      <div class="subtitle">Owner Grade • Income • Expenses • Appreciation</div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- LEFT: INPUTS + MONTHLY TABLE + CHARTS -->
+    <div>
+      <section class="section">
+        <h2>Property Snapshot</h2>
+        <div class="two-col">
+          <div class="field">
+            <label>Home Cost</label>
+            <input type="number" id="homeCost" value="775000" oninput="recalculate();saveData()">
+          </div>
+          <div class="field">
+            <label>Home Repair Cost</label>
+            <input type="number" id="repairCost" value="30000" oninput="recalculate();saveData()">
+          </div>
+          <div class="field">
+            <label>Additional Closing Costs</label>
+            <input type="number" id="extraClosing" value="0" oninput="recalculate();saveData()">
+          </div>
+          <div class="field">
+            <label>Current Market Estimate</label>
+            <input type="number" id="currentValue" value="928000" oninput="recalculate();saveData()">
+          </div>
+          <div class="field">
+            <label>Annual Property Tax</label>
+            <input type="number" id="propertyTaxAnnual" value="10819" oninput="recalculate();saveData()">
+          </div>
+          <div class="field">
+            <label>Estimated Closing Costs (if sold)</label>
+            <input type="number" id="closingEstimate" value="59121" oninput="recalculate();saveData()">
+          </div>
+          <div class="field">
+            <label>Months Owned</label>
+            <input type="number" id="monthsOwned" value="12" oninput="recalculate();saveData()">
+          </div>
+          <div class="field">
+            <label>Plan ROI (Net Income)</label>
+            <input type="number" id="planROI" value="5.76" step="0.01" oninput="recalculate();saveData()">
+          </div>
+          <div class="field">
+            <label>Target ROI (YE)</label>
+            <input type="number" id="targetROI" value="7.11" step="0.01" oninput="recalculate();saveData()">
+          </div>
+        </div>
+        <div class="chip-row">
+          <div class="chip">Address: <strong>10370 Buena Ventura Dr, Boca Raton, FL 33326</strong></div>
+          <div class="chip">Lease Term: <strong>Apr 10, 2025 – Apr 10, 2026</strong></div>
+        </div>
+        <div class="storage-note">Data auto-saves to your browser</div>
+      </section>
+
+      <section class="section">
+        <h2>Monthly Income & Expenses</h2>
+        <table>
+          <thead>
+          <tr>
+            <th>Date</th>
+            <th>Rent</th>
+            <th>Maint.</th>
+            <th>Pool</th>
+            <th>Garden</th>
+            <th>HOA</th>
+            <th>Total Exp.</th>
+            <th>Net Income</th>
+            <th>Prop. Tax</th>
+            <th>ROI</th>
+          </tr>
+          </thead>
+          <tbody id="monthTableBody">
+          <!-- rows filled by JS -->
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>Charts</h2>
+        <div class="charts">
+          <div class="chart-box">
+            <h3>Income Summary</h3>
+            <canvas id="incomeSummaryChart" height="150"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Monthly Business Expenses</h3>
+            <canvas id="expenseChart" height="140"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Monthly Income &amp; Expense Statement</h3>
+            <canvas id="incomeExpenseChart" height="160"></canvas>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT: SUMMARY ONLY -->
+    <div>
+      <section class="section">
+        <h2>Investment Summary</h2>
+        <table class="summary-table">
+          <tbody>
+          <tr><td>Gross Income (Rent)</td><td id="sumGross">$55,775</td></tr>
+          <tr><td>Maintenance</td><td id="sumMaint">$2,002</td></tr>
+          <tr><td>Maintenance as % of Rent</td><td id="sumMaintPct">3.59%</td></tr>
+          <tr><td>HOA, Pool &amp; Garden</td><td id="sumHOAGroup">$6,635</td></tr>
+          <tr><td>Total Operating Expenses (excl. tax)</td><td id="sumExpenses">$8,637</td></tr>
+          <tr><td>Net Income (before property tax)</td><td id="sumNet">$47,138</td></tr>
+          <tr><td>Property Tax</td><td id="sumTax">$10,819</td></tr>
+          <tr><td>ROI – Net Income / Cost Basis</td><td id="roiNet">5.86%</td></tr>
+          <tr><td>ROI – After Property Tax</td><td id="roiAfterTax">4.51%</td></tr>
+          <tr><td>Home Value Appreciation</td><td id="appreciation">15.28%</td></tr>
+          <tr><td>ROI incl. Tax, Appreciation &amp; Closing</td><td id="roiOverall">12.45%</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+
+  <!-- FULL-WIDTH NARRATIVE AT BOTTOM -->
+  <section class="section" style="margin:30px 40px 40px; padding:20px 22px 22px;">
+    <h2>Generated Narrative (copy for report)</h2>
+    <div class="report-area">
+      <textarea id="reportText"></textarea>
+      <div class="actions">
+        <small>The text above is plain text – select all or use the button to copy into Word or email.</small>
+        <button type="button" onclick="copyReport()">Copy Report</button>
+        <button type="button" onclick="generatePDF()">Export PDF</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Hidden PDF Report Template -->
+<div id="pdfReport" style="display:none; background:white; color:black; padding:40px; font-family:Arial,sans-serif; width:8.5in;">
+  <div style="text-align:center; margin-bottom:40px; border-bottom:3px solid #d4af37; padding-bottom:20px;">
+    <h1 style="font-size:32px; color:#d4af37; margin-bottom:10px;">INVESTMENT ASSESSMENT REPORT</h1>
+    <p style="font-size:12px; color:#666;">Property Analysis & Financial Overview</p>
+  </div>
+
+  <div style="margin-bottom:30px;">
+    <h2 style="font-size:16px; color:#333; border-bottom:2px solid #d4af37; padding-bottom:10px; margin-bottom:15px;">EXECUTIVE SUMMARY</h2>
+    <div id="pdfExecutive" style="font-size:11px; line-height:1.6; color:#333;"></div>
+  </div>
+
+  <div style="margin-bottom:30px;">
+    <h2 style="font-size:16px; color:#333; border-bottom:2px solid #d4af37; padding-bottom:10px; margin-bottom:15px;">FINANCIAL METRICS</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:11px; color:#333;">
+      <tbody>
+        <tr style="background:#f5f5f5;">
+          <td style="padding:8px; border:1px solid #ddd;"><strong>Gross Income (Rent)</strong></td>
+          <td style="padding:8px; border:1px solid #ddd; text-align:right;" id="pdfSumGross">$0</td>
+        </tr>
+        <tr>
+          <td style="padding:8px; border:1px solid #ddd;"><strong>Total Operating Expenses</strong></td>
+          <td style="padding:8px; border:1px solid #ddd; text-align:right;" id="pdfSumExpenses">$0</td>
+        </tr>
+        <tr style="background:#f5f5f5;">
+          <td style="padding:8px; border:1px solid #ddd;"><strong>Net Income (before tax)</strong></td>
+          <td style="padding:8px; border:1px solid #ddd; text-align:right;" id="pdfSumNet">$0</td>
+        </tr>
+        <tr>
+          <td style="padding:8px; border:1px solid #ddd;"><strong>Property Tax</strong></td>
+          <td style="padding:8px; border:1px solid #ddd; text-align:right;" id="pdfSumTax">$0</td>
+        </tr>
+        <tr style="background:#f5f5f5;">
+          <td style="padding:8px; border:1px solid #ddd;"><strong>Maintenance as % of Rent</strong></td>
+          <td style="padding:8px; border:1px solid #ddd; text-align:right;" id="pdfSumMaintPct">0.00%</td>
+        </tr>
+        <tr>
+          <td style="padding:8px; border:1px solid #ddd;"><strong>ROI – Net Income / Cost Basis</strong></td>
+          <td style="padding:8px; border:1px solid #ddd; text-align:right;" id="pdfRoiNet">0.00%</td>
+        </tr>
+        <tr style="background:#f5f5f5;">
+          <td style="padding:8px; border:1px solid #ddd;"><strong>ROI – After Property Tax</strong></td>
+          <td style="padding:8px; border:1px solid #ddd; text-align:right;" id="pdfRoiAfterTax">0.00%</td>
+        </tr>
+        <tr>
+          <td style="padding:8px; border:1px solid #ddd;"><strong>Home Value Appreciation</strong></td>
+          <td style="padding:8px; border:1px solid #ddd; text-align:right;" id="pdfAppreciation">0.00%</td>
+        </tr>
+        <tr style="background:#d4af37; color:white;">
+          <td style="padding:8px; border:1px solid #d4af37;"><strong>Overall ROI (incl. Tax, Appreciation & Closing)</strong></td>
+          <td style="padding:8px; border:1px solid #d4af37; text-align:right;" id="pdfRoiOverall">0.00%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-bottom:30px; page-break-inside:avoid;">
+    <h2 style="font-size:16px; color:#333; border-bottom:2px solid #d4af37; padding-bottom:10px; margin-bottom:15px;">INCOME & EXPENSE ANALYSIS</h2>
+    <canvas id="pdfIncomeExpenseChart" style="max-width:100%; margin-bottom:20px;"></canvas>
+  </div>
+
+  <div style="margin-bottom:30px; page-break-inside:avoid;">
+    <h2 style="font-size:16px; color:#333; border-bottom:2px solid #d4af37; padding-bottom:10px; margin-bottom:15px;">INCOME SUMMARY</h2>
+    <canvas id="pdfIncomeSummaryChart" style="max-width:100%; margin-bottom:20px;"></canvas>
+  </div>
+
+  <div style="margin-bottom:30px; page-break-inside:avoid;">
+    <h2 style="font-size:16px; color:#333; border-bottom:2px solid #d4af37; padding-bottom:10px; margin-bottom:15px;">EXPENSE BREAKDOWN</h2>
+    <canvas id="pdfExpenseChart" style="max-width:100%; margin-bottom:20px;"></canvas>
+  </div>
+
+  <div style="margin-top:40px; padding-top:20px; border-top:2px solid #d4af37; font-size:10px; color:#999; text-align:center;">
+    <p>Generated: <span id="pdfDate"></span></p>
+    <p>This report is confidential and for internal use only.</p>
+  </div>
+</div>
+
+<script>
+  const monthData = [
+    {label:'Jan-25',  rent:0,    maint:0,   pool:0,  garden:0,  hoa:205,  tax:0},
+    {label:'Feb-25',  rent:0,    maint:0,   pool:0,  garden:0,  hoa:205,  tax:0},
+    {label:'Mar-25',  rent:0,    maint:319, pool:70, garden:150,hoa:1005,tax:0},
+    {label:'Apr-25',  rent:4025, maint:370, pool:70, garden:150,hoa:205, tax:0},
+    {label:'May-25',  rent:5750, maint:298, pool:70, garden:150,hoa:205, tax:0},
+    {label:'Jun-25',  rent:5750, maint:0,   pool:70, garden:150,hoa:1005,tax:0},
+    {label:'Jul-25',  rent:5750, maint:596, pool:70, garden:150,hoa:205, tax:0},
+    {label:'Aug-25',  rent:5750, maint:0,   pool:70, garden:150,hoa:205, tax:0},
+    {label:'Sep-25',  rent:5750, maint:77,  pool:70, garden:150,hoa:1005,tax:0},
+    {label:'Oct-25',  rent:5750, maint:117, pool:70, garden:150,hoa:205, tax:0},
+    {label:'Nov-25',  rent:5750, maint:225, pool:70, garden:150,hoa:205, tax:10819.05},
+    {label:'Dec-25',  rent:5750, maint:0,   pool:0,  garden:0,  hoa:0,   tax:0},
+    {label:'Jan-26',  rent:0,    maint:0,   pool:0,  garden:0,  hoa:0,   tax:0},
+    {label:'Feb-26',  rent:0,    maint:0,   pool:0,  garden:0,  hoa:0,   tax:0},
+    {label:'Mar-26',  rent:5750, maint:0,   pool:0,  garden:0,  hoa:0,   tax:0}
+  ];
+
+  const tbody = document.getElementById('monthTableBody');
+  const STORAGE_KEY = 'luxor_investment_data';
+  let pdfCharts = {};
+
+  function saveData(){
+    const snapshot = {
+      homeCost: document.getElementById('homeCost').value,
+      repairCost: document.getElementById('repairCost').value,
+      extraClosing: document.getElementById('extraClosing').value,
+      currentValue: document.getElementById('currentValue').value,
+      propertyTaxAnnual: document.getElementById('propertyTaxAnnual').value,
+      closingEstimate: document.getElementById('closingEstimate').value,
+      monthsOwned: document.getElementById('monthsOwned').value,
+      planROI: document.getElementById('planROI').value,
+      targetROI: document.getElementById('targetROI').value,
+      monthlyData: []
+    };
+
+    document.querySelectorAll('.month-row').forEach(row=>{
+      const idx = row.dataset.index;
+      snapshot.monthlyData.push({
+        idx: idx,
+        rent: row.querySelector('.rent').value,
+        maint: row.querySelector('.maint').value,
+        pool: row.querySelector('.pool').value,
+        garden: row.querySelector('.garden').value,
+        hoa: row.querySelector('.hoa').value,
+        ptax: row.querySelector('.ptax').value
+      });
+    });
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  }
+
+  function loadData(){
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if(saved){
+      const snapshot = JSON.parse(saved);
+      
+      document.getElementById('homeCost').value = snapshot.homeCost;
+      document.getElementById('repairCost').value = snapshot.repairCost;
+      document.getElementById('extraClosing').value = snapshot.extraClosing;
+      document.getElementById('currentValue').value = snapshot.currentValue;
+      document.getElementById('propertyTaxAnnual').value = snapshot.propertyTaxAnnual;
+      document.getElementById('closingEstimate').value = snapshot.closingEstimate;
+      document.getElementById('monthsOwned').value = snapshot.monthsOwned;
+      document.getElementById('planROI').value = snapshot.planROI;
+      document.getElementById('targetROI').value = snapshot.targetROI;
+
+      snapshot.monthlyData.forEach(saved_row=>{
+        const row = document.querySelector(`[data-index="${saved_row.idx}"]`);
+        if(row){
+          row.querySelector('.rent').value = saved_row.rent;
+          row.querySelector('.maint').value = saved_row.maint;
+          row.querySelector('.pool').value = saved_row.pool;
+          row.querySelector('.garden').value = saved_row.garden;
+          row.querySelector('.hoa').value = saved_row.hoa;
+          row.querySelector('.ptax').value = saved_row.ptax;
+        }
+      });
+    }
+  }
+
+  function buildTable(){
+    monthData.forEach((m, idx)=>{
+      const tr = document.createElement('tr');
+      tr.className = 'month-row';
+      tr.dataset.index = idx;
+      tr.innerHTML = `
+        <td>${m.label}</td>
+        <td><input type="number" class="rent" value="${m.rent}" step="0.01" oninput="recalculate();saveData()"></td>
+        <td><input type="number" class="maint" value="${m.maint}" step="0.01" oninput="recalculate();saveData()"></td>
+        <td><input type="number" class="pool" value="${m.pool}" step="0.01" oninput="recalculate();saveData()"></td>
+        <td><input type="number" class="garden" value="${m.garden}" step="0.01" oninput="recalculate();saveData()"></td>
+        <td><input type="number" class="hoa" value="${m.hoa}" step="0.01" oninput="recalculate();saveData()"></td>
+        <td class="readonly-cell totalExp">$0</td>
+        <td class="readonly-cell netInc">$0</td>
+        <td><input type="number" class="ptax" value="${m.tax}" step="0.01" oninput="recalculate();saveData()"></td>
+        <td class="readonly-cell roiCell">0.00%</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function fmtCurrency(v){
+    return '$' + Number(v).toLocaleString('en-US',{maximumFractionDigits:0});
+  }
+  function fmtPercent(v){
+    return (v*100).toFixed(2)+'%';
+  }
+
+  let incomeSummaryChart, expenseChart, incomeExpenseChart;
+
+  function recalculate(){
+    const homeCost = parseFloat(document.getElementById('homeCost').value)||0;
+    const repairCost = parseFloat(document.getElementById('repairCost').value)||0;
+    const extraClosing = parseFloat(document.getElementById('extraClosing').value)||0;
+    const currentValue = parseFloat(document.getElementById('currentValue').value)||0;
+    const annualTax = parseFloat(document.getElementById('propertyTaxAnnual').value)||0;
+    const closingEst = parseFloat(document.getElementById('closingEstimate').value)||0;
+    const monthsOwned = parseFloat(document.getElementById('monthsOwned').value)||0;
+    const planROI = parseFloat(document.getElementById('planROI').value)||0;
+    const targetROI = parseFloat(document.getElementById('targetROI').value)||0;
+
+    const costBasis = homeCost + repairCost + extraClosing;
+
+    let gross=0, maintTot=0, poolTot=0, gardenTot=0, hoaTot=0, taxTotal=0;
+    const labels=[], rents=[], totalExpArr=[], netArr=[], maintArr=[], poolGardenHOAArr=[];
+
+    document.querySelectorAll('.month-row').forEach(row=>{
+      const label = row.children[0].textContent;
+      const rent = parseFloat(row.querySelector('.rent').value)||0;
+      const maint = parseFloat(row.querySelector('.maint').value)||0;
+      const pool = parseFloat(row.querySelector('.pool').value)||0;
+      const garden = parseFloat(row.querySelector('.garden').value)||0;
+      const hoa = parseFloat(row.querySelector('.hoa').value)||0;
+      const tax = parseFloat(row.querySelector('.ptax').value)||0;
+
+      const totalExp = maint+pool+garden+hoa;
+      const netInc = rent-totalExp;
+      const roiMonth = costBasis>0 ? netInc/costBasis : 0;
+
+      row.querySelector('.totalExp').textContent = fmtCurrency(totalExp);
+      row.querySelector('.netInc').textContent = fmtCurrency(netInc);
+      row.querySelector('.roiCell').textContent = fmtPercent(roiMonth);
+
+      labels.push(label);
+      rents.push(rent);
+      totalExpArr.push(totalExp);
+      netArr.push(netInc);
+      maintArr.push(maint);
+      poolGardenHOAArr.push(pool+garden+hoa);
+
+      gross += rent;
+      maintTot += maint;
+      poolTot += pool;
+      gardenTot += garden;
+      hoaTot += hoa;
+      taxTotal += tax;
+    });
+
+    const hoaGroup = hoaTot+poolTot+gardenTot;
+    const totalExpenses = maintTot+hoaGroup;
+    const netIncome = gross-totalExpenses;
+    const maintPct = gross>0 ? maintTot/gross : 0;
+
+    const roiNet = costBasis>0 ? netIncome/costBasis : 0;
+    const netAfterTax = netIncome - annualTax;
+    const roiAfterTax = costBasis>0 ? netAfterTax/costBasis : 0;
+
+    const appreciation = currentValue - costBasis;
+    const appreciationPct = costBasis>0 ? appreciation/costBasis : 0;
+    const overallReturn = costBasis>0 ? (netAfterTax + appreciation - closingEst)/costBasis : 0;
+
+    // update summary table
+    document.getElementById('sumGross').textContent = fmtCurrency(gross);
+    document.getElementById('sumMaint').textContent = fmtCurrency(maintTot);
+    document.getElementById('sumMaintPct').textContent = fmtPercent(maintPct);
+    document.getElementById('sumHOAGroup').textContent = fmtCurrency(hoaGroup);
+    document.getElementById('sumExpenses').textContent = fmtCurrency(totalExpenses);
+    document.getElementById('sumNet').textContent = fmtCurrency(netIncome);
+    document.getElementById('sumTax').textContent = fmtCurrency(annualTax);
+    document.getElementById('roiNet').textContent = fmtPercent(roiNet);
+    document.getElementById('roiAfterTax').textContent = fmtPercent(roiAfterTax);
+    document.getElementById('appreciation').textContent = fmtPercent(appreciationPct);
+    document.getElementById('roiOverall').textContent = fmtPercent(overallReturn);
+
+    // update charts
+    const incomeData = [
+      gross,
+      maintTot,
+      hoaGroup,
+      totalExpenses,
+      netIncome,
+      annualTax
+    ];
+
+    if(!incomeSummaryChart){
+      const ctx1 = document.getElementById('incomeSummaryChart').getContext('2d');
+      incomeSummaryChart = new Chart(ctx1,{
+        type:'bar',
+        data:{
+          labels:['Gross Income','Maintenance','HOA/Pool/Garden','Total Expenses','Net Income','Property Tax'],
+          datasets:[{label:'USD',data:incomeData, backgroundColor:['#4CAF50','#2196F3','#FF9800','#F44336','#9C27B0','#00BCD4']}]
+        },
+        options:{
+          responsive:true,
+          plugins:{legend:{display:false}},
+          scales:{y:{beginAtZero:true}}
+        }
+      });
+
+      const ctx2 = document.getElementById('expenseChart').getContext('2d');
+      expenseChart = new Chart(ctx2,{
+        type:'bar',
+        data:{
+          labels:labels,
+          datasets:[
+            {label:'Maintenance',data:maintArr, backgroundColor:'#FF6B6B'},
+            {label:'Pool+Garden+HOA',data:poolGardenHOAArr, backgroundColor:'#4ECDC4'}
+          ]
+        },
+        options:{
+          responsive:true,
+          scales:{y:{beginAtZero:true}}
+        }
+      });
+
+      const ctx3 = document.getElementById('incomeExpenseChart').getContext('2d');
+      incomeExpenseChart = new Chart(ctx3,{
+        type:'bar',
+        data:{
+          labels:labels,
+          datasets:[
+            {label:'Rent Income',data:rents, backgroundColor:'#4CAF50'},
+            {label:'Total Expenses',data:totalExpArr, backgroundColor:'#F44336'},
+            {label:'Net Income',data:netArr, backgroundColor:'#2196F3'}
+          ]
+        },
+        options:{
+          responsive:true,
+          scales:{y:{beginAtZero:true}}
+        }
+      });
+    }else{
+      incomeSummaryChart.data.datasets[0].data = incomeData;
+      incomeSummaryChart.update();
+
+      expenseChart.data.labels = labels;
+      expenseChart.data.datasets[0].data = maintArr;
+      expenseChart.data.datasets[1].data = poolGardenHOAArr;
+      expenseChart.update();
+
+      incomeExpenseChart.data.labels = labels;
+      incomeExpenseChart.data.datasets[0].data = rents;
+      incomeExpenseChart.data.datasets[1].data = totalExpArr;
+      incomeExpenseChart.data.datasets[2].data = netArr;
+      incomeExpenseChart.update();
+    }
+
+    // narrative
+    const report =
+`Investment performance is green based on income, maintenance, expenses, and asset appreciation.
+
+Operating Income and Expenses:
+Income is ${fmtCurrency(gross)}, maintenance is ${fmtCurrency(maintTot)}, and HOA, pool, and other fees are ${fmtCurrency(hoaGroup)}, for a net income of ${fmtCurrency(netIncome)}. ROI is ${(roiNet*100).toFixed(2)}% (plan ${planROI.toFixed(2)}%, expected ${targetROI.toFixed(2)}% annually). Maintenance costs are ${(maintPct*100).toFixed(2)}% of rent (target <5%).
+
+Property Taxes:
+After property taxes of ${fmtCurrency(annualTax)}, net income is ${fmtCurrency(netAfterTax)} (${(roiAfterTax*100).toFixed(2)}% ROI).
+
+Home Value:
+The home was purchased for ${fmtCurrency(homeCost)} plus ${fmtCurrency(repairCost)} in repairs (total ${fmtCurrency(costBasis)}). It is now valued at ${fmtCurrency(currentValue)}, up ${fmtCurrency(appreciation)} (${(appreciationPct*100).toFixed(2)}%) over ${monthsOwned} months. If sold today for ${fmtCurrency(currentValue)}, expected closing costs of ${fmtCurrency(closingEst)} would yield a ${(overallReturn*100).toFixed(2)}% return after property taxes for the year.`;
+
+    document.getElementById('reportText').value = report;
+
+    // Store values for PDF
+    window.pdfData = {
+      gross, maintTot, totalExpenses, netIncome, annualTax, maintPct,
+      roiNet, roiAfterTax, appreciationPct, overallReturn, homeCost, repairCost,
+      costBasis, currentValue, appreciation, monthsOwned, closingEst, planROI, targetROI,
+      labels, rents, totalExpArr, netArr, maintArr, poolGardenHOAArr, incomeData, report
+    };
+  }
+
+  function copyReport(){
+    const txt = document.getElementById('reportText').value;
+    navigator.clipboard.writeText(txt).then(()=>{});
+  }
+
+  async function generatePDF(){
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 15;
+    let yPos = margin;
+
+    // Title
+    pdf.setFontSize(24);
+    pdf.setTextColor(212, 175, 55);
+    pdf.text('INVESTMENT ASSESSMENT REPORT', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 10;
+
+    pdf.setFontSize(10);
+    pdf.setTextColor(100, 100, 100);
+    pdf.text('Property Analysis & Financial Overview', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 15;
+
+    // Executive Summary
+    pdf.setFontSize(14);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('EXECUTIVE SUMMARY', margin, yPos);
+    yPos += 8;
+
+    pdf.setFontSize(10);
+    pdf.setTextColor(0, 0, 0);
+    const summaryText = window.pdfData.report.split('\n\n')[0];
+    const summaryLines = pdf.splitTextToSize(summaryText, pageWidth - 2 * margin);
+    pdf.text(summaryLines, margin, yPos);
+    yPos += summaryLines.length * 5 + 10;
+
+    if(yPos > pageHeight - margin - 40){
+      pdf.addPage();
+      yPos = margin;
+    }
+
+    // Financial Metrics Table
+    pdf.setFontSize(14);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('FINANCIAL METRICS', margin, yPos);
+    yPos += 10;
+
+    const tableData = [
+      ['Gross Income (Rent)', fmtCurrency(window.pdfData.gross)],
+      ['Total Operating Expenses', fmtCurrency(window.pdfData.totalExpenses)],
+      ['Net Income (before tax)', fmtCurrency(window.pdfData.netIncome)],
+      ['Property Tax', fmtCurrency(window.pdfData.annualTax)],
+      ['Maintenance as % of Rent', fmtPercent(window.pdfData.maintPct)],
+      ['ROI – Net Income / Cost Basis', fmtPercent(window.pdfData.roiNet)],
+      ['ROI – After Property Tax', fmtPercent(window.pdfData.roiAfterTax)],
+      ['Home Value Appreciation', fmtPercent(window.pdfData.appreciationPct)],
+      ['Overall ROI (incl. Tax, Appreciation & Closing)', fmtPercent(window.pdfData.overallReturn)]
+    ];
+
+    pdf.autoTable({
+      startY: yPos,
+      head: [['Metric', 'Value']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [212, 175, 55], textColor: [0, 0, 0], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+      margin: { left: margin, right: margin }
+    });
+
+    yPos = pdf.internal.pageSize.getHeight() - margin - 60;
+
+    // Charts - Income & Expense
+    pdf.addPage();
+    yPos = margin;
+
+    pdf.setFontSize(14);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('INCOME & EXPENSE ANALYSIS', margin, yPos);
+    yPos += 15;
+
+    const chartCanvas1 = document.getElementById('incomeExpenseChart');
+    const chartImg1 = chartCanvas1.toDataURL('image/png');
+    pdf.addImage(chartImg1, 'PNG', margin, yPos, pageWidth - 2 * margin, 80);
+    yPos += 90;
+
+    // Charts - Income Summary
+    pdf.addPage();
+    yPos = margin;
+
+    pdf.setFontSize(14);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('INCOME SUMMARY', margin, yPos);
+    yPos += 15;
+
+    const chartCanvas2 = document.getElementById('incomeSummaryChart');
+    const chartImg2 = chartCanvas2.toDataURL('image/png');
+    pdf.addImage(chartImg2, 'PNG', margin, yPos, pageWidth - 2 * margin, 80);
+    yPos += 90;
+
+    // Charts - Expense Breakdown
+    pdf.addPage();
+    yPos = margin;
+
+    pdf.setFontSize(14);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('EXPENSE BREAKDOWN', margin, yPos);
+    yPos += 15;
+
+    const chartCanvas3 = document.getElementById('expenseChart');
+    const chartImg3 = chartCanvas3.toDataURL('image/png');
+    pdf.addImage(chartImg3, 'PNG', margin, yPos, pageWidth - 2 * margin, 80);
+
+    // Footer
+    const pageCount = pdf.getNumberOfPages();
+    for(let i = 1; i <= pageCount; i++){
+      pdf.setPage(i);
+      pdf.setFontSize(9);
+      pdf.setTextColor(150, 150, 150);
+      pdf.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+      pdf.text(`Generated: ${new Date().toLocaleDateString()}`, margin, pageHeight - 10);
+    }
+
+    pdf.save('Luxor-Investment-Assessment.pdf');
+  }
+
+  buildTable();
+  loadData();
+  recalculate();
+</script>
+</body>
+</html>

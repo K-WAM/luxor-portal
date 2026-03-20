@@ -16,17 +16,9 @@ type MaintenanceRequest = {
   cost?: number;
   createdAt?: string;
   closedAt?: string;
-  attachments?: { url: string; name: string; type?: string; size?: number }[];
 };
 
 type Property = { id: string; address: string };
-type TenantUser = { id: string; email: string | null; name: string | null; role: string | null };
-type UserPropertyAccess = {
-  user_id: string;
-  role: string;
-  property_id: string;
-  properties?: { id: string; address: string };
-};
 
 const toDateTimeLocal = (value?: string) => {
   if (!value) return "";
@@ -54,18 +46,9 @@ export default function MaintenanceRequestsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
-  const [createAttachments, setCreateAttachments] = useState<File[]>([]);
-  const [createAttachmentError, setCreateAttachmentError] = useState<string | null>(null);
-  const [editAttachments, setEditAttachments] = useState<File[]>([]);
-  const [editAttachmentError, setEditAttachmentError] = useState<string | null>(null);
-  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
-  const [userProperties, setUserProperties] = useState<UserPropertyAccess[]>([]);
-  const [editTenantUserId, setEditTenantUserId] = useState("");
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>("all");
 
   const [createForm, setCreateForm] = useState({
     propertyId: "",
-    tenantUserId: "",
     tenantName: "",
     tenantEmail: "",
     category: "",
@@ -97,16 +80,6 @@ export default function MaintenanceRequestsPage() {
       setError(null);
       const propsRes = await fetch("/api/properties");
       if (propsRes.ok) setProperties((await propsRes.json()) || []);
-      const usersRes = await fetch("/api/admin/users");
-      if (usersRes.ok) {
-        const usersData = (await usersRes.json()) as TenantUser[];
-        setTenantUsers((usersData || []).filter((u) => u.role === "tenant"));
-      }
-      const accessRes = await fetch("/api/admin/user-properties");
-      if (accessRes.ok) {
-        const accessData = (await accessRes.json()) as UserPropertyAccess[];
-        setUserProperties(accessData || []);
-      }
       const reqRes = await fetch("/api/maintenance");
       const reqData = await reqRes.json();
       if (!reqRes.ok) throw new Error(reqData.error || "Failed to load");
@@ -190,94 +163,6 @@ export default function MaintenanceRequestsPage() {
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setCreateForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
-  const handleTenantSelect = (e: ChangeEvent<HTMLSelectElement>) => {
-    const tenantUserId = e.target.value;
-    const selected = tenantUsers.find((u) => u.id === tenantUserId);
-    setCreateForm((f) => ({
-      ...f,
-      tenantUserId,
-      tenantName: selected?.name || f.tenantName,
-      tenantEmail: selected?.email || f.tenantEmail,
-    }));
-  };
-
-  const handleEditTenantSelect = (e: ChangeEvent<HTMLSelectElement>) => {
-    const tenantUserId = e.target.value;
-    const selected = tenantUsers.find((u) => u.id === tenantUserId);
-    setEditTenantUserId(tenantUserId);
-    setEditForm((f) => ({
-      ...f,
-      tenantName: selected?.name || selected?.email || f.tenantName,
-      tenantEmail: selected?.email || f.tenantEmail,
-    }));
-  };
-
-  const MAX_FILE_MB = 10;
-  const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
-  const ACCEPTED_TYPES = new Set([
-    "image/jpeg",
-    "image/png",
-    "image/heic",
-    "video/mp4",
-    "video/quicktime",
-  ]);
-
-  const handleCreateAttachmentChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) {
-      setCreateAttachments([]);
-      setCreateAttachmentError(null);
-      return;
-    }
-
-    const invalidType = files.find((file) => !ACCEPTED_TYPES.has(file.type));
-    if (invalidType) {
-      setCreateAttachments([]);
-      setCreateAttachmentError("Unsupported file type. Please upload images or videos.");
-      e.target.value = "";
-      return;
-    }
-
-    const tooLarge = files.find((file) => file.size > MAX_FILE_BYTES);
-    if (tooLarge) {
-      setCreateAttachments([]);
-      setCreateAttachmentError(`File exceeds ${MAX_FILE_MB} MB limit.`);
-      e.target.value = "";
-      return;
-    }
-
-    setCreateAttachments(files);
-    setCreateAttachmentError(null);
-  };
-
-  const handleEditAttachmentChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) {
-      setEditAttachments([]);
-      setEditAttachmentError(null);
-      return;
-    }
-
-    const invalidType = files.find((file) => !ACCEPTED_TYPES.has(file.type));
-    if (invalidType) {
-      setEditAttachments([]);
-      setEditAttachmentError("Unsupported file type. Please upload images or videos.");
-      e.target.value = "";
-      return;
-    }
-
-    const tooLarge = files.find((file) => file.size > MAX_FILE_BYTES);
-    if (tooLarge) {
-      setEditAttachments([]);
-      setEditAttachmentError(`File exceeds ${MAX_FILE_MB} MB limit.`);
-      e.target.value = "";
-      return;
-    }
-
-    setEditAttachments(files);
-    setEditAttachmentError(null);
-  };
-
   const handleCreateSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -287,27 +172,12 @@ export default function MaintenanceRequestsPage() {
     }
     try {
       setCreating(true);
-      let uploadedAttachments: { url: string; name: string; type?: string; size?: number }[] = [];
-      if (createAttachments.length > 0) {
-        const formData = new FormData();
-        formData.append("propertyId", createForm.propertyId);
-        createAttachments.forEach((file) => formData.append("files", file));
-        const uploadRes = await fetch("/api/maintenance/attachments", {
-          method: "POST",
-          body: formData,
-        });
-        const uploadData = await uploadRes.json();
-        if (!uploadRes.ok) throw new Error(uploadData.error || "Failed to upload attachments");
-        uploadedAttachments = uploadData.attachments || [];
-      }
-
       const payload: any = {
         propertyId: createForm.propertyId,
         tenantName: createForm.tenantName,
         tenantEmail: createForm.tenantEmail,
         category: createForm.category,
         description: createForm.description,
-        attachments: uploadedAttachments,
       };
       const res = await fetch("/api/maintenance", {
         method: "POST",
@@ -333,7 +203,6 @@ export default function MaintenanceRequestsPage() {
       }
       setCreateForm({
         propertyId: "",
-        tenantUserId: "",
         tenantName: "",
         tenantEmail: "",
         category: "",
@@ -341,8 +210,6 @@ export default function MaintenanceRequestsPage() {
         cost: "",
         internalComments: "",
       });
-      setCreateAttachments([]);
-      setCreateAttachmentError(null);
       setShowCreateForm(false);
       await loadRequests();
     } catch (err: any) {
@@ -355,12 +222,6 @@ export default function MaintenanceRequestsPage() {
   const startEdit = (req: MaintenanceRequest) => {
     const fallbackPropertyId = req.propertyId || properties[0]?.id || "";
     setEditingRequestId(req.id);
-    setEditAttachments([]);
-    setEditAttachmentError(null);
-    const matchedTenant = tenantUsers.find(
-      (u) => u.email && req.tenantEmail && u.email.toLowerCase() === req.tenantEmail.toLowerCase()
-    );
-    setEditTenantUserId(matchedTenant?.id || "");
     setEditForm({
       propertyId: fallbackPropertyId,
       tenantName: req.tenantName || "",
@@ -378,13 +239,6 @@ export default function MaintenanceRequestsPage() {
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setEditForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
-  const tenantOptionsForProperty = (propertyId: string) => {
-    const tenantIds = userProperties
-      .filter((up) => up.property_id === propertyId && up.role === "tenant")
-      .map((up) => up.user_id);
-    return tenantUsers.filter((u) => tenantIds.includes(u.id));
-  };
-
   const handleEditSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!editingRequestId) return;
@@ -394,20 +248,6 @@ export default function MaintenanceRequestsPage() {
     }
     try {
       setSavingId(editingRequestId);
-      let uploadedAttachments: { url: string; name: string; type?: string; size?: number }[] = [];
-      if (editAttachments.length > 0) {
-        const formData = new FormData();
-        formData.append("propertyId", editForm.propertyId);
-        editAttachments.forEach((file) => formData.append("files", file));
-        const uploadRes = await fetch("/api/maintenance/attachments", {
-          method: "POST",
-          body: formData,
-        });
-        const uploadData = await uploadRes.json();
-        if (!uploadRes.ok) throw new Error(uploadData.error || "Failed to upload attachments");
-        uploadedAttachments = uploadData.attachments || [];
-      }
-
       const payload: any = {
         id: editingRequestId,
         propertyId: editForm.propertyId,
@@ -417,9 +257,6 @@ export default function MaintenanceRequestsPage() {
         description: editForm.description,
         status: editForm.status,
       };
-      if (uploadedAttachments.length > 0) {
-        payload.attachments = uploadedAttachments;
-      }
       if (editForm.cost !== "") payload.cost = parseFloat(editForm.cost);
       const createdAtIso = toIsoString(editForm.createdAt);
       if (createdAtIso) payload.createdAt = createdAtIso;
@@ -434,8 +271,6 @@ export default function MaintenanceRequestsPage() {
       if (!res.ok) throw new Error(data.error || "Failed to save changes");
       await loadRequests();
       setEditingRequestId(null);
-      setEditAttachments([]);
-      setEditAttachmentError(null);
     } catch (err: any) {
       setError(err.message || "Failed to save changes.");
     } finally {
@@ -468,13 +303,14 @@ export default function MaintenanceRequestsPage() {
         })
       : "N/A";
 
-  const filteredRequests =
-    selectedPropertyId === "all"
-      ? requests
-      : requests.filter((r) => r.propertyId === selectedPropertyId);
+  const activeRequests = requests.filter((r) => r.status !== "closed");
+  const closedRequests = requests.filter((r) => r.status === "closed");
 
-  const activeRequests = filteredRequests.filter((r) => r.status !== "closed");
-  const closedRequests = filteredRequests.filter((r) => r.status === "closed");
+  const isRedRequest = (createdAt?: string) => {
+    if (!createdAt) return false;
+    const days = (new Date().getTime() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24);
+    return days > 21;
+  };
   if (loading) {
     return (
       <div className="p-8">
@@ -501,42 +337,6 @@ export default function MaintenanceRequestsPage() {
           {error}
         </div>
       )}
-
-      <div className="mb-6">
-        <div className="bg-white rounded-lg border border-slate-200">
-          <div className="px-4 py-3 border-b border-slate-200">
-            <div className="text-sm font-semibold text-slate-800">Properties</div>
-          </div>
-          <div className="divide-y divide-slate-200">
-            <button
-              type="button"
-              onClick={() => setSelectedPropertyId("all")}
-              className={`w-full text-left px-4 py-3 text-sm ${
-                selectedPropertyId === "all" ? "bg-slate-100 font-semibold" : "hover:bg-slate-50"
-              }`}
-            >
-              All properties
-            </button>
-            {properties.map((property) => {
-              const isActive = selectedPropertyId === property.id;
-              return (
-                <div key={property.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPropertyId(property.id)}
-                    className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between ${
-                      isActive ? "bg-slate-100 font-semibold" : "hover:bg-slate-50"
-                    }`}
-                  >
-                    <span>{property.address}</span>
-                    <span className="text-xs text-slate-500">{isActive ? "−" : "+"}</span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
 
       {showCreateForm && (
         <div className="mb-8 bg-white rounded-lg border border-slate-200 p-6">
@@ -577,25 +377,6 @@ export default function MaintenanceRequestsPage() {
                   <option value="hvac">Heating / Cooling</option>
                   <option value="other">Other</option>
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Tenant (optional)</label>
-                <select
-                  name="tenantUserId"
-                  value={createForm.tenantUserId}
-                  onChange={handleTenantSelect}
-                  className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select tenant...</option>
-                  {tenantUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name || u.email || "Tenant"}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Selecting a tenant will auto-fill name and email.
-                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">
@@ -658,29 +439,6 @@ export default function MaintenanceRequestsPage() {
                 className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Attachments (optional)</label>
-              <input
-                type="file"
-                multiple
-                accept="image/jpeg,image/png,image/heic,video/mp4,video/quicktime"
-                onChange={handleCreateAttachmentChange}
-                className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Max file size: 10 MB per file. If your file exceeds this limit, please email it to connect@luxordev.com.
-              </p>
-              {createAttachmentError && (
-                <p className="text-xs text-red-600 mt-1">{createAttachmentError}</p>
-              )}
-              {createAttachments.length > 0 && (
-                <div className="mt-2 text-xs text-slate-600 space-y-1">
-                  {createAttachments.map((file) => (
-                    <div key={`${file.name}-${file.size}`}>{file.name}</div>
-                  ))}
-                </div>
-              )}
-            </div>
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -712,7 +470,7 @@ export default function MaintenanceRequestsPage() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">ID</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Date Placed</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Elapsed Time</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Age</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Property</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Tenant</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Category</th>
@@ -722,36 +480,31 @@ export default function MaintenanceRequestsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {activeRequests.map((req) => (
+                  {activeRequests.map((req) => {
+                    const isRed = isRedRequest(req.createdAt);
+                    return (
                     <React.Fragment key={req.id}>
-                      <tr className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 text-sm text-slate-900 font-mono">{shortId(req.id)}</td>
-                        <td className="px-4 py-3 text-sm text-slate-900">{formatDate(req.createdAt)}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{getElapsedTime(req.createdAt)}</td>
-                        <td className="px-4 py-3 text-sm text-slate-900">{req.propertyAddress || req.propertyId || "N/A"}</td>
+                      <tr className={`transition-colors ${isRed ? "bg-red-50 hover:bg-red-100" : "hover:bg-slate-50"}`}>
+                        <td className="px-4 py-3 text-sm font-mono text-slate-500">{shortId(req.id)}</td>
+                        <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">{formatDate(req.createdAt)}</td>
+                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                          <span className={isRed ? "font-semibold text-red-700" : "text-slate-600"}>
+                            {getElapsedTime(req.createdAt)}
+                            {isRed && <span className="ml-1 text-xs">(overdue)</span>}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-900 font-medium">{req.propertyAddress || req.propertyId || "N/A"}</td>
                         <td className="px-4 py-3 text-sm">
                           <div className="font-medium text-slate-900">{req.tenantName}</div>
                           <div className="text-slate-500 text-xs">{req.tenantEmail}</div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-slate-700">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{req.category || "General"}</span>
+                        <td className="px-4 py-3 text-sm">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{req.category || "General"}</span>
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-700 max-w-xs">
-                          <div>{req.description}</div>
-                          {req.attachments && req.attachments.length > 0 && (
-                            <div className="mt-2 space-y-1">
-                              {req.attachments.map((att, index) => (
-                                <a
-                                  key={`${att.url}-${index}`}
-                                  href={att.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="block text-xs text-blue-600 hover:text-blue-700"
-                                >
-                                  {att.name || `Attachment ${index + 1}`}
-                                </a>
-                              ))}
-                            </div>
+                          <p className="truncate">{req.description}</p>
+                          {req.internalComments && (
+                            <p className="text-xs text-slate-500 mt-0.5 italic truncate">Note: {req.internalComments}</p>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm">
@@ -805,29 +558,12 @@ export default function MaintenanceRequestsPage() {
                                 </select>
                               </div>
                               <div className="flex flex-col gap-1">
-                                <label className="font-medium">Tenant</label>
-                                <select
-                                  value={editTenantUserId}
-                                  onChange={handleEditTenantSelect}
-                                  className="border border-slate-300 rounded-md px-2 py-1.5"
-                                >
-                                  <option value="">Select tenant...</option>
-                                  {tenantOptionsForProperty(editForm.propertyId).map((u) => (
-                                    <option key={u.id} value={u.id}>
-                                      {u.name || u.email || "Tenant"}
-                                    </option>
-                                  ))}
-                                </select>
+                                <label className="font-medium">Tenant Name</label>
+                                <input type="text" name="tenantName" value={editForm.tenantName} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
                               </div>
                               <div className="flex flex-col gap-1">
                                 <label className="font-medium">Tenant Email</label>
-                                <input
-                                  type="email"
-                                  name="tenantEmail"
-                                  value={editForm.tenantEmail}
-                                  readOnly
-                                  className="border border-slate-300 rounded-md px-2 py-1.5 bg-slate-50"
-                                />
+                                <input type="email" name="tenantEmail" value={editForm.tenantEmail} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
                               </div>
                               <div className="flex flex-col gap-1">
                                 <label className="font-medium">Category</label>
@@ -855,29 +591,6 @@ export default function MaintenanceRequestsPage() {
                               <div className="flex flex-col gap-1 md:col-span-3">
                                 <label className="font-medium">Description</label>
                                 <textarea name="description" value={editForm.description} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" rows={2} />
-                              </div>
-                              <div className="flex flex-col gap-1 md:col-span-3">
-                                <label className="font-medium">Attachments (optional)</label>
-                                <input
-                                  type="file"
-                                  multiple
-                                  accept="image/jpeg,image/png,image/heic,video/mp4,video/quicktime"
-                                  onChange={handleEditAttachmentChange}
-                                  className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">
-                                  Max file size: 10 MB per file. If your file exceeds this limit, please email it to connect@luxordev.com.
-                                </p>
-                                {editAttachmentError && (
-                                  <p className="text-xs text-red-600 mt-1">{editAttachmentError}</p>
-                                )}
-                                {editAttachments.length > 0 && (
-                                  <div className="mt-2 text-xs text-slate-600 space-y-1">
-                                    {editAttachments.map((file) => (
-                                      <div key={`${file.name}-${file.size}`}>{file.name}</div>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:col-span-3">
                                 <div className="flex flex-col gap-1">
@@ -940,7 +653,8 @@ export default function MaintenanceRequestsPage() {
                         </tr>
                       )}
                     </React.Fragment>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -952,154 +666,126 @@ export default function MaintenanceRequestsPage() {
         {closedRequests.length === 0 ? (
           <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-gray-500">No closed maintenance requests.</div>
         ) : (
-          <div className="bg-white rounded-lg border border-slate-200 divide-y divide-slate-200">
+          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Property</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Tenant</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Opened</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Closed</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Cost</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
             {closedRequests.map((req) => (
               <React.Fragment key={req.id}>
-                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-slate-800">
-                    <span className="font-mono text-xs text-slate-500">#{shortId(req.id)}</span>
-                    <span className="font-semibold">{req.propertyAddress || req.propertyId || "N/A"}</span>
-                    <span className="text-slate-500">·</span>
-                    <span>{req.tenantName}</span>
-                    <span className="text-slate-500">·</span>
-                    <span>{req.category || "General"}</span>
-                    <span className="text-slate-500">·</span>
-                    <span>{formatDate(req.createdAt)} → {formatDate(req.closedAt)}</span>
-                    <span className="text-slate-500">·</span>
-                    <span className="truncate max-w-xs">{req.description}</span>
-                    {req.cost !== undefined && (
-                      <>
-                        <span className="text-slate-500">·</span>
-                        <span>Cost: {req.cost ? `$${req.cost.toFixed(2)}` : "N/A"}</span>
-                      </>
+                <tr className="hover:bg-slate-50 transition-colors text-sm">
+                  <td className="px-4 py-3 font-mono text-xs text-slate-400">{shortId(req.id)}</td>
+                  <td className="px-4 py-3 text-slate-700 font-medium">{req.propertyAddress || req.propertyId || "N/A"}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-slate-800">{req.tenantName}</div>
+                    <div className="text-xs text-slate-400">{req.tenantEmail}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                      {req.category || "General"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 max-w-xs">
+                    <p className="truncate">{req.description}</p>
+                    {req.internalComments && (
+                      <p className="text-xs text-slate-400 italic truncate mt-0.5">Note: {req.internalComments}</p>
                     )}
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
+                  </td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDate(req.createdAt)}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDate(req.closedAt)}</td>
+                  <td className="px-4 py-3 text-slate-700 font-medium whitespace-nowrap">
+                    {req.cost !== undefined && req.cost !== null ? `$${Number(req.cost).toFixed(2)}` : "—"}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex items-center gap-2">
                     <button
-                      className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-60"
+                      className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 text-xs disabled:opacity-60"
                       onClick={() => startEdit(req)}
                       disabled={savingId === req.id}
                     >
                       Edit
                     </button>
                     <button
-                      className="px-3 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60"
-                      onClick={() => { setEditingNotes(req.id); setNotesText(req.internalComments || ""); }}
-                    >
-                      {req.internalComments ? "Notes" : "Add Notes"}
-                    </button>
-                    <button
-                      className="px-3 py-1.5 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60"
+                      className="px-3 py-1.5 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 text-xs disabled:opacity-60"
                       onClick={() => deleteRequest(req.id)}
                       disabled={savingId === req.id}
                     >
                       Delete
                     </button>
-                  </div>
-                </div>
-                {editingRequestId === req.id && (
-                  <div className="bg-slate-50 px-4 py-3">
-                    <form className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm" onSubmit={handleEditSubmit}>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-medium">Property</label>
-                        <select name="propertyId" value={editForm.propertyId} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" required>
-                          <option value="">Select property...</option>
-                          {properties.map((p) => (<option key={p.id} value={p.id}>{p.address}</option>))}
-                        </select>
-                      </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Tenant</label>
-                                <select
-                                  value={editTenantUserId}
-                                  onChange={handleEditTenantSelect}
-                                  className="border border-slate-300 rounded-md px-2 py-1.5"
-                                >
-                                  <option value="">Select tenant...</option>
-                                  {tenantOptionsForProperty(editForm.propertyId).map((u) => (
-                                    <option key={u.id} value={u.id}>
-                                      {u.name || u.email || "Tenant"}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Tenant Email</label>
-                                <input
-                                  type="email"
-                                  name="tenantEmail"
-                                  value={editForm.tenantEmail}
-                                  readOnly
-                                  className="border border-slate-300 rounded-md px-2 py-1.5 bg-slate-50"
-                                />
-                              </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-medium">Category</label>
-                        <select name="category" value={editForm.category} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5">
-                          <option value="">General</option>
-                          <option value="plumbing">Plumbing</option>
-                          <option value="electrical">Electrical</option>
-                          <option value="appliance">Appliance</option>
-                          <option value="hvac">Heating / Cooling</option>
-                          <option value="other">Other</option>
-                        </select>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-medium">Status</label>
-                        <select name="status" value={editForm.status} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5">
-                          <option value="open">Open</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="closed">Closed</option>
-                        </select>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="font-medium">Cost ($)</label>
-                        <input type="number" step="0.01" name="cost" value={editForm.cost} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" placeholder="0.00" />
-                      </div>
-                      <div className="flex flex-col gap-1 md:col-span-3">
-                        <label className="font-medium">Description</label>
-                        <textarea name="description" value={editForm.description} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" rows={2} />
-                      </div>
-                      <div className="flex flex-col gap-1 md:col-span-3">
-                        <label className="font-medium">Attachments (optional)</label>
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/jpeg,image/png,image/heic,video/mp4,video/quicktime"
-                          onChange={handleEditAttachmentChange}
-                          className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">
-                          Max file size: 10 MB per file. If your file exceeds this limit, please email it to connect@luxordev.com.
-                        </p>
-                        {editAttachmentError && (
-                          <p className="text-xs text-red-600 mt-1">{editAttachmentError}</p>
-                        )}
-                        {editAttachments.length > 0 && (
-                          <div className="mt-2 text-xs text-slate-600 space-y-1">
-                            {editAttachments.map((file) => (
-                              <div key={`${file.name}-${file.size}`}>{file.name}</div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 md:col-span-3">
-                        <button type="submit" disabled={savingId === req.id} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300">{savingId === req.id ? "Saving..." : "Save Changes"}</button>
-                        <button type="button" onClick={cancelEdit} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300">Cancel</button>
-                      </div>
-                    </form>
-                  </div>
-                )}
-                {editingNotes === req.id && (
-                  <div className="w-full px-4 pb-4">
-                    <textarea className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" rows={3} placeholder="Add notes, cost details, or comments..." value={notesText} onChange={(e) => setNotesText(e.target.value)} disabled={savingId === req.id} />
-                    <div className="flex gap-2 mt-2">
-                      <button onClick={() => saveNotes(req.id, req.cost)} disabled={savingId === req.id} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors">{savingId === req.id ? "Saving..." : "Save"}</button>
-                      <button onClick={() => { setEditingNotes(null); setNotesText(""); }} disabled={savingId === req.id} className="px-4 py-2 bg-slate-200 text-slate-700 text-sm rounded-md hover:bg-slate-300 disabled:bg-slate-100 disabled:cursor-not-allowed transition-colors">Cancel</button>
                     </div>
-                  </div>
+                  </td>
+                </tr>
+                {editingRequestId === req.id && (
+                  <tr>
+                    <td colSpan={9} className="bg-slate-50 px-4 py-3">
+                      <form className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm" onSubmit={handleEditSubmit}>
+                        <div className="flex flex-col gap-1">
+                          <label className="font-medium">Property</label>
+                          <select name="propertyId" value={editForm.propertyId} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" required>
+                            <option value="">Select property...</option>
+                            {properties.map((p) => (<option key={p.id} value={p.id}>{p.address}</option>))}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="font-medium">Tenant Name</label>
+                          <input type="text" name="tenantName" value={editForm.tenantName} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="font-medium">Tenant Email</label>
+                          <input type="email" name="tenantEmail" value={editForm.tenantEmail} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="font-medium">Category</label>
+                          <select name="category" value={editForm.category} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5">
+                            <option value="">General</option>
+                            <option value="plumbing">Plumbing</option>
+                            <option value="electrical">Electrical</option>
+                            <option value="appliance">Appliance</option>
+                            <option value="hvac">Heating / Cooling</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="font-medium">Status</label>
+                          <select name="status" value={editForm.status} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5">
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="closed">Closed</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="font-medium">Cost ($)</label>
+                          <input type="number" step="0.01" name="cost" value={editForm.cost} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" placeholder="0.00" />
+                        </div>
+                        <div className="flex flex-col gap-1 md:col-span-3">
+                          <label className="font-medium">Description</label>
+                          <textarea name="description" value={editForm.description} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" rows={2} />
+                        </div>
+                        <div className="flex items-center gap-2 md:col-span-3">
+                          <button type="submit" disabled={savingId === req.id} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300">{savingId === req.id ? "Saving..." : "Save Changes"}</button>
+                          <button type="button" onClick={cancelEdit} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300">Cancel</button>
+                        </div>
+                      </form>
+                    </td>
+                  </tr>
                 )}
               </React.Fragment>
             ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

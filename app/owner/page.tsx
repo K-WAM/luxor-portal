@@ -519,12 +519,11 @@ Use the provided property and document context from the server; do not guess.`;
   }
 
   const performanceStatus =
-    metrics.roi_post_tax >= 5 && metrics.maintenance_pct < 5 ? "green" :
-    metrics.roi_post_tax >= 3 && metrics.maintenance_pct < 7 ? "yellow" : "red";
+    metrics.roi_pre_tax >= 5 && metrics.maintenance_pct < 5 ? "green" :
+    metrics.roi_pre_tax >= 3 && metrics.maintenance_pct < 7 ? "yellow" : "red";
   const performanceLabel = performanceStatus === "green" ? "Excellent" : performanceStatus === "yellow" ? "Good" : "Needs Attention";
 
   const gaugeRoiPre = metrics.roi_pre_tax;
-  const gaugeRoiPost = metrics.roi_post_tax;
   const gaugeRoiTotal = metrics.roi_with_appreciation;
   const expectedRoi = calculateExpectedRoi({
     targetMonthlyRent: property.target_monthly_rent || 0,
@@ -660,20 +659,85 @@ Use the provided property and document context from the server; do not guess.`;
           </div>
         </div>
 
+        {/* Investment Narrative */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Investment Report</h2>
+          <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
+            <p>
+              <span className="font-semibold">Performance: </span>
+              Investment performance is <span className={`font-semibold ${performanceStatus === "green" ? "text-green-700" : performanceStatus === "yellow" ? "text-yellow-700" : "text-red-700"}`}>{performanceLabel}</span> based on income, maintenance, and asset appreciation.
+            </p>
+            <p>
+              <span className="font-semibold">Operating Income: </span>
+              Gross income is {formatCurrency(metrics.ytd_rent_income)}, total expenses are {formatCurrency(metrics.ytd_total_expenses)}{metrics.ytd_maintenance > 0 ? ` (including ${formatCurrency(metrics.ytd_maintenance)} maintenance)` : ""}, creating a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span>. ROI is {formatPercentage(metrics.roi_pre_tax)}. Maintenance is {formatPercentage(metrics.maintenance_pct)} of income.
+            </p>
+            {metrics.ytd_property_tax > 0 && (
+              <p>
+                <span className="font-semibold">Property Taxes: </span>
+                After property taxes of {formatCurrency(metrics.ytd_property_tax)}, net income is {formatCurrency(metrics.ytd_net_income - metrics.ytd_property_tax)}.
+              </p>
+            )}
+            <p>
+              <span className="font-semibold">Home Value: </span>
+              The property is valued at {formatCurrency(metrics.current_market_value)}, {metrics.appreciation_value >= 0 ? "up" : "down"} {formatCurrency(Math.abs(metrics.appreciation_value))} ({formatPercentage(Math.abs(metrics.appreciation_pct))}) from the {formatCurrency(metrics.cost_basis)} cost basis. Total ROI including appreciation is <span className={`font-semibold ${metrics.roi_with_appreciation >= 0 ? "text-green-700" : "text-red-700"}`}>{formatPercentage(metrics.roi_with_appreciation)}</span>.
+            </p>
+          </div>
+        </div>
+
+        {/* Performance Thresholds */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Performance Thresholds</h2>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Status</th>
+                <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">ROI Threshold</th>
+                <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Maintenance Threshold</th>
+                <th className="py-3 px-4 text-left font-semibold text-slate-700 text-xs uppercase tracking-wider">Current</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className={`border-b border-slate-100 ${performanceStatus === "green" ? "bg-green-50" : ""}`}>
+                <td className="py-3 px-4"><span className="inline-flex items-center gap-1.5 font-semibold text-green-700"><span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>Excellent</span></td>
+                <td className="py-3 px-4 text-slate-600">≥ 5%</td>
+                <td className="py-3 px-4 text-slate-600">&lt; 5% of rent</td>
+                <td className="py-3 px-4">{performanceStatus === "green" ? <span className="text-green-700 font-semibold">✓ You are here</span> : ""}</td>
+              </tr>
+              <tr className={`border-b border-slate-100 ${performanceStatus === "yellow" ? "bg-yellow-50" : ""}`}>
+                <td className="py-3 px-4"><span className="inline-flex items-center gap-1.5 font-semibold text-yellow-700"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span>Good</span></td>
+                <td className="py-3 px-4 text-slate-600">≥ 3%</td>
+                <td className="py-3 px-4 text-slate-600">&lt; 7% of rent</td>
+                <td className="py-3 px-4">{performanceStatus === "yellow" ? <span className="text-yellow-700 font-semibold">✓ You are here</span> : ""}</td>
+              </tr>
+              <tr className={`${performanceStatus === "red" ? "bg-red-50" : ""}`}>
+                <td className="py-3 px-4"><span className="inline-flex items-center gap-1.5 font-semibold text-red-700"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Needs Attention</span></td>
+                <td className="py-3 px-4 text-slate-600">&lt; 3%</td>
+                <td className="py-3 px-4 text-slate-600">≥ 7% of rent</td>
+                <td className="py-3 px-4">{performanceStatus === "red" ? <span className="text-red-700 font-semibold">✓ You are here</span> : ""}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
+            Current: ROI {formatPercentage(metrics.roi_pre_tax)} · Maintenance {formatPercentage(metrics.maintenance_pct)} of rent
+          </div>
+        </div>
+
         {/* ROI Speedometer Gauges */}
         <div>
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">
             Return on Investment
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div
               className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Formula: Net Income / Cost Basis × 100"
+              title="Formula: Expected Rent Income - Expected Expenses / Cost Basis × 100"
             >
               <GaugeChart
-                value={gaugeRoiPre}
+                value={expectedRoi}
                 target={0}
-                label="Pre-Tax ROI"
+                label="Expected ROI"
                 unit="%"
                 maxValue={15}
                 colorThresholds={{ green: 80, yellow: 60 }}
@@ -682,12 +746,12 @@ Use the provided property and document context from the server; do not guess.`;
             </div>
             <div
               className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Formula: (Net Income - Property Tax) / Cost Basis × 100"
+              title="Formula: Net Income / Cost Basis × 100"
             >
               <GaugeChart
-                value={gaugeRoiPost}
+                value={gaugeRoiPre}
                 target={0}
-                label="Post-Tax ROI"
+                label="Actual ROI (YTD)"
                 unit="%"
                 maxValue={15}
                 colorThresholds={{ green: 80, yellow: 60 }}
@@ -704,20 +768,6 @@ Use the provided property and document context from the server; do not guess.`;
                 label="Total ROI (with Appreciation)"
                 unit="%"
                 maxValue={40}
-                colorThresholds={{ green: 80, yellow: 60 }}
-                showTarget={false}
-              />
-            </div>
-            <div
-              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Formula: (Expected Rent - Expected HOA/Maintenance/Pool/Garden) / Cost Basis A- 100"
-            >
-              <GaugeChart
-                value={expectedRoi}
-                target={0}
-                label="Expected ROI"
-                unit="%"
-                maxValue={15}
                 colorThresholds={{ green: 80, yellow: 60 }}
                 showTarget={false}
               />
@@ -794,11 +844,11 @@ Use the provided property and document context from the server; do not guess.`;
                   <td className="py-3 px-4 text-xs text-slate-600">Net Income / Cost Basis × 100</td>
                 </tr>
                 <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">Post-Tax ROI</td>
-                  <td className={`py-3 px-4 text-right font-semibold ${metrics.roi_post_tax >= 4 ? 'text-green-600' : metrics.roi_post_tax >= 2 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {formatPercentage(metrics.roi_post_tax)}
+                  <td className="py-3 px-4">Expected ROI</td>
+                  <td className={`py-3 px-4 text-right font-semibold ${expectedRoi >= 5 ? 'text-green-600' : expectedRoi >= 3 ? 'text-yellow-600' : 'text-red-600'}`}>
+                    {formatPercentage(expectedRoi)}
                   </td>
-                  <td className="py-3 px-4 text-xs text-slate-600">(Net Income - Property Tax) / Cost Basis × 100</td>
+                  <td className="py-3 px-4 text-xs text-slate-600">Expected (Rent - Expenses) / Cost Basis × 100</td>
                 </tr>
                 <tr className="hover:bg-slate-50">
                   <td className="py-3 px-4 font-semibold">Total ROI (with Appreciation)</td>

@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speedometer Gauges</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Helvetica Neue', 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #0a0a0a;
+            padding: 40px 20px;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .logo-text {
+            font-size: 48px;
+            font-weight: 300;
+            color: #c9a961;
+            font-family: 'Georgia', serif;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+        }
+        
+        .logo-subtitle {
+            font-size: 10px;
+            color: #888;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-top: 8px;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 50px;
+            background: #1a1a1a;
+            padding: 50px;
+            border-radius: 2px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            border: 1px solid #2a2a2a;
+            max-width: 1300px;
+        }
+        
+        .gauge-row {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+        }
+        
+        .controls-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-width: 260px;
+        }
+        
+        .zone-config {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            padding: 20px;
+            background: #0f0f0f;
+            border: 1px solid #2a2a2a;
+        }
+        
+        .zone-config h4 {
+            grid-column: 1 / -1;
+            margin: 0 0 12px 0;
+            color: #c9a961;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 400;
+        }
+        
+        .zone-input {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .zone-input label {
+            font-size: 9px;
+            font-weight: 400;
+            color: #888;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .color-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 1px;
+            display: inline-block;
+        }
+        
+        .zone-input input {
+            padding: 8px 10px;
+            font-size: 13px;
+            border: 1px solid #2a2a2a;
+            background: #0a0a0a;
+            color: #fff;
+            transition: all 0.2s;
+        }
+        
+        .zone-input input:focus {
+            outline: none;
+            border-color: #c9a961;
+        }
+        
+        .value-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            padding: 20px;
+            background: #0f0f0f;
+            border: 1px solid #2a2a2a;
+        }
+        
+        .chart-max-input {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        
+        .chart-max-input label {
+            font-size: 9px;
+            font-weight: 400;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .chart-max-input input {
+            padding: 8px 10px;
+            font-size: 13px;
+            border: 1px solid #2a2a2a;
+            background: #0a0a0a;
+            color: #fff;
+            transition: all 0.2s;
+        }
+        
+        .chart-max-input input:focus {
+            outline: none;
+            border-color: #c9a961;
+        }
+        
+        .value-display {
+            font-size: 36px;
+            font-weight: 300;
+            color: #c9a961;
+            text-align: center;
+            font-family: 'Georgia', serif;
+            letter-spacing: 1px;
+        }
+        
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .input-group label {
+            font-size: 9px;
+            font-weight: 400;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        input[type="number"] {
+            padding: 10px;
+            font-size: 15px;
+            border: 1px solid #2a2a2a;
+            background: #0a0a0a;
+            color: #fff;
+            transition: all 0.2s;
+        }
+        
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #c9a961;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 2px;
+            background: #2a2a2a;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #c9a961;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #c9a961;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .gauge-container {
+            position: relative;
+            width: 320px;
+            height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .gauge-title {
+            text-align: center;
+            font-size: 13px;
+            font-weight: 400;
+            margin-bottom: 20px;
+            color: #c9a961;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        .right-display {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 140px;
+        }
+        
+        .right-display .value-display {
+            font-size: 42px;
+        }
+        
+        .summary-section {
+            margin-top: 60px;
+            padding: 30px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+        }
+        
+        .summary-title {
+            text-align: center;
+            font-size: 11px;
+            color: #c9a961;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-gauges {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .summary-gauge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .summary-gauge-title {
+            font-size: 10px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .summary-gauge canvas {
+            display: block;
+        }
+        
+        .summary-value {
+            font-size: 24px;
+            color: #c9a961;
+            font-family: 'Georgia', serif;
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">
+        <div class="logo-text">LUXOR</div>
+        <div class="logo-subtitle">Investment Analytics</div>
+    </div>
+    
+    <div class="container">
+        <div class="gauge-row">
+            <div class="controls-column">
+                <div class="zone-config">
+                    <h4>Zone Configuration</h4>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #22c55e;"></span>Green Min</label>
+                        <input type="number" id="green1-min" value="85" min="0" max="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #22c55e;"></span>Green Max</label>
+                        <input type="number" id="green1-max" value="100" min="0" max="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #eab308;"></span>Yellow Min</label>
+                        <input type="number" id="yellow1-min" value="75" min="0" max="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #eab308;"></span>Yellow Max</label>
+                        <input type="number" id="yellow1-max" value="84" min="0" max="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #ef4444;"></span>Red Min</label>
+                        <input type="number" id="red1-min" value="0" min="0" max="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #ef4444;"></span>Red Max</label>
+                        <input type="number" id="red1-max" value="74" min="0" max="100">
+                    </div>
+                </div>
+                
+                <div class="value-controls">
+                    <div class="chart-max-input">
+                        <label for="max1">Chart Max</label>
+                        <input type="number" id="max1" value="100" min="1" step="1">
+                    </div>
+                    <div class="value-display" id="display1">0</div>
+                    <div class="input-group">
+                        <label for="input1">Value</label>
+                        <input type="number" id="input1" min="0" value="0" step="1">
+                    </div>
+                    <div class="input-group">
+                        <input type="range" id="slider1" min="0" value="0" step="1">
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <div class="gauge-title">Home Score</div>
+                <div class="gauge-container">
+                    <canvas id="gauge1" width="320" height="220"></canvas>
+                </div>
+            </div>
+            
+            <div class="right-display">
+                <div class="value-display" id="display1-right">0</div>
+            </div>
+        </div>
+        
+        <div class="gauge-row">
+            <div class="controls-column">
+                <div class="zone-config">
+                    <h4>Zone Configuration</h4>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #22c55e;"></span>Green Min</label>
+                        <input type="number" id="green2-min" value="6" min="0" max="25" step="0.01">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #22c55e;"></span>Green Max</label>
+                        <input type="number" id="green2-max" value="8" min="0" max="25" step="0.01">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #eab308;"></span>Yellow Min</label>
+                        <input type="number" id="yellow2-min" value="4" min="0" max="25" step="0.01">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #eab308;"></span>Yellow Max</label>
+                        <input type="number" id="yellow2-max" value="5.9" min="0" max="25" step="0.01">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #ef4444;"></span>Red Min</label>
+                        <input type="number" id="red2-min" value="0" min="0" max="25" step="0.01">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #ef4444;"></span>Red Max</label>
+                        <input type="number" id="red2-max" value="3.9" min="0" max="25" step="0.01">
+                    </div>
+                </div>
+                
+                <div class="value-controls">
+                    <div class="chart-max-input">
+                        <label for="max2">Chart Max (%)</label>
+                        <input type="number" id="max2" value="25" min="1" step="0.1">
+                    </div>
+                    <div class="value-display" id="display2">0.00%</div>
+                    <div class="input-group">
+                        <label for="input2">Value (%)</label>
+                        <input type="number" id="input2" value="0" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <input type="range" id="slider2" min="0" value="0" step="0.01">
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <div class="gauge-title">ROI</div>
+                <div class="gauge-container">
+                    <canvas id="gauge2" width="320" height="220"></canvas>
+                </div>
+            </div>
+            
+            <div class="right-display">
+                <div class="value-display" id="display2-right">0.00%</div>
+            </div>
+        </div>
+        
+        <div class="gauge-row">
+            <div class="controls-column">
+                <div class="zone-config">
+                    <h4>Zone Configuration</h4>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #22c55e;"></span>Green Min</label>
+                        <input type="number" id="green3-min" value="2000" min="0" step="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #22c55e;"></span>Green Max</label>
+                        <input type="number" id="green3-max" value="5000" min="0" step="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #eab308;"></span>Yellow Min</label>
+                        <input type="number" id="yellow3-min" value="1000" min="0" step="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #eab308;"></span>Yellow Max</label>
+                        <input type="number" id="yellow3-max" value="1999" min="0" step="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #ef4444;"></span>Red Min</label>
+                        <input type="number" id="red3-min" value="0" min="0" step="100">
+                    </div>
+                    <div class="zone-input">
+                        <label><span class="color-indicator" style="background: #ef4444;"></span>Red Max</label>
+                        <input type="number" id="red3-max" value="999" min="0" step="100">
+                    </div>
+                </div>
+                
+                <div class="value-controls">
+                    <div class="chart-max-input">
+                        <label for="max3">Chart Max ($)</label>
+                        <input type="number" id="max3" value="10000" min="1" step="100">
+                    </div>
+                    <div class="value-display" id="display3">$0</div>
+                    <div class="input-group">
+                        <label for="input3">Value ($USD)</label>
+                        <input type="number" id="input3" min="0" value="0" step="100">
+                    </div>
+                    <div class="input-group">
+                        <input type="range" id="slider3" min="0" value="0" step="100">
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <div class="gauge-title">Net Rental Income</div>
+                <div class="gauge-container">
+                    <canvas id="gauge3" width="320" height="220"></canvas>
+                </div>
+            </div>
+            
+            <div class="right-display">
+                <div class="value-display" id="display3-right">$0</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="summary-section">
+        <div class="summary-title">Performance Summary</div>
+        <div class="summary-gauges">
+            <div class="summary-gauge">
+                <div class="summary-gauge-title">Home Score</div>
+                <canvas id="summary1" width="180" height="120"></canvas>
+                <div class="summary-value" id="summary-value1">0</div>
+            </div>
+            <div class="summary-gauge">
+                <div class="summary-gauge-title">ROI</div>
+                <canvas id="summary2" width="180" height="120"></canvas>
+                <div class="summary-value" id="summary-value2">0.00%</div>
+            </div>
+            <div class="summary-gauge">
+                <div class="summary-gauge-title">Net Rental Income</div>
+                <canvas id="summary3" width="180" height="120"></canvas>
+                <div class="summary-value" id="summary-value3">$0</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function drawGauge(canvas, value, zones, unit, max, isSmall) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const centerX = canvas.width / 2;
+            const centerY = isSmall ? canvas.height - 15 : canvas.height - 30;
+            const radius = isSmall ? 70 : 120;
+            const lineWidth = isSmall ? 18 : 30;
+            const needleWidth = isSmall ? 1.5 : 2;
+            const centerCircleRadius = isSmall ? 5 : 8;
+            const labelOffset = isSmall ? 18 : 28;
+            const fontSize = isSmall ? 8 : 11;
+            const startAngle = Math.PI;
+            
+            const normalizedValue = (value / max) * 100;
+            const segments = [];
+            
+            if (zones.red.min !== null && zones.red.max !== null) {
+                segments.push({
+                    start: (zones.red.min / max) * 100,
+                    end: (zones.red.max / max) * 100,
+                    color: '#ef4444'
+                });
+            }
+            
+            if (zones.yellow.min !== null && zones.yellow.max !== null) {
+                segments.push({
+                    start: (zones.yellow.min / max) * 100,
+                    end: (zones.yellow.max / max) * 100,
+                    color: '#eab308'
+                });
+            }
+            
+            if (zones.green.min !== null && zones.green.max !== null) {
+                segments.push({
+                    start: (zones.green.min / max) * 100,
+                    end: (zones.green.max / max) * 100,
+                    color: '#22c55e'
+                });
+            }
+            
+            segments.sort((a, b) => a.start - b.start);
+            
+            segments.forEach(segment => {
+                const segmentStart = startAngle + (segment.start / 100) * Math.PI;
+                const segmentEnd = startAngle + (segment.end / 100) * Math.PI;
+                
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, segmentStart, segmentEnd);
+                ctx.lineWidth = lineWidth;
+                ctx.strokeStyle = segment.color;
+                ctx.stroke();
+            });
+            
+            if (!isSmall) {
+                const labelPoints = [];
+                segments.forEach(seg => {
+                    labelPoints.push(seg.start);
+                    labelPoints.push(seg.end);
+                });
+                
+                let uniqueLabels = [...new Set(labelPoints)].sort((a, b) => a - b);
+                const filteredLabels = [];
+                for (let i = 0; i < uniqueLabels.length; i++) {
+                    if (i === 0 || i === uniqueLabels.length - 1) {
+                        filteredLabels.push(uniqueLabels[i]);
+                    } else if (uniqueLabels[i] - filteredLabels[filteredLabels.length - 1] > 12) {
+                        filteredLabels.push(uniqueLabels[i]);
+                    }
+                }
+                
+                ctx.fillStyle = '#c9a961';
+                ctx.font = fontSize + 'px Arial';
+                ctx.textAlign = 'center';
+                
+                filteredLabels.forEach(label => {
+                    const angle = startAngle + (label / 100) * Math.PI;
+                    const labelRadius = radius + labelOffset;
+                    const x = centerX + Math.cos(angle) * labelRadius;
+                    const y = centerY + Math.sin(angle) * labelRadius;
+                    const actualValue = (label / 100) * max;
+                    
+                    let labelText;
+                    if (unit === '$') {
+                        labelText = '$' + Math.round(actualValue);
+                    } else if (unit === '%') {
+                        labelText = actualValue.toFixed(1);
+                    } else {
+                        labelText = Math.round(actualValue).toString();
+                    }
+                    
+                    ctx.fillText(labelText, x, y);
+                });
+            }
+            
+            const needleAngle = startAngle + (normalizedValue / 100) * Math.PI;
+            const needleLength = radius - (isSmall ? 12 : 20);
+            
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(
+                centerX + Math.cos(needleAngle) * needleLength,
+                centerY + Math.sin(needleAngle) * needleLength
+            );
+            ctx.lineWidth = needleWidth;
+            ctx.strokeStyle = '#c9a961';
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, centerCircleRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = '#c9a961';
+            ctx.fill();
+        }
+        
+        function setupGauge(id, unit, initialMax, displayFormat) {
+            const canvas = document.getElementById('gauge' + id);
+            const summaryCanvas = document.getElementById('summary' + id);
+            const input = document.getElementById('input' + id);
+            const slider = document.getElementById('slider' + id);
+            const display = document.getElementById('display' + id);
+            const displayRight = document.getElementById('display' + id + '-right');
+            const summaryValue = document.getElementById('summary-value' + id);
+            const maxInput = document.getElementById('max' + id);
+            
+            const zoneInputs = {
+                red: {
+                    min: document.getElementById('red' + id + '-min'),
+                    max: document.getElementById('red' + id + '-max')
+                },
+                yellow: {
+                    min: document.getElementById('yellow' + id + '-min'),
+                    max: document.getElementById('yellow' + id + '-max')
+                },
+                green: {
+                    min: document.getElementById('green' + id + '-min'),
+                    max: document.getElementById('green' + id + '-max')
+                }
+            };
+            
+            function getZones() {
+                return {
+                    red: {
+                        min: parseFloat(zoneInputs.red.min.value) || 0,
+                        max: parseFloat(zoneInputs.red.max.value) || 0
+                    },
+                    yellow: {
+                        min: parseFloat(zoneInputs.yellow.min.value) || 0,
+                        max: parseFloat(zoneInputs.yellow.max.value) || 0
+                    },
+                    green: {
+                        min: parseFloat(zoneInputs.green.min.value) || 0,
+                        max: parseFloat(zoneInputs.green.max.value) || 0
+                    }
+                };
+            }
+            
+            function update() {
+                const max = parseFloat(maxInput.value) || initialMax;
+                let value = parseFloat(input.value) || 0;
+                value = Math.max(0, Math.min(max, value));
+                
+                slider.max = max;
+                slider.value = value;
+                const formattedValue = displayFormat(value);
+                display.textContent = formattedValue;
+                displayRight.textContent = formattedValue;
+                summaryValue.textContent = formattedValue;
+                
+                const zones = getZones();
+                drawGauge(canvas, value, zones, unit, max, false);
+                drawGauge(summaryCanvas, value, zones, unit, max, true);
+            }
+            
+            input.addEventListener('input', update);
+            slider.addEventListener('input', function() {
+                input.value = this.value;
+                update();
+            });
+            
+            maxInput.addEventListener('input', update);
+            
+            Object.values(zoneInputs).forEach(zone => {
+                zone.min.addEventListener('input', update);
+                zone.max.addEventListener('input', update);
+            });
+            
+            update();
+        }
+        
+        setupGauge(1, '', 100, function(v) { return v.toString(); });
+        setupGauge(2, '%', 25, function(v) { return v.toFixed(2) + '%'; });
+        setupGauge(3, '$', 10000, function(v) { return '$' + Math.round(v).toLocaleString(); });
+    </script>
+</body>
+</html>

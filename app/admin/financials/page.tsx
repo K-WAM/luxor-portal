@@ -50,7 +50,7 @@ type MonthlyPerformance = {
 export default function FinancialsPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"property" | "targets" | "monthly">("property");
+  const [activeTab, setActiveTab] = useState<"property" | "monthly">("property");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -397,6 +397,19 @@ export default function FinancialsPage() {
 
   const actualYtd = useMemo(() => canonicalMetrics.ytd, [canonicalMetrics]);
 
+  // Expected full-year plan (based on planned inputs) - shown in post-save summary
+  const annualPlan = useMemo(() => {
+    const rent = (parseFloat(propertyFinancials.target_monthly_rent) || 0) * 12;
+    const maintenance = rent * 0.05;
+    const pool = (parseFloat(propertyFinancials.planned_pool_cost) || 0) * 12;
+    const garden = (parseFloat(propertyFinancials.planned_garden_cost) || 0) * 12;
+    const hoa = calculatedAnnualHoa;
+    const propertyTax = parseFloat(yeTarget.property_tax) || 0;
+    const totalExpenses = maintenance + pool + garden + hoa;
+    const netIncome = rent - totalExpenses;
+    return { rent, maintenance, pool, garden, hoa, propertyTax, totalExpenses, netIncome };
+  }, [propertyFinancials.target_monthly_rent, propertyFinancials.planned_pool_cost, propertyFinancials.planned_garden_cost, calculatedAnnualHoa, yeTarget.property_tax]);
+
   // Calculate appreciation metrics using helper functions
   const leaseAppreciation = useMemo(() => {
     const marketValues = allMonthlyData.map(m => ({
@@ -477,7 +490,7 @@ export default function FinancialsPage() {
     const gardenCost = parseFloat(propertyFinancials.planned_garden_cost) || 0;
     const poolCost = parseFloat(propertyFinancials.planned_pool_cost) || 0;
 
-    if (activeTab === "targets" && monthlyRent > 0) {
+    if (monthlyRent > 0) {
       // Calculate annual rent
       const annualRent = monthlyRent * 12;
 
@@ -499,7 +512,7 @@ export default function FinancialsPage() {
         hoa: annualHoa.toFixed(2),
       }));
     }
-  }, [propertyFinancials, activeTab, calculatedAnnualHoa]);
+  }, [propertyFinancials, calculatedAnnualHoa]);
 
   const loadProperties = async () => {
     try {
@@ -722,30 +735,14 @@ export default function FinancialsPage() {
         throw new Error(data.error || "Failed to save property financials");
       }
 
-      setSuccess("Property financials saved successfully!");
-      await loadPropertyFinancials();
-      await loadProperties(); // Reload to get updated timestamps
-    } catch (err: any) {
-      setError(err.message || "Failed to save property financials");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveAnnualTargets = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setSaving(true);
-
-    try {
-      const res = await fetch("/api/admin/financials/targets", {
+      // Also save the annual targets (property_tax field lives here)
+      await fetch("/api/admin/financials/targets", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId: selectedProperty,
           year: targetYear,
-          plan: {}, // Plan is calculated from actuals, not entered
+          plan: {},
           ye_target: {
             rent_income: parseFloat(yeTarget.rent_income) || null,
             maintenance: parseFloat(yeTarget.maintenance) || null,
@@ -758,19 +755,16 @@ export default function FinancialsPage() {
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to save annual targets");
-      }
-
-      setSuccess("Annual targets saved successfully!");
-      await loadAnnualTargets();
+      setSuccess("Property financials saved successfully!");
+      await loadPropertyFinancials();
+      await loadProperties(); // Reload to get updated timestamps
     } catch (err: any) {
-      setError(err.message || "Failed to save annual targets");
+      setError(err.message || "Failed to save property financials");
     } finally {
       setSaving(false);
     }
   };
+
 
   const saveMonthlyPerformance = async (month: number, year: number, field: string, value: any) => {
     try {
@@ -803,6 +797,40 @@ export default function FinancialsPage() {
       }
     } catch (err: any) {
       console.error("Error saving monthly performance:", err);
+    }
+  };
+
+  const saveAllMonthlyPerformance = async () => {
+    if (displayMonthlyData.length === 0) return;
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      for (const monthData of displayMonthlyData) {
+        await fetch("/api/admin/financials/monthly", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            propertyId: selectedProperty,
+            year: monthData.year,
+            month: monthData.month,
+            rent_income: monthData.rent_income || 0,
+            rent_paid: false,
+            maintenance: monthData.maintenance || 0,
+            pool: monthData.pool || 0,
+            garden: monthData.garden || 0,
+            hoa_payments: monthData.hoa_payments || 0,
+            pm_fee: monthData.pm_fee || 0,
+            property_tax: monthData.property_tax || 0,
+            property_market_estimate: monthData.property_market_estimate ?? null,
+          }),
+        });
+      }
+      setSuccess("Monthly performance saved successfully!");
+    } catch (err: any) {
+      setError(err.message || "Failed to save monthly performance");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -916,16 +944,6 @@ export default function FinancialsPage() {
               }`}
             >
               Property Financials
-            </button>
-            <button
-              onClick={() => setActiveTab("targets")}
-              className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === "targets"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Year-End Targets
             </button>
             <button
               onClick={() => setActiveTab("monthly")}
@@ -1097,6 +1115,20 @@ export default function FinancialsPage() {
                     </td>
                     <td className="border border-slate-300 px-4 py-2 text-sm text-gray-600">Check if last month’s rent was received upfront</td>
                   </tr>
+                  <tr className="bg-amber-50">
+                    <td className="border border-slate-300 px-4 py-2 font-medium">Expected Annual Property Tax</td>
+                    <td className="border border-slate-300 px-4 py-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={yeTarget.property_tax}
+                        onChange={(e) => setYeTarget({ ...yeTarget, property_tax: e.target.value })}
+                        className="w-full border border-slate-300 rounded px-2 py-1"
+                        placeholder="11000"
+                      />
+                    </td>
+                    <td className="border border-slate-300 px-4 py-2 text-sm text-gray-600">Used for post-tax ROI and year-end targets</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -1246,146 +1278,55 @@ export default function FinancialsPage() {
               </p>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Year-End Targets Tab */}
-      {activeTab === "targets" && (
-        <div className="bg-white rounded-lg border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Year-End Targets for {targetYear}</h2>
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium">Year:</label>
-              <input
-                type="number"
-                value={targetYear}
-                onChange={(e) => setTargetYear(parseInt(e.target.value))}
-                className="w-24 border border-slate-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-          <p className="text-sm text-gray-600 mb-6">
-            Annual expenses are auto-calculated as 12 × monthly planned costs. Maintenance is set to 5% of annual rent.
-          </p>
-
-          <form onSubmit={saveAnnualTargets} className="space-y-6">
-            {/* Annual Income */}
-            <div className="border border-blue-200 rounded-lg p-4 bg-blue-50">
-              <h3 className="font-semibold mb-3">Annual Income</h3>
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Rent Income ($/year)</label>
-                  <input
-                    type="text"
-                    value={yeTarget.rent_income}
-                    disabled
-                    className="w-full border border-slate-300 rounded-md px-3 py-2 bg-white text-slate-700"
-                  />
-                  <p className="text-xs text-gray-600 mt-1">Auto: Monthly Rent × 12 = {formatCurrency(parseFloat(yeTarget.rent_income) || 0)}</p>
+          {/* Post-Save Calculated Summary */}
+          {success && (
+            <div className="mt-6 border border-blue-200 rounded-lg overflow-hidden">
+              <div className="bg-blue-600 px-5 py-3">
+                <h3 className="text-white font-semibold text-sm uppercase tracking-wide">Expected Annual Summary</h3>
+                <p className="text-blue-100 text-xs mt-0.5">Based on current planned costs — full year projection</p>
+              </div>
+              <div className="bg-white p-5">
+                {/* Primary metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+                  <div className="rounded-lg bg-green-50 border border-green-200 p-4">
+                    <div className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">Expected Gross Income</div>
+                    <div className="text-2xl font-bold text-green-800">{formatCurrency(annualPlan.rent)}</div>
+                    <div className="text-xs text-green-600 mt-1">Annual rent ({formatCurrency(parseFloat(propertyFinancials.target_monthly_rent) || 0)}/mo)</div>
+                  </div>
+                  <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+                    <div className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Expected Total Expenses</div>
+                    <div className="text-2xl font-bold text-red-800">{formatCurrency(annualPlan.totalExpenses)}</div>
+                    <div className="text-xs text-red-600 mt-1">Excl. property tax</div>
+                  </div>
+                  <div className={`rounded-lg border p-4 ${annualPlan.netIncome >= 0 ? "bg-blue-50 border-blue-200" : "bg-amber-50 border-amber-200"}`}>
+                    <div className={`text-xs font-semibold uppercase tracking-wide mb-1 ${annualPlan.netIncome >= 0 ? "text-blue-700" : "text-amber-700"}`}>Expected Net Income</div>
+                    <div className={`text-2xl font-bold ${annualPlan.netIncome >= 0 ? "text-blue-800" : "text-amber-800"}`}>{formatCurrency(annualPlan.netIncome)}</div>
+                    <div className={`text-xs mt-1 ${annualPlan.netIncome >= 0 ? "text-blue-600" : "text-amber-600"}`}>Gross income minus expenses</div>
+                  </div>
+                </div>
+                {/* Supporting breakdown */}
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Expense Breakdown</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {[
+                      { label: "Expected Maintenance", value: annualPlan.maintenance, note: "5% of rent" },
+                      { label: "Expected Property Tax", value: annualPlan.propertyTax, note: "Annual estimate" },
+                      { label: "Expected HOA Total", value: annualPlan.hoa, note: "Annual" },
+                      { label: "Expected Garden Total", value: annualPlan.garden, note: "Annual" },
+                      { label: "Expected Pool Total", value: annualPlan.pool, note: "Annual" },
+                    ].map(({ label, value, note }) => (
+                      <div key={label} className="bg-slate-50 border border-slate-200 rounded-md p-3">
+                        <div className="text-xs text-slate-500 font-medium mb-1">{label}</div>
+                        <div className="text-base font-semibold text-slate-800">{formatCurrency(value)}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">{note}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-
-            {/* Annual Expenses */}
-            <div className="border border-slate-200 rounded-lg p-4">
-              <h3 className="font-semibold mb-3">Annual Expenses</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Maintenance (5% of Rent)</label>
-                  <input
-                    type="text"
-                    value={yeTarget.maintenance}
-                    disabled
-                    className="w-full border border-slate-300 rounded-md px-3 py-2 bg-slate-100 text-slate-700"
-                  />
-                  <p className="text-xs text-gray-600 mt-1">Auto: 5% × Annual Rent = {formatCurrency(parseFloat(yeTarget.maintenance) || 0)}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Pool (12 × Monthly)</label>
-                  <input
-                    type="text"
-                    value={yeTarget.pool}
-                    disabled
-                    className="w-full border border-slate-300 rounded-md px-3 py-2 bg-slate-100 text-slate-700"
-                  />
-                  <p className="text-xs text-gray-600 mt-1">Auto: {formatCurrency(parseFloat(yeTarget.pool) || 0)}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Garden (12 × Monthly)</label>
-                  <input
-                    type="text"
-                    value={yeTarget.garden}
-                    disabled
-                    className="w-full border border-slate-300 rounded-md px-3 py-2 bg-slate-100 text-slate-700"
-                  />
-                  <p className="text-xs text-gray-600 mt-1">Auto: {formatCurrency(parseFloat(yeTarget.garden) || 0)}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">HOA (12 × Monthly)</label>
-                  <input
-                    type="text"
-                    value={yeTarget.hoa}
-                    disabled
-                    className="w-full border border-slate-300 rounded-md px-3 py-2 bg-slate-100 text-slate-700"
-                  />
-                  <p className="text-xs text-gray-600 mt-1">Auto: {formatCurrency(parseFloat(yeTarget.hoa) || 0)}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Property Tax ($/year)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={yeTarget.property_tax}
-                    onChange={(e) => setYeTarget({ ...yeTarget, property_tax: e.target.value })}
-                    className="w-full border border-slate-300 rounded-md px-3 py-2"
-                    placeholder="11000"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Auto-Calculated Summary */}
-            <div className="border border-green-200 rounded-lg p-4 bg-green-50">
-              <h3 className="font-semibold mb-3 text-green-900">Calculated Summary</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Total Expenses</label>
-                  <input
-                    type="text"
-                    value={formatCurrency(calculatedYeTarget.total_expenses)}
-                    disabled
-                    className="w-full border border-slate-300 rounded-md px-3 py-2 bg-white text-slate-700 font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Net Income (with taxes)</label>
-                  <input
-                    type="text"
-                    value={formatCurrency(calculatedYeTarget.net_income)}
-                    disabled
-                    className="w-full border border-slate-300 rounded-md px-3 py-2 bg-white text-slate-700 font-semibold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Net Income (without taxes)</label>
-                  <input
-                    type="text"
-                    value={formatCurrency(calculatedYeTarget.net_income + (parseFloat(yeTarget.property_tax) || 0))}
-                    disabled
-                    className="w-full border border-slate-300 rounded-md px-3 py-2 bg-white text-slate-700 font-semibold"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors font-medium"
-            >
-              {saving ? "Saving..." : "Save Year-End Targets"}
-            </button>
-          </form>
+          )}
         </div>
       )}
 
@@ -1414,10 +1355,18 @@ export default function FinancialsPage() {
               >
                 + New Month
               </button>
+              <button
+                type="button"
+                onClick={saveAllMonthlyPerformance}
+                disabled={saving}
+                className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
+              >
+                {saving ? "Saving..." : "Save Monthly Data"}
+              </button>
             </div>
           </div>
           <p className="text-sm text-gray-600 mb-6">
-            Enter actual income and expenses for each month. Values save automatically when you leave each field.
+            Enter actual income and expenses for each month. Click &ldquo;Save Monthly Data&rdquo; when done.
           </p>
 
           {/* Info Strip */}
@@ -1547,7 +1496,6 @@ export default function FinancialsPage() {
                             return m;
                           }));
                         }}
-                        onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'rent_income', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
                         placeholder="0"
                       />
@@ -1572,7 +1520,6 @@ export default function FinancialsPage() {
                             return m;
                           }));
                         }}
-                        onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'maintenance', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
                         placeholder="0"
                       />
@@ -1597,7 +1544,6 @@ export default function FinancialsPage() {
                             return m;
                           }));
                         }}
-                        onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'pool', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
                         placeholder="0"
                       />
@@ -1622,7 +1568,6 @@ export default function FinancialsPage() {
                             return m;
                           }));
                         }}
-                        onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'garden', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
                         placeholder="0"
                       />
@@ -1647,7 +1592,6 @@ export default function FinancialsPage() {
                             return m;
                           }));
                         }}
-                        onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'hoa_payments', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
                         placeholder="0"
                       />
@@ -1672,7 +1616,6 @@ export default function FinancialsPage() {
                             return m;
                           }));
                         }}
-                        onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'pm_fee', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
                         placeholder="0"
                       />
@@ -1692,7 +1635,6 @@ export default function FinancialsPage() {
                             return m;
                           }));
                         }}
-                        onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'property_tax', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
                         placeholder="0"
                       />
@@ -1710,7 +1652,6 @@ export default function FinancialsPage() {
                               : m
                           ));
                         }}
-                        onBlur={(e) => saveMonthlyPerformance(monthData.month, monthData.year, 'property_market_estimate', e.target.value)}
                         className="w-full border border-slate-300 rounded px-2 py-1 text-right"
                         placeholder="0"
                       />
@@ -1876,18 +1817,17 @@ export default function FinancialsPage() {
 
                 // Canonical single-source ROI values
                 const preTaxROI = canonicalMetrics.roi_pre_tax;
-                const postTaxROI = canonicalMetrics.roi_post_tax;
 
-                // Derive the tax amount used by canonical post-tax ROI (actual if present, else estimate)
-                const taxForPostTaxRoi =
-                  costBasis > 0 ? ytdNetIncome - (postTaxROI / 100) * costBasis : 0;
-
-                // Total ROI including appreciation (pre-tax and post-tax)
+                // Total ROI including appreciation (pre-tax)
                 const comprehensivePreTaxROI = canonicalMetrics.roi_with_appreciation;
-                const comprehensiveROI =
-                  costBasis > 0
-                    ? ((ytdNetIncome - taxForPostTaxRoi + appreciationValue) / costBasis) * 100
-                    : 0;
+
+                // Appreciation YTD: Jan market value vs current market value
+                const janEntry = allMonthlyData.find(
+                  (m: any) => m.month === 1 && m.year === performanceYear
+                );
+                const janMarketValue = parseFloat(janEntry?.property_market_estimate || '0') || 0;
+                const appreciationYTD = janMarketValue > 0 ? mostRecentMarketValue - janMarketValue : 0;
+                const appreciationYTDPct = janMarketValue > 0 ? (appreciationYTD / janMarketValue) * 100 : 0;
 
                 // Calculate ROI if sold today
                 const closingCosts = parseFloat(saleClosingCosts) || 0;
@@ -1904,13 +1844,19 @@ export default function FinancialsPage() {
                         <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Income Only</h4>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Pre-Tax:</span>
+                            <span className="text-sm text-slate-600">Pre-Tax ROI:</span>
                             <span className="font-semibold text-slate-900">{preTaxROI.toFixed(2)}%</span>
                           </div>
                           <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Post-Tax:</span>
-                            <span className="font-semibold text-slate-900">{postTaxROI.toFixed(2)}%</span>
+                            <span className="text-sm text-slate-600">Collected Rent:</span>
+                            <span className="font-semibold text-slate-900">{formatCurrency(actualYtd.rent_income)}</span>
                           </div>
+                          {propertyFinancials.last_month_rent_collected && (parseFloat(propertyFinancials.deposit) || 0) > 0 && (
+                            <div className="flex justify-between items-center gap-2">
+                              <span className="text-sm text-slate-600">Last-Month Deposit:</span>
+                              <span className="font-semibold text-blue-700">+{formatCurrency(parseFloat(propertyFinancials.deposit) || 0)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1925,15 +1871,17 @@ export default function FinancialsPage() {
                             </span>
                           </div>
                           <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Gain:</span>
+                            <span className="text-sm text-slate-600">Since Purchase:</span>
                             <span className={`font-semibold ${appreciationValue >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                              {formatCurrency(appreciationValue)}
+                              {formatCurrency(appreciationValue)} ({appreciationPct >= 0 ? '+' : ''}{appreciationPct.toFixed(2)}%)
                             </span>
                           </div>
                           <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">% Basis:</span>
-                            <span className={`font-semibold ${appreciationPct >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                              {appreciationPct >= 0 ? '+' : ''}{appreciationPct.toFixed(2)}%
+                            <span className="text-sm text-slate-600">YTD {performanceYear}:</span>
+                            <span className={`font-semibold ${appreciationYTD >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                              {janMarketValue > 0
+                                ? `${formatCurrency(appreciationYTD)} (${appreciationYTDPct >= 0 ? '+' : ''}${appreciationYTDPct.toFixed(2)}%)`
+                                : 'No Jan data'}
                             </span>
                           </div>
                         </div>
@@ -1944,15 +1892,9 @@ export default function FinancialsPage() {
                         <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Total ROI</h4>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Pre-Tax:</span>
+                            <span className="text-sm text-slate-600">Income + Appr:</span>
                             <span className={`font-semibold text-lg ${comprehensivePreTaxROI >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                               {comprehensivePreTaxROI >= 0 ? '+' : ''}{comprehensivePreTaxROI.toFixed(2)}%
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Post-Tax:</span>
-                            <span className={`font-semibold text-lg ${comprehensiveROI >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                              {comprehensiveROI >= 0 ? '+' : ''}{comprehensiveROI.toFixed(2)}%
                             </span>
                           </div>
                         </div>

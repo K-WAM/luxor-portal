@@ -7,10 +7,12 @@ import { formatDateOnly } from "@/lib/date-only";
 type Property = {
   id: string;
   address: string;
-  owner_name?: string | null;
   lease_start?: string;
   lease_end?: string;
   created_at: string;
+  maintenance_open_count?: number;
+  maintenance_closed_count?: number;
+  maintenance_red_count?: number;
 };
 
 export default function PropertiesPage() {
@@ -20,19 +22,11 @@ export default function PropertiesPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
-  const [editForm, setEditForm] = useState({
-    address: "",
-    leaseStart: "",
-    leaseEnd: "",
-    ownerName: "",
-  });
 
   const [formData, setFormData] = useState({
     address: "",
     leaseStart: "",
     leaseEnd: "",
-    ownerName: "",
   });
 
   useEffect(() => {
@@ -46,7 +40,8 @@ export default function PropertiesPage() {
       const data = await res.json();
 
       if (!res.ok) throw new Error("Failed to load properties");
-      setProperties(data || []);
+
+      setProperties(data);
     } catch (err: any) {
       setError(err.message || "Failed to load properties");
     } finally {
@@ -72,7 +67,7 @@ export default function PropertiesPage() {
       if (!res.ok) throw new Error(data.error || "Failed to create property");
 
       setSuccess(`Property created successfully!`);
-      setFormData({ address: "", leaseStart: "", leaseEnd: "", ownerName: "" });
+      setFormData({ address: "", leaseStart: "", leaseEnd: "" });
       await loadProperties();
     } catch (err: any) {
       setError(err.message || "Failed to create property");
@@ -94,47 +89,6 @@ export default function PropertiesPage() {
       await loadProperties();
     } catch (err: any) {
       setError(err.message || "Failed to delete property");
-    }
-  };
-
-  const openEdit = (property: Property) => {
-    setEditingProperty(property);
-    setEditForm({
-      address: property.address,
-      leaseStart: property.lease_start || "",
-      leaseEnd: property.lease_end || "",
-      ownerName: property.owner_name || "",
-    });
-  };
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingProperty) return;
-    setError(null);
-    setSuccess(null);
-    setCreating(true);
-
-    try {
-      const res = await fetch(`/api/properties?id=${editingProperty.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address: editForm.address,
-          ownerName: editForm.ownerName,
-          leaseStart: editForm.leaseStart,
-          leaseEnd: editForm.leaseEnd,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to update property");
-
-      setSuccess("Property updated successfully!");
-      setEditingProperty(null);
-      await loadProperties();
-    } catch (err: any) {
-      setError(err.message || "Failed to update property");
-    } finally {
-      setCreating(false);
     }
   };
 
@@ -183,22 +137,6 @@ export default function PropertiesPage() {
                 }
                 className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="123 Main Street, City, State"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Owner Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.ownerName}
-                onChange={(e) =>
-                  setFormData({ ...formData, ownerName: e.target.value })
-                }
-                className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Owner name"
                 required
               />
             </div>
@@ -261,9 +199,6 @@ export default function PropertiesPage() {
                     Address
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    Owner
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     Lease Start
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -272,19 +207,23 @@ export default function PropertiesPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     Created
                   </th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Maintenance
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {properties.map((property) => (
+                {properties.map((property) => {
+                  const openCount = property.maintenance_open_count ?? 0;
+                  const closedCount = property.maintenance_closed_count ?? 0;
+                  const redCount = property.maintenance_red_count ?? 0;
+                  return (
                   <tr key={property.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-sm text-slate-900">
+                    <td className="px-4 py-3 text-sm text-slate-900 font-medium">
                       {property.address}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
-                      {property.owner_name || "--"}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {property.lease_start
@@ -300,18 +239,39 @@ export default function PropertiesPage() {
                       {new Date(property.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3 text-sm">
+                      <div className="flex items-center justify-center gap-2">
+                        {openCount > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title="Open requests">
+                            {openCount} open
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                        {redCount > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700" title="Open &gt;21 days">
+                            {redCount} overdue
+                          </span>
+                        )}
+                        {closedCount > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600" title="Closed requests">
+                            {closedCount} closed
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
                       <div className="flex items-center space-x-3">
                         <button
-                          onClick={() => openEdit(property)}
-                          className="text-slate-700 hover:text-slate-900 font-medium"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => router.push(`/admin/properties/${property.id}/financials`)}
+                          onClick={() => router.push(`/admin/financials?propertyId=${property.id}`)}
                           className="text-blue-600 hover:text-blue-700 font-medium"
                         >
-                          View Financials
+                          Financials
+                        </button>
+                        <button
+                          onClick={() => router.push(`/owner?propertyId=${property.id}`)}
+                          className="text-purple-600 hover:text-purple-700 font-medium"
+                        >
+                          Dashboard
                         </button>
                         <button
                           onClick={() => handleDelete(property.id)}
@@ -322,78 +282,13 @@ export default function PropertiesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
-
-      {editingProperty && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg border border-slate-200 w-full max-w-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">Edit Property</h2>
-            <form onSubmit={handleUpdate} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Property Address</label>
-                <input
-                  type="text"
-                  value={editForm.address}
-                  onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                  className="w-full border border-slate-300 rounded-md px-3 py-2"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Owner Name</label>
-                <input
-                  type="text"
-                  value={editForm.ownerName}
-                  onChange={(e) => setEditForm({ ...editForm, ownerName: e.target.value })}
-                  className="w-full border border-slate-300 rounded-md px-3 py-2"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Lease Start Date</label>
-                  <input
-                    type="date"
-                    value={editForm.leaseStart}
-                    onChange={(e) => setEditForm({ ...editForm, leaseStart: e.target.value })}
-                    className="w-full border border-slate-300 rounded-md px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Lease End Date</label>
-                  <input
-                    type="date"
-                    value={editForm.leaseEnd}
-                    onChange={(e) => setEditForm({ ...editForm, leaseEnd: e.target.value })}
-                    className="w-full border border-slate-300 rounded-md px-3 py-2"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingProperty(null)}
-                  className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300"
-                >
-                  {creating ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

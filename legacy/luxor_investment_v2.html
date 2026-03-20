@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Luxor Investment Assessment</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      background: #1a1a1a;
+      border: 1px solid #333;
+    }
+    .header {
+      padding: 30px;
+      text-align: center;
+      background: #151515;
+      border-bottom: 2px solid #c9a961;
+    }
+    h1 {
+      font-size: 2rem;
+      color: #c9a961;
+      margin-bottom: 5px;
+      letter-spacing: 2px;
+    }
+    .subtitle { 
+      font-size: 0.85rem; 
+      color: #888; 
+      letter-spacing: 1px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 1px;
+      background: #333;
+    }
+    @media (max-width: 1200px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .section {
+      background: #1a1a1a;
+      padding: 25px;
+    }
+    .section-title {
+      font-size: 1rem;
+      color: #c9a961;
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #333;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .inputs {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+    .field label {
+      display: block;
+      font-size: 0.7rem;
+      color: #999;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .field input {
+      width: 100%;
+      background: #111;
+      border: 1px solid #333;
+      padding: 8px 10px;
+      color: #c9a961;
+      font-size: 0.9rem;
+    }
+    .field input:focus {
+      outline: none;
+      border-color: #c9a961;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      margin-top: 10px;
+    }
+    thead {
+      background: #111;
+    }
+    th {
+      padding: 10px 6px;
+      text-align: right;
+      font-weight: 500;
+      color: #999;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+    }
+    th:first-child { text-align: left; }
+    tbody tr {
+      border-bottom: 1px solid #252525;
+    }
+    tbody tr:hover {
+      background: #1f1f1f;
+    }
+    td {
+      padding: 8px 6px;
+      text-align: right;
+    }
+    td:first-child {
+      text-align: left;
+      color: #999;
+    }
+    td input {
+      width: 75px;
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 4px 5px;
+      color: #c9a961;
+      text-align: right;
+      font-size: 0.85rem;
+    }
+    td input:focus {
+      outline: none;
+      border-color: #c9a961;
+      background: #111;
+    }
+    .calc {
+      color: #d4d4d4;
+      font-weight: 600;
+    }
+    .summary {
+      display: grid;
+      gap: 1px;
+      background: #333;
+      margin-top: 15px;
+    }
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 14px;
+      background: #111;
+      font-size: 0.85rem;
+    }
+    .summary-row span:first-child { color: #999; }
+    .summary-row span:last-child { 
+      color: #c9a961; 
+      font-weight: 600; 
+    }
+    .gauges {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-top: 25px;
+    }
+    .gauge {
+      text-align: center;
+    }
+    .gauge-title {
+      font-size: 0.75rem;
+      color: #999;
+      text-transform: uppercase;
+      margin-bottom: 15px;
+    }
+    .gauge-wrap {
+      width: 100%;
+      max-width: 180px;
+      margin: 0 auto;
+    }
+    .gauge-wrap canvas {
+      width: 100% !important;
+      height: auto !important;
+    }
+    .gauge-val {
+      font-size: 1.8rem;
+      color: #c9a961;
+      margin-top: 10px;
+    }
+    .gauge-label {
+      font-size: 0.7rem;
+      color: #666;
+      margin-top: 5px;
+    }
+    .chart {
+      margin-top: 20px;
+      background: #111;
+      padding: 20px;
+      border: 1px solid #333;
+    }
+    .chart-title {
+      font-size: 0.8rem;
+      color: #999;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+    }
+    .chart canvas {
+      width: 100% !important;
+      height: 280px !important;
+    }
+    .report {
+      grid-column: 1 / -1;
+      background: #1a1a1a;
+      padding: 25px;
+      border-top: 1px solid #333;
+    }
+    .report textarea {
+      width: 100%;
+      min-height: 220px;
+      background: #111;
+      border: 1px solid #333;
+      color: #d4d4d4;
+      padding: 15px;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      resize: vertical;
+      font-family: inherit;
+    }
+    .btns {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    button {
+      background: #c9a961;
+      color: #0a0a0a;
+      border: none;
+      padding: 10px 20px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover {
+      background: #d4b76a;
+    }
+    .note {
+      font-size: 0.7rem;
+      color: #666;
+      margin-top: 10px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>LUXOR INVESTMENT</h1>
+    <div class="subtitle">Property Assessment Tool</div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="section">
+        <div class="section-title">Property Info</div>
+        <div class="inputs">
+          <div class="field">
+            <label>Address</label>
+            <input type="text" id="address" value="10370 Buena Ventura Dr, Boca Raton, FL">
+          </div>
+          <div class="field">
+            <label>Lease Start</label>
+            <input type="text" id="leaseStart" value="Apr 10, 2025">
+          </div>
+          <div class="field">
+            <label>Lease End</label>
+            <input type="text" id="leaseEnd" value="Apr 10, 2026">
+          </div>
+        </div>
+        <div class="inputs">
+          <div class="field">
+            <label>Purchase Price</label>
+            <input type="number" id="homeCost" value="775000">
+          </div>
+          <div class="field">
+            <label>Repairs</label>
+            <input type="number" id="repairCost" value="30000">
+          </div>
+          <div class="field">
+            <label>Closing Costs</label>
+            <input type="number" id="extraClosing" value="0">
+          </div>
+        </div>
+        <div class="inputs">
+          <div class="field">
+            <label>Current Value</label>
+            <input type="number" id="currentValue" value="928000">
+          </div>
+          <div class="field">
+            <label>Annual Property Tax</label>
+            <input type="number" id="propertyTax" value="10819">
+          </div>
+          <div class="field">
+            <label>Sale Closing Est</label>
+            <input type="number" id="closingEst" value="59121">
+          </div>
+        </div>
+        <div class="note">Auto-saves to browser</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Monthly Data</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>Rent</th>
+              <th>Maint</th>
+              <th>Pool</th>
+              <th>Garden</th>
+              <th>HOA</th>
+              <th>Total</th>
+              <th>Net</th>
+              <th>Tax</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Charts</div>
+        <div class="chart">
+          <div class="chart-title">Income vs Expenses</div>
+          <canvas id="chart1"></canvas>
+        </div>
+        <div class="chart">
+          <div class="chart-title">Expense Breakdown</div>
+          <canvas id="chart2"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section">
+        <div class="section-title">Summary</div>
+        <div class="summary" id="summary"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Metrics</div>
+        <div class="gauges">
+          <div class="gauge">
+            <div class="gauge-title">ROI</div>
+            <div class="gauge-wrap">
+              <canvas id="g1"></canvas>
+            </div>
+            <div class="gauge-val" id="v1">0%</div>
+            <div class="gauge-label">Net Income</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-title">Maintenance</div>
+            <div class="gauge-wrap">
+              <canvas id="g2"></canvas>
+            </div>
+            <div class="gauge-val" id="v2">0%</div>
+            <div class="gauge-label">% of Rent</div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-title">Appreciation</div>
+            <div class="gauge-wrap">
+              <canvas id="g3"></canvas>
+            </div>
+            <div class="gauge-val" id="v3">0%</div>
+            <div class="gauge-label">Value Gain</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="report">
+    <div class="section-title">Report</div>
+    <textarea id="report" readonly></textarea>
+    <div class="btns">
+      <button onclick="copy()">Copy Report</button>
+      <button onclick="copyData()">Copy Data</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY = 'luxor_v4';
+const mos = ['Jan-25','Feb-25','Mar-25','Apr-25','May-25','Jun-25','Jul-25','Aug-25','Sep-25','Oct-25','Nov-25','Dec-25','Jan-26','Feb-26','Mar-26'];
+const def = [
+  {r:0,m:0,p:0,g:0,h:205,t:0},
+  {r:0,m:0,p:0,g:0,h:205,t:0},
+  {r:0,m:320,p:70,g:150,h:1005,t:0},
+  {r:4025,m:370,p:70,g:150,h:205,t:0},
+  {r:5750,m:298,p:70,g:150,h:205,t:0},
+  {r:5750,m:0,p:70,g:150,h:1005,t:0},
+  {r:5750,m:596,p:70,g:150,h:205,t:0},
+  {r:5750,m:0,p:70,g:150,h:205,t:0},
+  {r:5750,m:77,p:70,g:150,h:1005,t:0},
+  {r:5750,m:117,p:70,g:150,h:205,t:0},
+  {r:5750,m:225,p:70,g:150,h:205,t:10819},
+  {r:5750,m:0,p:0,g:0,h:0,t:0},
+  {r:0,m:0,p:0,g:0,h:0,t:0},
+  {r:0,m:0,p:0,g:0,h:0,t:0},
+  {r:5750,m:0,p:0,g:0,h:0,t:0}
+];
+
+let ch = {};
+
+function build() {
+  const tb = document.getElementById('tbody');
+  tb.innerHTML = mos.map((mo, i) => `
+    <tr>
+      <td>${mo}</td>
+      <td><input type="number" class="r" value="${def[i].r}" data-i="${i}"></td>
+      <td><input type="number" class="m" value="${def[i].m}" data-i="${i}"></td>
+      <td><input type="number" class="p" value="${def[i].p}" data-i="${i}"></td>
+      <td><input type="number" class="g" value="${def[i].g}" data-i="${i}"></td>
+      <td><input type="number" class="h" value="${def[i].h}" data-i="${i}"></td>
+      <td class="calc te">$0</td>
+      <td class="calc nt">$0</td>
+      <td><input type="number" class="t" value="${def[i].t}" data-i="${i}"></td>
+    </tr>
+  `).join('');
+}
+
+function gauge(ctx, val, max, col) {
+  const pct = Math.min(Math.max(val / max, 0), 1);
+  return new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [pct * 100, (1 - pct) * 100],
+        backgroundColor: [col, '#2a2a2a'],
+        borderWidth: 0,
+        circumference: 180,
+        rotation: 270
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '75%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } }
+    }
+  });
+}
+
+function fmt(v) {
+  return '$' + Number(v).toLocaleString('en-US', {maximumFractionDigits: 0});
+}
+
+function pct(v) {
+  return (v * 100).toFixed(2) + '%';
+}
+
+function calc() {
+  const hc = parseFloat(document.getElementById('homeCost').value) || 0;
+  const rc = parseFloat(document.getElementById('repairCost').value) || 0;
+  const ec = parseFloat(document.getElementById('extraClosing').value) || 0;
+  const cv = parseFloat(document.getElementById('currentValue').value) || 0;
+  const pt = parseFloat(document.getElementById('propertyTax').value) || 0;
+  const ce = parseFloat(document.getElementById('closingEst').value) || 0;
+  
+  const cb = hc + rc + ec;
+  
+  let tr = 0, tm = 0, tp = 0, tg = 0, th = 0, tt = 0;
+  const labs = [], rents = [], exps = [], nets = [];
+  
+  document.querySelectorAll('#tbody tr').forEach((row, i) => {
+    const r = parseFloat(row.querySelector('.r').value) || 0;
+    const m = parseFloat(row.querySelector('.m').value) || 0;
+    const p = parseFloat(row.querySelector('.p').value) || 0;
+    const g = parseFloat(row.querySelector('.g').value) || 0;
+    const h = parseFloat(row.querySelector('.h').value) || 0;
+    const t = parseFloat(row.querySelector('.t').value) || 0;
+    
+    const ex = m + p + g + h;
+    const nt = r - ex;
+    
+    row.querySelector('.te').textContent = fmt(ex);
+    row.querySelector('.nt').textContent = fmt(nt);
+    
+    tr += r; tm += m; tp += p; tg += g; th += h; tt += t;
+    
+    labs.push(mos[i]);
+    rents.push(r);
+    exps.push(ex);
+    nets.push(nt);
+  });
+  
+  const tex = tm + tp + tg + th;
+  const ni = tr - tex;
+  const nat = ni - tt;
+  const app = cv - cb;
+  const nts = nat + app - ce;
+  
+  const roi = cb > 0 ? (ni / cb) : 0;
+  const roiAt = cb > 0 ? (nat / cb) : 0;
+  const appP = cb > 0 ? (app / cb) : 0;
+  const roiT = cb > 0 ? (nts / cb) : 0;
+  const mP = tr > 0 ? (tm / tr) : 0;
+  
+  const sum = [
+    ['Cost Basis', fmt(cb)],
+    ['Annual Gross Rent', fmt(tr)],
+    ['Maintenance', fmt(tm)],
+    ['Pool Service', fmt(tp)],
+    ['Landscaping', fmt(tg)],
+    ['HOA Fees', fmt(th)],
+    ['Total Operating Expenses', fmt(tex)],
+    ['Net Operating Income', fmt(ni)],
+    ['Property Tax', fmt(tt)],
+    ['Net After Tax', fmt(nat)],
+    ['Property Appreciation', fmt(app)],
+    ['ROI (Net Income)', pct(roi)],
+    ['ROI (After Tax)', pct(roiAt)],
+    ['Total ROI', pct(roiT)]
+  ];
+  
+  document.getElementById('summary').innerHTML = sum.map(([k, v]) => 
+    `<div class="summary-row"><span>${k}</span><span>${v}</span></div>`
+  ).join('');
+  
+  const rv = roi * 100;
+  const mv = mP * 100;
+  const av = appP * 100;
+  
+  document.getElementById('v1').textContent = rv.toFixed(1) + '%';
+  document.getElementById('v2').textContent = mv.toFixed(1) + '%';
+  document.getElementById('v3').textContent = av.toFixed(1) + '%';
+  
+  if (!ch.g1) {
+    ch.g1 = gauge(document.getElementById('g1').getContext('2d'), rv, 15, '#c9a961');
+    ch.g2 = gauge(document.getElementById('g2').getContext('2d'), mv, 10, '#8b7355');
+    ch.g3 = gauge(document.getElementById('g3').getContext('2d'), av, 25, '#d4b76a');
+  } else {
+    ch.g1.data.datasets[0].data = [(rv / 15) * 100, 100 - (rv / 15) * 100];
+    ch.g2.data.datasets[0].data = [(mv / 10) * 100, 100 - (mv / 10) * 100];
+    ch.g3.data.datasets[0].data = [(av / 25) * 100, 100 - (av / 25) * 100];
+    ch.g1.update(); ch.g2.update(); ch.g3.update();
+  }
+  
+  if (!ch.c1) {
+    ch.c1 = new Chart(document.getElementById('chart1').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: labs,
+        datasets: [
+          { label: 'Rent', data: rents, backgroundColor: '#c9a961' },
+          { label: 'Expenses', data: exps, backgroundColor: '#8b7355' },
+          { label: 'Net', data: nets, backgroundColor: '#d4b76a' }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { color: '#999' } } },
+        scales: {
+          y: { beginAtZero: true, ticks: { color: '#999' }, grid: { color: '#2a2a2a' } },
+          x: { ticks: { color: '#999' }, grid: { color: '#2a2a2a' } }
+        }
+      }
+    });
+    
+    ch.c2 = new Chart(document.getElementById('chart2').getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Maintenance', 'Pool', 'Landscaping', 'HOA'],
+        datasets: [{
+          data: [tm, tp, tg, th],
+          backgroundColor: ['#c9a961', '#8b7355', '#d4b76a', '#a0926d']
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { color: '#999' } } }
+      }
+    });
+  } else {
+    ch.c1.data.labels = labs;
+    ch.c1.data.datasets[0].data = rents;
+    ch.c1.data.datasets[1].data = exps;
+    ch.c1.data.datasets[2].data = nets;
+    ch.c2.data.datasets[0].data = [tm, tp, tg, th];
+    ch.c1.update(); ch.c2.update();
+  }
+  
+  const addr = document.getElementById('address').value;
+  const ls = document.getElementById('leaseStart').value;
+  const le = document.getElementById('leaseEnd').value;
+  
+  const rep = `LUXOR INVESTMENT ASSESSMENT
+
+PROPERTY DETAILS
+Address: ${addr}
+Lease Term: ${ls} – ${le}
+
+INVESTMENT OVERVIEW
+Purchase Price: ${fmt(hc)}
+Repairs & Improvements: ${fmt(rc)}
+Additional Closing Costs: ${fmt(ec)}
+Total Cost Basis: ${fmt(cb)}
+Current Market Value: ${fmt(cv)}
+
+ANNUAL INCOME ANALYSIS
+Gross Rent Income: ${fmt(tr)}
+Operating Expenses: ${fmt(tex)}
+  • Maintenance: ${fmt(tm)} (${pct(mP)} of rent)
+  • Pool Service: ${fmt(tp)}
+  • Landscaping: ${fmt(tg)}
+  • HOA Fees: ${fmt(th)}
+
+Net Operating Income: ${fmt(ni)}
+Return on Investment: ${pct(roi)}
+
+TAX-ADJUSTED RETURNS
+Annual Property Tax: ${fmt(tt)}
+Net Income After Tax: ${fmt(nat)}
+ROI After Tax: ${pct(roiAt)}
+
+TOTAL RETURN ANALYSIS
+Property Appreciation: ${fmt(app)} (${pct(appP)})
+Estimated Closing Costs: ${fmt(ce)}
+Total Net Return: ${fmt(nts)}
+Total ROI: ${pct(roiT)}
+
+PERFORMANCE SUMMARY
+✓ Maintenance: ${mv.toFixed(1)}% of gross rent
+✓ Net Income ROI: ${rv.toFixed(1)}%
+✓ Property Appreciation: ${av.toFixed(1)}%
+✓ Total Return: ${(roiT * 100).toFixed(1)}%`;
+
+  document.getElementById('report').value = rep;
+  window.rep = { sum, rep };
+}
+
+function save() {
+  const d = {
+    address: document.getElementById('address').value,
+    leaseStart: document.getElementById('leaseStart').value,
+    leaseEnd: document.getElementById('leaseEnd').value,
+    homeCost: document.getElementById('homeCost').value,
+    repairCost: document.getElementById('repairCost').value,
+    extraClosing: document.getElementById('extraClosing').value,
+    currentValue: document.getElementById('currentValue').value,
+    propertyTax: document.getElementById('propertyTax').value,
+    closingEst: document.getElementById('closingEst').value,
+    months: []
+  };
+  
+  document.querySelectorAll('#tbody tr').forEach(row => {
+    d.months.push({
+      r: row.querySelector('.r').value,
+      m: row.querySelector('.m').value,
+      p: row.querySelector('.p').value,
+      g: row.querySelector('.g').value,
+      h: row.querySelector('.h').value,
+      t: row.querySelector('.t').value
+    });
+  });
+  
+  localStorage.setItem(KEY, JSON.stringify(d));
+}
+
+function load() {
+  const s = localStorage.getItem(KEY);
+  if (s) {
+    const d = JSON.parse(s);
+    document.getElementById('address').value = d.address || '';
+    document.getElementById('leaseStart').value = d.leaseStart || '';
+    document.getElementById('leaseEnd').value = d.leaseEnd || '';
+    document.getElementById('homeCost').value = d.homeCost || '775000';
+    document.getElementById('repairCost').value = d.repairCost || '30000';
+    document.getElementById('extraClosing').value = d.extraClosing || '0';
+    document.getElementById('currentValue').value = d.currentValue || '928000';
+    document.getElementById('propertyTax').value = d.propertyTax || '10819';
+    document.getElementById('closingEst').value = d.closingEst || '59121';
+    
+    if (d.months) {
+      document.querySelectorAll('#tbody tr').forEach((row, i) => {
+        if (d.months[i]) {
+          row.querySelector('.r').value = d.months[i].r;
+          row.querySelector('.m').value = d.months[i].m;
+          row.querySelector('.p').value = d.months[i].p;
+          row.querySelector('.g').value = d.months[i].g;
+          row.querySelector('.h').value = d.months[i].h;
+          row.querySelector('.t').value = d.months[i].t;
+        }
+      });
+    }
+  }
+}
+
+function copy() {
+  navigator.clipboard.writeText(document.getElementById('report').value);
+}
+
+function copyData() {
+  const txt = window.rep.sum.map(([k, v]) => `${k}\t${v}`).join('\n');
+  navigator.clipboard.writeText(txt);
+}
+
+build();
+
+document.querySelectorAll('input').forEach(inp => {
+  inp.addEventListener('input', () => {
+    calc();
+    save();
+  });
+});
+
+load();
+calc();
+</script>
+</body>
+</html>

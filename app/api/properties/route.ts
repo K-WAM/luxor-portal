@@ -18,7 +18,42 @@ export async function GET(request: Request) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return NextResponse.json(data);
+
+      // Enrich with maintenance counts
+      const { data: maintenanceData } = await supabaseAdmin
+        .from('maintenance_requests')
+        .select('property_id, status, created_at');
+
+      const now = new Date();
+      const RED_THRESHOLD_DAYS = 21;
+      const countsByProperty = new Map<string, { open: number; closed: number; red: number }>();
+
+      if (maintenanceData) {
+        for (const req of maintenanceData) {
+          if (!req.property_id) continue;
+          const counts = countsByProperty.get(req.property_id) || { open: 0, closed: 0, red: 0 };
+          if (req.status === 'closed') {
+            counts.closed++;
+          } else {
+            counts.open++;
+            if (req.created_at) {
+              const created = new Date(req.created_at);
+              const daysDiff = (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
+              if (daysDiff > RED_THRESHOLD_DAYS) counts.red++;
+            }
+          }
+          countsByProperty.set(req.property_id, counts);
+        }
+      }
+
+      const enriched = (data || []).map((prop: any) => ({
+        ...prop,
+        maintenance_open_count: countsByProperty.get(prop.id)?.open ?? 0,
+        maintenance_closed_count: countsByProperty.get(prop.id)?.closed ?? 0,
+        maintenance_red_count: countsByProperty.get(prop.id)?.red ?? 0,
+      }));
+
+      return NextResponse.json(enriched);
     }
 
     // Owners/Tenants: only properties they are linked to
