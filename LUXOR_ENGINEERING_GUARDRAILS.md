@@ -592,6 +592,29 @@ If remote already contains equivalent work, abort the rebase and `git reset --ha
 - ROI pre-tax = `annualPlan.netIncome / calculatedTotalCost * 100`. ROI post-tax only shown if `annualPlan.propertyTax > 0`.
 - Property tax input is in `yeTarget.property_tax` (amber-highlighted row in property financials form).
 
+### C.14 Sidebar Logos
+
+- Logo size: 48×48px across all 3 layouts (admin, owner, tenant). No subtitle text under logo — only the portal name ("Luxor Admin", "Luxor Owner", "Luxor").
+
+### C.15 Tenant Payments — Future Month Status
+
+- Bills with `status !== "paid"` and `status !== "processing"` where `dueDate > now + 10 days` → show blank ("—") status badge. Admin billing page is unaffected (different page).
+- Compute `isFutureUnpaid` in `billRows` useMemo using `nowMs + 10 * DAY_MS` (already memoized to avoid render loops).
+
+### C.16 Owner Dashboard — 5-Column Metrics Table
+
+- Investment Metrics table: 5 columns — label (col-span-2) | YTD Actual | Plan (period) | YE Target | Δ vs Plan.
+- `yeTarget` state is populated from `data.yeTarget` returned by `/api/owner/financial-metrics`.
+- `delta = (actual - plan) / |plan| * 100`. Higher-is-better rows: green when positive. Lower-is-better rows (maintenance, expenses): green when negative.
+- Show YE Target column only when `yeTarget` is non-null. Use "—" for cells without a plan value.
+- PM Fee row: show actual from `metrics.ytd_pm_fee` (canonical metrics via `canonicalMetrics.ytd.pm_fee`). Must be in `CalculatedMetrics` type.
+
+### C.17 Monthly Tab — YTD Summary Cards + No Nested Scroll
+
+- Remove `max-h-[600px] overflow-y-auto` from monthly input table wrapper. Keep `overflow-x-auto` for horizontal scroll only.
+- YTD summary cards (4 tiles): YTD Income ROI, YTD Home Appreciation, Appreciation Since Purchase, Total YTD ROI (incl. Appreciation). Uses `actualYtd` and `purchaseAppreciation` (already computed).
+- `actualYtd = canonicalMetrics.ytd` — already available via the `actualYtd` useMemo in admin/financials/page.tsx.
+
 ### C.10 Context File for New Chats
 
 Stack summary: `C:\Users\karee\.claude\projects\c--Users-karee-Desktop-LuxApp\memory\project_stack.md`

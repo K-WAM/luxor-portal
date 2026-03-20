@@ -31,11 +31,8 @@ export default function TenantLayout({
     <div className="flex min-h-screen">
       <aside className="w-64 bg-gray-900 text-white p-6 flex flex-col">
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-700">
-          <Image src="/luxor-logo.svg" alt="Luxor" width={36} height={36} className="opacity-90 flex-shrink-0" />
-          <div>
-            <div className="text-xl font-bold">Luxor</div>
-            <div className="text-xs text-gray-400 mt-0.5">Tenant Portal</div>
-          </div>
+          <Image src="/luxor-logo.svg" alt="Luxor" width={48} height={48} className="opacity-90 flex-shrink-0" />
+          <div className="text-xl font-bold">Luxor</div>
         </div>
         <nav className="space-y-2 flex-1">
           {sidebarItems.map((item) => {

@@ -77,6 +77,7 @@ type CalculatedMetrics = {
   ytd_pool: number;
   ytd_garden: number;
   ytd_hoa: number;
+  ytd_pm_fee: number;
   ytd_total_expenses: number;
   ytd_net_income: number;
   ytd_property_tax: number;
@@ -91,6 +92,17 @@ type CalculatedMetrics = {
   months_owned: number;
 };
 
+type YeTarget = {
+  rent_income: number;
+  maintenance: number;
+  pool: number;
+  garden: number;
+  hoa: number;
+  property_tax: number;
+  total_expenses: number;
+  net_income: number;
+} | null;
+
 export default function OwnerDashboard() {
   const { user, role } = useAuth();
   const [meInfo, setMeInfo] = useState<{ email: string | null; role: string | null; properties?: any[]; user_id?: string } | null>(null);
@@ -103,6 +115,7 @@ export default function OwnerDashboard() {
   const [property, setProperty] = useState<PropertyFinancials | null>(null);
   const [monthly, setMonthly] = useState<MonthlyPerformance[]>([]);
   const [rawMetrics, setRawMetrics] = useState<CalculatedMetrics | null>(null);
+  const [yeTarget, setYeTarget] = useState<YeTarget>(null);
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -263,6 +276,7 @@ export default function OwnerDashboard() {
       ytd_pool: canonicalMetrics.ytd.pool,
       ytd_garden: canonicalMetrics.ytd.garden,
       ytd_hoa: canonicalMetrics.ytd.hoa_payments,
+      ytd_pm_fee: canonicalMetrics.ytd.pm_fee,
       ytd_total_expenses: canonicalMetrics.ytd.total_expenses,
       ytd_net_income: canonicalMetrics.ytd.net_income,
       ytd_property_tax: canonicalMetrics.ytd.property_tax,
@@ -453,22 +467,24 @@ Use the provided property and document context from the server; do not guess.`;
             ytd_rent_income: data.metrics.ytd.rent_income,
             ytd_maintenance: data.metrics.ytd.maintenance,
             ytd_pool: data.metrics.ytd.pool,
-          ytd_garden: data.metrics.ytd.garden,
-          ytd_hoa: data.metrics.ytd.hoa_payments,
-          ytd_total_expenses: data.metrics.ytd.total_expenses,
-          ytd_net_income: data.metrics.ytd.net_income,
-          ytd_property_tax: data.metrics.ytd.property_tax,
-          cost_basis: data.metrics.cost_basis,
-          current_market_value: data.metrics.current_market_value,
-          appreciation_value: data.metrics.appreciation_value,
-          appreciation_pct: data.metrics.appreciation_pct,
-          roi_pre_tax: data.metrics.roi_pre_tax,
-          roi_post_tax: data.metrics.roi_post_tax,
+            ytd_garden: data.metrics.ytd.garden,
+            ytd_hoa: data.metrics.ytd.hoa_payments,
+            ytd_pm_fee: data.metrics.ytd.pm_fee ?? 0,
+            ytd_total_expenses: data.metrics.ytd.total_expenses,
+            ytd_net_income: data.metrics.ytd.net_income,
+            ytd_property_tax: data.metrics.ytd.property_tax,
+            cost_basis: data.metrics.cost_basis,
+            current_market_value: data.metrics.current_market_value,
+            appreciation_value: data.metrics.appreciation_value,
+            appreciation_pct: data.metrics.appreciation_pct,
+            roi_pre_tax: data.metrics.roi_pre_tax,
+            roi_post_tax: data.metrics.roi_post_tax,
             roi_with_appreciation: data.metrics.roi_with_appreciation,
             maintenance_pct: data.metrics.maintenance_pct,
             months_owned: data.metrics.months_owned,
           });
         }
+        setYeTarget(data.yeTarget ?? null);
       setError(null);
     } catch (err: any) {
       console.error("Error loading financial data:", err);
@@ -547,6 +563,21 @@ Use the provided property and document context from the server; do not guess.`;
   const planRoiPeriod = metrics.cost_basis > 0
     ? (planNetIncomePeriod / metrics.cost_basis) * 100
     : 0;
+
+  // Delta helpers: (actual - plan) / |plan| * 100 — positive means ahead of plan
+  const delta = (actual: number, plan: number) =>
+    plan !== 0 ? ((actual - plan) / Math.abs(plan)) * 100 : null;
+  const fmt$ = formatCurrency;
+  const fmtPct = (v: number) => `${v.toFixed(2)}%`;
+  const deltaCell = (actual: number, plan: number, lowerIsBetter = false) => {
+    const d = delta(actual, plan);
+    if (d === null) return { text: "—", color: "text-slate-400" };
+    const good = lowerIsBetter ? d <= 0 : d >= 0;
+    return {
+      text: `${d >= 0 ? "+" : ""}${d.toFixed(2)}%`,
+      color: good ? "text-emerald-600" : "text-red-600",
+    };
+  };
 
   // Performance: uses projectedRoi + updated maintenance thresholds
   const performanceStatus =
@@ -694,95 +725,185 @@ Use the provided property and document context from the server; do not guess.`;
           </div>
         </div>
 
-        {/* 3. Investment Metrics — sectioned, actual vs plan */}
+        {/* 3. Investment Metrics — 5-column table */}
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="px-6 py-4 border-b border-slate-100">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Investment Metrics</h2>
+            <span className="text-xs text-slate-400">{periodLabel}</span>
           </div>
+
+          {/* Property & Capital */}
           <div className="divide-y divide-slate-100">
-            {/* Property & Capital */}
             <div className="px-6 py-2 bg-slate-50">
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Property & Capital</span>
             </div>
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-              <span className="text-slate-600">Cost Basis</span>
-              <span className="font-semibold text-slate-900">{formatCurrency(metrics.cost_basis)}</span>
-              <span className="text-xs text-slate-400">Purchase + repairs + closing costs</span>
-            </div>
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-              <span className="text-slate-600">Current Market Value</span>
-              <span className="font-semibold text-slate-900">{formatCurrency(metrics.current_market_value)}</span>
-              <span className="text-xs text-slate-400">Latest monthly estimate</span>
-            </div>
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-              <span className="text-slate-600">Appreciation</span>
-              <span className={`font-semibold ${metrics.appreciation_value >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {formatCurrency(metrics.appreciation_value)} ({formatPercentage(metrics.appreciation_pct)})
-              </span>
-              <span className="text-xs text-slate-400">Since purchase · {metrics.months_owned} months owned</span>
-            </div>
+            {[
+              { label: "Cost Basis", value: fmt$(metrics.cost_basis), note: "Purchase + repairs + closing" },
+              { label: "Current Market Value", value: fmt$(metrics.current_market_value), note: "Latest monthly estimate" },
+              {
+                label: "Appreciation",
+                value: <span className={metrics.appreciation_value >= 0 ? "text-green-600" : "text-red-600"}>
+                  {fmt$(metrics.appreciation_value)} ({fmtPct(metrics.appreciation_pct)})
+                </span>,
+                note: `Since purchase · ${metrics.months_owned} mo`,
+              },
+            ].map(({ label, value, note }) => (
+              <div key={label} className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
+                <span className="col-span-2 text-slate-600">{label}</span>
+                <span className="font-semibold text-slate-900">{value}</span>
+                <span className="col-span-2 text-xs text-slate-400">{note}</span>
+              </div>
+            ))}
 
-            {/* Income & Expenses */}
+            {/* Income & Expenses header */}
             <div className="px-6 py-2 bg-slate-50">
-              <div className="grid grid-cols-3">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Income & Expenses — {periodLabel}</span>
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Actual</span>
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Plan</span>
+              <div className="grid grid-cols-5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                <span className="col-span-2">Income & Expenses</span>
+                <span>YTD Actual</span>
+                <span>Plan</span>
+                {yeTarget ? <span>YE Target</span> : <span />}
               </div>
             </div>
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-              <span className="text-slate-600">Gross Rent Income</span>
-              <span className="font-semibold text-slate-900">{formatCurrency(metrics.ytd_rent_income)}</span>
-              <span className="text-slate-400">{formatCurrency(planRentPeriod)}</span>
-            </div>
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-              <span className="text-slate-600">Maintenance</span>
-              <span className={`font-semibold ${metrics.maintenance_pct < 4 ? "text-green-600" : metrics.maintenance_pct < 5 ? "text-yellow-600" : "text-red-600"}`}>
-                {formatCurrency(metrics.ytd_maintenance)} <span className="text-xs">({formatPercentage(metrics.maintenance_pct)})</span>
+
+            {/* Gross Income */}
+            {(() => {
+              const d = deltaCell(metrics.ytd_rent_income, planRentPeriod, false);
+              return (
+                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
+                  <span className="col-span-2 text-slate-600">Gross Income</span>
+                  <span className="font-semibold text-slate-900">{fmt$(metrics.ytd_rent_income)}</span>
+                  <span className="text-slate-500">{fmt$(planRentPeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
+                  <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.rent_income) : "—"}</span>
+                </div>
+              );
+            })()}
+
+            {/* Maintenance $ */}
+            {(() => {
+              const d = deltaCell(metrics.ytd_maintenance, planMaintenancePeriod, true);
+              return (
+                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
+                  <span className="col-span-2 text-slate-600">Maintenance</span>
+                  <span className={`font-semibold ${metrics.maintenance_pct < 4 ? "text-green-600" : metrics.maintenance_pct < 5 ? "text-yellow-600" : "text-red-600"}`}>
+                    {fmt$(metrics.ytd_maintenance)}
+                  </span>
+                  <span className="text-slate-500">{fmt$(planMaintenancePeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
+                  <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.maintenance) : "—"}</span>
+                </div>
+              );
+            })()}
+
+            {/* Maintenance % */}
+            <div className="grid grid-cols-5 px-6 py-2 text-xs hover:bg-slate-50 items-center bg-slate-50/50">
+              <span className="col-span-2 text-slate-400 pl-3">↳ as % of rent</span>
+              <span className={`font-medium ${metrics.maintenance_pct < 4 ? "text-green-600" : metrics.maintenance_pct < 5 ? "text-yellow-600" : "text-red-600"}`}>
+                {fmtPct(metrics.maintenance_pct)}
               </span>
-              <span className="text-slate-400">{formatCurrency(planMaintenancePeriod)} <span className="text-xs">(5% target)</span></span>
+              <span className="text-slate-400">5.00% target</span>
+              <span className="text-slate-400">{yeTarget ? "5.00%" : "—"}</span>
             </div>
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-              <span className="text-slate-600">HOA, Pool & Garden</span>
-              <span className="font-semibold text-slate-900">{formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden)}</span>
-              <span className="text-slate-400">{formatCurrency(planOtherPeriod)}</span>
-            </div>
+
+            {/* HOA Pool Garden */}
+            {(() => {
+              const actual = metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden;
+              const d = deltaCell(actual, planOtherPeriod, true);
+              return (
+                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
+                  <span className="col-span-2 text-slate-600">HOA, Pool & Garden</span>
+                  <span className="font-semibold text-slate-900">{fmt$(actual)}</span>
+                  <span className="text-slate-500">{fmt$(planOtherPeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
+                  <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.hoa + yeTarget.pool + yeTarget.garden) : "—"}</span>
+                </div>
+              );
+            })()}
+
+            {/* PM Fee */}
+            {(metrics.ytd_pm_fee > 0 || (yeTarget && yeTarget.net_income > 0)) && (() => {
+              const planPmFee = metrics.ytd_pm_fee; // no separate plan; show actual as reference
+              return (
+                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
+                  <span className="col-span-2 text-slate-600">PM Fee</span>
+                  <span className="font-semibold text-slate-900">{fmt$(metrics.ytd_pm_fee)}</span>
+                  <span className="text-slate-400">—</span>
+                  <span className="text-slate-400">{yeTarget && (yeTarget.net_income < yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden) ? fmt$(yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden - yeTarget.net_income) : "—"}</span>
+                </div>
+              );
+            })()}
+
+            {/* Property Tax */}
             {metrics.ytd_property_tax > 0 && (
-              <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-                <span className="text-slate-600">Property Tax</span>
-                <span className="font-semibold text-slate-900">{formatCurrency(metrics.ytd_property_tax)}</span>
-                <span className="text-xs text-slate-400">—</span>
+              <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
+                <span className="col-span-2 text-slate-600">Property Tax</span>
+                <span className="font-semibold text-slate-900">{fmt$(metrics.ytd_property_tax)}</span>
+                <span className="text-slate-400">—</span>
+                <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.property_tax) : "—"}</span>
               </div>
             )}
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50 font-semibold border-t border-slate-200">
-              <span className="text-slate-700">Net Income</span>
-              <span className={metrics.ytd_net_income >= 0 ? "text-green-600" : "text-red-600"}>{formatCurrency(metrics.ytd_net_income)}</span>
-              <span className={planNetIncomePeriod >= 0 ? "text-slate-500" : "text-red-500"}>{formatCurrency(planNetIncomePeriod)}</span>
+
+            {/* Net Income */}
+            {(() => {
+              const d = deltaCell(metrics.ytd_net_income, planNetIncomePeriod, false);
+              return (
+                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 font-semibold border-t border-slate-200 items-center">
+                  <span className="col-span-2 text-slate-700">Net Income</span>
+                  <span className={metrics.ytd_net_income >= 0 ? "text-green-600" : "text-red-600"}>{fmt$(metrics.ytd_net_income)}</span>
+                  <span className="text-slate-500">{fmt$(planNetIncomePeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
+                  <span className="text-slate-400">{yeTarget ? fmt$(yeTarget.net_income) : "—"}</span>
+                </div>
+              );
+            })()}
+
+            {/* ROI header */}
+            <div className="px-6 py-2 bg-slate-50">
+              <div className="grid grid-cols-5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                <span className="col-span-2">Investment Performance</span>
+                <span>Actual</span>
+                <span>Plan</span>
+                {yeTarget ? <span>YE Target</span> : <span />}
+              </div>
             </div>
 
-            {/* ROI */}
-            <div className="px-6 py-2 bg-slate-50">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Return on Investment</span>
+            {/* ROI (Net Income) */}
+            {(() => {
+              const actualRoi = metrics.roi_pre_tax;
+              const d = deltaCell(actualRoi, planRoiPeriod, false);
+              return (
+                <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
+                  <span className="col-span-2 text-slate-600">
+                    Return on Investment (Net Income)
+                    {activeRole === "admin" && <span className="ml-1 text-[10px] text-slate-400">(net÷cost)</span>}
+                  </span>
+                  <span className={`font-semibold ${actualRoi >= 5 ? "text-green-600" : actualRoi >= 3 ? "text-yellow-600" : "text-red-600"}`}>{fmtPct(actualRoi)}</span>
+                  <span className="text-slate-500">{fmtPct(planRoiPeriod)} <span className={`text-xs font-medium ${d.color}`}>{d.text}</span></span>
+                  <span className="text-slate-400">{yeTarget && metrics.cost_basis > 0 ? fmtPct(yeTarget.net_income / metrics.cost_basis * 100) : "—"}</span>
+                </div>
+              );
+            })()}
+
+            {/* ROI Post Property Tax */}
+            <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
+              <span className="col-span-2 text-slate-600">ROI Post Property Tax</span>
+              <span className="font-semibold text-slate-900">{fmtPct(metrics.roi_post_tax)}</span>
+              <span className="text-slate-400">—</span>
+              <span className="text-slate-400">—</span>
             </div>
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-              <span className="text-slate-600">Projected ROI (annualized)</span>
-              <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-600" : projectedRoi >= 3 ? "text-yellow-600" : "text-red-600"}`}>
-                {formatPercentage(projectedRoi)}
-                {activeRole === "admin" && <span className="ml-1 text-[10px] font-normal text-slate-400">(net ÷ {elapsedMonths}mo × 12 ÷ cost)</span>}
-              </span>
-              <span className="text-xs text-slate-400">Based on {elapsedMonths} months of actual data</span>
+
+            {/* Home Value Appreciation */}
+            <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 items-center">
+              <span className="col-span-2 text-slate-600">Home Value Appreciation</span>
+              <span className={`font-semibold ${metrics.appreciation_pct >= 0 ? "text-green-600" : "text-red-600"}`}>{fmtPct(metrics.appreciation_pct)}</span>
+              <span className="text-slate-400">—</span>
+              <span className="text-slate-400">—</span>
             </div>
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-              <span className="text-slate-600">Expected ROI (plan)</span>
-              <span className={`font-semibold ${expectedRoi >= 5 ? "text-green-600" : expectedRoi >= 3 ? "text-yellow-600" : "text-red-600"}`}>{formatPercentage(expectedRoi)}</span>
-              <span className="text-xs text-slate-400">From target rent & planned expenses</span>
-            </div>
-            <div className="grid grid-cols-3 px-6 py-3 text-sm hover:bg-slate-50">
-              <span className="text-slate-700 font-semibold">Total ROI (incl. appreciation)</span>
+
+            {/* Total ROI incl appreciation */}
+            <div className="grid grid-cols-5 px-6 py-3 text-sm hover:bg-slate-50 font-semibold items-center border-t border-slate-200">
+              <span className="col-span-2 text-slate-700">Total ROI (incl. Appreciation)</span>
               <span className={`font-bold text-base ${metrics.roi_with_appreciation >= 10 ? "text-green-600" : metrics.roi_with_appreciation >= 5 ? "text-yellow-600" : "text-red-600"}`}>
-                {formatPercentage(metrics.roi_with_appreciation)}
+                {fmtPct(metrics.roi_with_appreciation)}
               </span>
-              <span className="text-xs text-slate-400">(Net Income + Appreciation) / Cost Basis</span>
+              <span className="text-slate-400">—</span>
+              <span className="text-slate-400">—</span>
             </div>
           </div>
         </div>

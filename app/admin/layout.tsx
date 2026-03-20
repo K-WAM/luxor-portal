@@ -32,14 +32,9 @@ export default function AdminLayout({
   return (
     <div className="min-h-screen flex bg-slate-100">
       <aside className="w-64 bg-slate-900 text-slate-100 flex flex-col">
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center gap-3">
-          <Image src="/luxor-logo.svg" alt="Luxor" width={36} height={36} className="opacity-90 flex-shrink-0" />
-          <div>
-            <div className="text-xl font-semibold tracking-wide">Luxor Admin</div>
-            <div className="text-xs text-slate-400 mt-0.5">
-              Portfolio &amp; Maintenance Hub
-            </div>
-          </div>
+        <div className="px-6 py-5 border-b border-slate-800 flex items-center gap-3">
+          <Image src="/luxor-logo.svg" alt="Luxor" width={48} height={48} className="opacity-90 flex-shrink-0" />
+          <div className="text-xl font-semibold tracking-wide">Luxor Admin</div>
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1 text-sm">

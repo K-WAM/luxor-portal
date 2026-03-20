@@ -175,6 +175,12 @@ export default function TenantPayments() {
       .map((bill) => {
         const label = BILL_TYPE_LABELS[bill.bill_type] || bill.bill_type;
         const detail = bill.description ? ` - ${bill.description}` : "";
+        const dueParts = getDateOnlyParts(bill.due_date);
+        const dueMs = dueParts
+          ? new Date(Date.UTC(dueParts.year, dueParts.month - 1, dueParts.day)).getTime()
+          : null;
+        const isUnpaid = bill.status !== "paid" && bill.status !== "processing";
+        const isFutureUnpaid = isUnpaid && dueMs !== null && dueMs > nowMs + 10 * DAY_MS;
         return {
           id: bill.id,
           year: bill.year,
@@ -186,6 +192,7 @@ export default function TenantPayments() {
           dueDate: bill.due_date,
           invoiceUrl: bill.invoice_url,
           paymentLinkUrl: bill.payment_link_url,
+          isFutureUnpaid,
         };
       })
       .sort((a, b) => {
@@ -482,6 +489,9 @@ export default function TenantPayments() {
                         <span className="font-semibold">{formatCurrency(row.amount)}</span>
                       </div>
                       <div className="mt-2 flex items-center justify-between">
+                        {row.isFutureUnpaid ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : (
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             row.status === "paid"
@@ -497,6 +507,7 @@ export default function TenantPayments() {
                             ? "Processing (ACH)"
                             : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
                         </span>
+                        )}
                         {row.invoiceUrl ? (
                           <a href={row.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-xs">
                             Invoice PDF
@@ -531,6 +542,9 @@ export default function TenantPayments() {
                             {formatDateOnly(row.dueDate) || "-"}
                           </td>
                           <td className="py-2 px-3">
+                            {row.isFutureUnpaid ? (
+                              <span className="text-xs text-gray-400">—</span>
+                            ) : (
                             <span
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                                 row.status === "paid"
@@ -546,6 +560,7 @@ export default function TenantPayments() {
                                 ? "Processing (ACH)"
                                 : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
                             </span>
+                            )}
                           </td>
                           <td className="py-2 px-3 text-right font-semibold">
                             {formatCurrency(row.amount)}
