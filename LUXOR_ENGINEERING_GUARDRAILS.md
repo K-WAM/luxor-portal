@@ -641,11 +641,64 @@ Paste it at the start of any new chat session. Keep it updated when the stack ch
 
 ---
 
+## 11. Recurring Session Checklist
+
+At the end of every development session, before closing, run through the following:
+
+### 11.1 After Every Prompt Completion
+
+**File Organization** — Any new file created must be placed in the correct location:
+
+| File Type | Location |
+|-----------|----------|
+| Feature pages | `app/[portal]/[feature]/page.tsx` |
+| API routes | `app/api/[domain]/route.ts` |
+| Reusable components | `app/components/` or `app/components/ui/` |
+| Financial calc functions | `lib/calculations/canonical-metrics.ts` |
+| SQL migration files | `supabase/migrations/` |
+| Planning/status docs | `luxor-portal/docs/` |
+| Utility/migration scripts | `luxor-portal/scripts/` |
+| Root-level onboarding docs | `docs/` (LuxApp root) |
+| Logo/brand assets | `logos/` (LuxApp root) or `public/` (if used in portal) |
+| Reference/legacy HTML | `legacy/` |
+
+Do **not** create new files at the root of `luxor-portal/` unless they are config files required by the framework (e.g., `next.config.ts`, `middleware.ts`, `.gitignore`).
+
+### 11.2 After Any Database Schema Change
+
+**SQL Migration Check** — Before pushing or declaring work complete, verify:
+
+- [ ] Any new table columns are covered by a migration file in `supabase/migrations/`
+- [ ] Migration file is named with timestamp prefix: `YYYYMMDD_description.sql`
+- [ ] Migration uses `IF NOT EXISTS` / `IF EXISTS` guards to be idempotent
+- [ ] New columns have sensible defaults or are nullable
+- [ ] Migration is reversible (include rollback SQL as a comment if non-trivial)
+- [ ] Report to user: "Run this SQL in Supabase Dashboard > SQL Editor: `supabase/migrations/[filename].sql`"
+
+**Current pending migrations for user to run manually:**
+- `supabase/migrations/20241211_add_roi_and_timestamps.sql` — adds `roi_target_percentage` and `financials_updated_at` to properties table (if not already applied)
+
+### 11.3 After Every Session (Git)
+
+- Stage all changed/new files: `git add [specific files]` (avoid `git add .` for safety)
+- Commit with a clear message describing what changed and why
+- Push to `origin main`: `git push origin main`
+- Confirm push succeeded before ending session
+
+### 11.4 Guardrails Self-Update
+
+If a new recurring pattern, standard, or hard-learned lesson emerges from the session:
+- Add it to the appropriate section of `LUXOR_ENGINEERING_GUARDRAILS.md`
+- Update the version number and note the change in Document Control
+
+---
+
 ## Document Control
 
 | Field | Value |
 |-------|-------|
-| Version | 1.1 |
+| Version | 1.2 |
 | Status | Active |
 | Applies To | All Luxor development |
 | Review Cycle | On significant system changes |
+| Last Updated | 2026-03-20 — Merged Section 11 (Recurring Session Checklist) from root guardrails file |

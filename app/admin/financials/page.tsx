@@ -2006,134 +2006,161 @@ export default function FinancialsPage() {
                 const closingCosts = parseFloat(saleClosingCosts) || 0;
                 const roiIfSold = calculateROIIfSoldToday(ytdNetIncome, closingCosts, appreciationValue, costBasis);
 
+                const monthsOwned = canonicalMetrics.months_owned;
+                const monthlyAppreciationGain = monthsOwned > 0 ? appreciationValue / monthsOwned : 0;
+                const annualizedAppreciationGain = monthlyAppreciationGain * 12;
+
                 return (
                   <>
                     <h3 className="font-semibold text-slate-900 mb-4 text-lg">
-                      Return on Investment ({periodLabelShort})
+                      Investment Performance ({periodLabelShort})
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                      {/* Income-Based ROI */}
-                      <div className="space-y-3">
-                        <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Income Only</h4>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Pre-Tax ROI:</span>
-                            <span className="font-semibold text-slate-900">{preTaxROI.toFixed(2)}%</span>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                      {/* LEFT: Income & Returns */}
+                      <div>
+                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Income &amp; Returns</div>
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-slate-100 text-slate-600">
+                              <th className="px-3 py-2 text-left font-medium">Metric</th>
+                              <th className="px-3 py-2 text-right font-medium">Actual</th>
+                              <th className="px-3 py-2 text-right font-medium">Plan</th>
+                              <th className="px-3 py-2 text-right font-medium">Δ</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">Gross Rent</td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{formatCurrency(actualYtd.rent_income)}</td>
+                              <td className="px-3 py-2 text-right text-slate-500">{formatCurrency(annualPlan.rent)}</td>
+                              <td className={`px-3 py-2 text-right text-xs font-medium ${actualYtd.rent_income >= annualPlan.rent ? 'text-green-600' : 'text-red-600'}`}>
+                                {actualYtd.rent_income >= annualPlan.rent ? '+' : ''}{formatCurrency(actualYtd.rent_income - annualPlan.rent)}
+                              </td>
+                            </tr>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">Net Income</td>
+                              <td className={`px-3 py-2 text-right font-semibold ${ytdNetIncome >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatCurrency(ytdNetIncome)}</td>
+                              <td className="px-3 py-2 text-right text-slate-500">{formatCurrency(annualPlan.netIncome)}</td>
+                              <td className={`px-3 py-2 text-right text-xs font-medium ${ytdNetIncome >= annualPlan.netIncome ? 'text-green-600' : 'text-red-600'}`}>
+                                {ytdNetIncome >= annualPlan.netIncome ? '+' : ''}{formatCurrency(ytdNetIncome - annualPlan.netIncome)}
+                              </td>
+                            </tr>
+                            <tr className="bg-slate-50 border-t border-slate-200 hover:bg-slate-100">
+                              <td className="px-3 py-2 font-medium text-slate-700">ROI (Net Income)</td>
+                              <td className={`px-3 py-2 text-right font-bold ${preTaxROI >= 5 ? 'text-green-700' : preTaxROI >= 3 ? 'text-yellow-600' : 'text-red-700'}`}>{preTaxROI.toFixed(2)}%</td>
+                              <td className="px-3 py-2 text-right text-slate-500">{costBasis > 0 ? (annualPlan.netIncome / costBasis * 100).toFixed(2) : '—'}%</td>
+                              <td className={`px-3 py-2 text-right text-xs font-medium ${preTaxROI >= (annualPlan.netIncome / costBasis * 100) ? 'text-green-600' : 'text-red-600'}`}>
+                                {costBasis > 0 ? `${(preTaxROI - annualPlan.netIncome / costBasis * 100) >= 0 ? '+' : ''}${(preTaxROI - annualPlan.netIncome / costBasis * 100).toFixed(2)}%` : '—'}
+                              </td>
+                            </tr>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">ROI Post Property Tax</td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{canonicalMetrics.roi_post_tax.toFixed(2)}%</td>
+                              <td className="px-3 py-2 text-right text-slate-400">—</td>
+                              <td className="px-3 py-2 text-right text-slate-400">—</td>
+                            </tr>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">Home Value Appreciation</td>
+                              <td className={`px-3 py-2 text-right font-semibold ${appreciationPct >= 0 ? 'text-green-700' : 'text-red-700'}`}>{appreciationPct >= 0 ? '+' : ''}{appreciationPct.toFixed(2)}%</td>
+                              <td className="px-3 py-2 text-right text-slate-400">—</td>
+                              <td className="px-3 py-2 text-right text-slate-400">—</td>
+                            </tr>
+                            <tr className="bg-slate-50 border-t border-slate-200 hover:bg-slate-100">
+                              <td className="px-3 py-2 font-semibold text-slate-800">Total ROI (incl. Appr.)</td>
+                              <td className={`px-3 py-2 text-right font-bold text-base ${comprehensivePreTaxROI >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                {comprehensivePreTaxROI >= 0 ? '+' : ''}{comprehensivePreTaxROI.toFixed(2)}%
+                              </td>
+                              <td className="px-3 py-2 text-right text-slate-400">—</td>
+                              <td className="px-3 py-2 text-right text-slate-400">—</td>
+                            </tr>
+                          </tbody>
+                        </table>
+
+                        {/* ROI if Sold */}
+                        <div className="mt-4 pt-3 border-t border-slate-200">
+                          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">If Sold Today</div>
+                          <div className="flex items-center gap-3 mb-2">
+                            <label className="text-sm text-slate-600 whitespace-nowrap">Closing Costs:</label>
+                            <input
+                              type="number"
+                              value={saleClosingCosts}
+                              onChange={(e) => setSaleClosingCosts(e.target.value)}
+                              className="w-32 px-2 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="0"
+                            />
                           </div>
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Collected Rent:</span>
-                            <span className="font-semibold text-slate-900">{formatCurrency(actualYtd.rent_income)}</span>
+                          <div className="flex justify-between items-center bg-slate-100 rounded px-3 py-2">
+                            <span className="text-sm font-semibold text-slate-700">ROI if Sold Today</span>
+                            <span className={`font-bold text-lg ${roiIfSold >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                              {roiIfSold >= 0 ? '+' : ''}{roiIfSold.toFixed(2)}%
+                            </span>
                           </div>
-                          {propertyFinancials.last_month_rent_collected && (parseFloat(propertyFinancials.deposit) || 0) > 0 && (
-                            <div className="flex justify-between items-center gap-2">
-                              <span className="text-sm text-slate-600">Last-Month Deposit:</span>
-                              <span className="font-semibold text-blue-700">+{formatCurrency(parseFloat(propertyFinancials.deposit) || 0)}</span>
-                            </div>
-                          )}
+                          <div className="mt-1 text-xs text-slate-400">
+                            (Net Income − Closing Costs + Total Appr.) ÷ Cost Basis
+                          </div>
                         </div>
                       </div>
 
-                      {/* Appreciation Metrics */}
-                      <div className="space-y-3">
-                        <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Appreciation</h4>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Market:</span>
-                            <span className="font-semibold text-slate-900">
-                              {formatCurrency(mostRecentMarketValue)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Since Purchase:</span>
-                            <span className={`font-semibold ${appreciationValue >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                              {formatCurrency(appreciationValue)} ({appreciationPct >= 0 ? '+' : ''}{appreciationPct.toFixed(2)}%)
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">
-                              YTD {performanceYear}{earliestYtdMonthName ? ` (from ${earliestYtdMonthName})` : ""}:
-                            </span>
-                            <span className={`font-semibold ${appreciationYTD >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                              {earliestYtdValue > 0
-                                ? `${formatCurrency(appreciationYTD)} (${appreciationYTDPct >= 0 ? '+' : ''}${appreciationYTDPct.toFixed(2)}%)`
-                                : 'No market data'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Comprehensive ROI */}
-                      <div className="space-y-3">
-                        <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Total ROI</h4>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Income + Appr:</span>
-                            <span className={`font-semibold text-lg ${comprehensivePreTaxROI >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                              {comprehensivePreTaxROI >= 0 ? '+' : ''}{comprehensivePreTaxROI.toFixed(2)}%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Yearly ROI */}
-                      <div className="space-y-3">
-                        <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Yearly ROI</h4>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">Lease Appr:</span>
-                            <span className={`font-semibold ${leaseTermAppreciation >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                              {formatCurrency(leaseTermAppreciation)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center gap-2">
-                            <span className="text-sm text-slate-600">With Income:</span>
-                            <span className={`font-semibold text-lg ${(() => {
-                              const yearlyROI = calculateComprehensiveROI(ytdNetIncome, leaseTermAppreciation, costBasis);
-                              return yearlyROI >= 0 ? 'text-green-700' : 'text-red-700';
-                            })()}`}>
-                              {(() => {
-                                const yearlyROI = calculateComprehensiveROI(ytdNetIncome, leaseTermAppreciation, costBasis);
-                                return `${yearlyROI >= 0 ? '+' : ''}${yearlyROI.toFixed(2)}%`;
-                              })()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* ROI If Sold Today Section */}
-                    <div className="mt-6 pt-4 border-t border-slate-300">
-                      <h4 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">If Sold Today</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                        <div>
-                          <label className="block text-sm text-slate-600 mb-1">
-                            Closing Costs (to sell):
-                          </label>
-                          <input
-                            type="number"
-                            value={saleClosingCosts}
-                            onChange={(e) => setSaleClosingCosts(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="0"
-                          />
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-semibold text-slate-700">ROI if Sold Today:</span>
-                          <span className={`font-bold text-xl ${roiIfSold >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                            {roiIfSold >= 0 ? '+' : ''}{roiIfSold.toFixed(2)}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-xs text-slate-500">
-                        Formula: (YTD Net Income - Closing Costs + Total Appreciation) / Cost Basis
-                      </div>
-                    </div>
-
-                    {/* Cost Basis Footer */}
-                    <div className="mt-4 pt-4 border-t border-slate-300">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-slate-600">Cost Basis (Total Investment):</span>
-                        <span className="font-semibold text-slate-900">{formatCurrency(costBasis)}</span>
+                      {/* RIGHT: Home Performance */}
+                      <div>
+                        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Home Performance</div>
+                        <table className="w-full text-sm border-collapse">
+                          <tbody className="divide-y divide-slate-100">
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">Cost Basis</td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{formatCurrency(costBasis)}</td>
+                              <td className="px-3 py-2 text-right text-xs text-slate-400">Purchase + repairs + closing</td>
+                            </tr>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">Current Market Value</td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{formatCurrency(mostRecentMarketValue)}</td>
+                              <td className="px-3 py-2 text-right text-xs text-slate-400">Latest estimate</td>
+                            </tr>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">Appreciation (since purchase)</td>
+                              <td className={`px-3 py-2 text-right font-semibold ${appreciationValue >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                {formatCurrency(appreciationValue)}
+                              </td>
+                              <td className={`px-3 py-2 text-right text-xs font-medium ${appreciationPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {appreciationPct >= 0 ? '+' : ''}{appreciationPct.toFixed(2)}%
+                              </td>
+                            </tr>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">
+                                YTD Appreciation {earliestYtdMonthName ? `(from ${earliestYtdMonthName})` : ""}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-semibold ${appreciationYTD >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                {earliestYtdValue > 0 ? formatCurrency(appreciationYTD) : '—'}
+                              </td>
+                              <td className={`px-3 py-2 text-right text-xs font-medium ${appreciationYTDPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {earliestYtdValue > 0 ? `${appreciationYTDPct >= 0 ? '+' : ''}${appreciationYTDPct.toFixed(2)}%` : 'No data'}
+                              </td>
+                            </tr>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">Monthly Appreciation Gain</td>
+                              <td className={`px-3 py-2 text-right font-semibold ${monthlyAppreciationGain >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                {monthsOwned > 0 ? formatCurrency(monthlyAppreciationGain) : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-right text-xs text-slate-400">
+                                {monthsOwned > 0 ? `Appr. ÷ ${monthsOwned} mo` : '—'}
+                              </td>
+                            </tr>
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">Annualized Appreciation Gain</td>
+                              <td className={`px-3 py-2 text-right font-semibold ${annualizedAppreciationGain >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                {monthsOwned > 0 ? formatCurrency(annualizedAppreciationGain) : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-right text-xs text-slate-400">Monthly × 12</td>
+                            </tr>
+                            <tr className="bg-slate-50">
+                              <td className="px-3 py-2 text-slate-600">Months Owned</td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-900">{monthsOwned > 0 ? monthsOwned : '—'}</td>
+                              <td className="px-3 py-2 text-right text-xs text-slate-400">Since purchase date</td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </>

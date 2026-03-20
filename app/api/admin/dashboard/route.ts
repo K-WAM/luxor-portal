@@ -194,6 +194,39 @@ export async function GET(request: Request) {
       })
     );
 
+    // Get all maintenance requests (all statuses) for per-property counts
+    const { data: allMaintenanceRequests } = await supabaseAdmin
+      .from("maintenance_requests")
+      .select("id, property_id, status, created_at");
+
+    const maintNow = new Date();
+    const MAINT_RED_DAYS = 21;
+    const maintCountsByProperty = new Map<string, { open: number; closed: number; red: number }>();
+    if (allMaintenanceRequests) {
+      for (const req of allMaintenanceRequests) {
+        if (!req.property_id) continue;
+        const counts = maintCountsByProperty.get(req.property_id) || { open: 0, closed: 0, red: 0 };
+        if (req.status === "closed") {
+          counts.closed++;
+        } else {
+          counts.open++;
+          if (req.created_at) {
+            const daysDiff = (maintNow.getTime() - new Date(req.created_at).getTime()) / (1000 * 60 * 60 * 24);
+            if (daysDiff > MAINT_RED_DAYS) counts.red++;
+          }
+        }
+        maintCountsByProperty.set(req.property_id, counts);
+      }
+    }
+
+    // Enrich properties with maintenance counts
+    const propertiesWithMaintenance = propertiesWithMetrics.map((p) => ({
+      ...p,
+      maintenance_open_count: maintCountsByProperty.get(p.id)?.open ?? 0,
+      maintenance_closed_count: maintCountsByProperty.get(p.id)?.closed ?? 0,
+      maintenance_red_count: maintCountsByProperty.get(p.id)?.red ?? 0,
+    }));
+
     // Get all open maintenance requests
     const { data: openRequests, error: reqError } = await supabaseAdmin
       .from("maintenance_requests")
@@ -281,7 +314,7 @@ export async function GET(request: Request) {
     // For now, we'll just return active users
 
     return NextResponse.json({
-      properties: propertiesWithMetrics,
+      properties: propertiesWithMaintenance,
       openMaintenanceRequests: maintenanceWithProperties,
       users,
       pendingPayments,

@@ -41,6 +41,7 @@ export default function AdminDocumentsPage() {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filterPropertyId, setFilterPropertyId] = useState<string>("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [visibilityDrafts, setVisibilityDrafts] = useState<Record<string, DocumentRecord["visibility"]>>({});
   const [savingVisibilityId, setSavingVisibilityId] = useState<string | null>(null);
@@ -392,12 +393,26 @@ export default function AdminDocumentsPage() {
           <h2 className="text-lg font-semibold text-slate-900">
             All documents
           </h2>
-          <button
-            onClick={loadDocuments}
-            className="text-xs px-3 py-1 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-50"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <select
+              className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white"
+              value={filterPropertyId}
+              onChange={(e) => setFilterPropertyId(e.target.value)}
+            >
+              <option value="">All properties</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name || p.address || `Property ${p.id}`}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={loadDocuments}
+              className="text-xs px-3 py-1 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-50"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         {loadingDocs ? (
@@ -420,7 +435,7 @@ export default function AdminDocumentsPage() {
                 </tr>
               </thead>
               <tbody>
-                {documents.map((doc) => {
+                {documents.filter((doc) => !filterPropertyId || doc.property_id === filterPropertyId).map((doc) => {
                   const currentVisibility = visibilityDrafts[doc.id] ?? doc.visibility;
                   const ownerVisible = isVisibleToOwner(doc.visibility);
                   const tenantVisible = isVisibleToTenant(doc.visibility);

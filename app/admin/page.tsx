@@ -20,6 +20,9 @@ type PropertyMetrics = {
   ytd_net_income: number;
   current_month_rent_paid: boolean;
   performance_status: "green" | "yellow" | "red";
+  maintenance_open_count: number;
+  maintenance_closed_count: number;
+  maintenance_red_count: number;
 };
 
 type MaintenanceRequest = {
@@ -229,6 +232,7 @@ export default function AdminDashboard() {
                       <th className="py-3 px-4 text-right font-medium">Monthly Rent</th>
                       <th className="py-3 px-4 text-right font-medium">Lease End</th>
                       <th className="py-3 px-4 text-center font-medium">{currentMonthName} Rent</th>
+                      <th className="py-3 px-4 text-center font-medium">Maint. Requests</th>
                       <th className="py-3 px-4 text-right font-medium">Maint. % of Rent</th>
                       <th className="py-3 px-4 text-right font-medium">YTD Net Income</th>
                       <th className="py-3 px-4 text-right font-medium">Projected ROI%</th>
@@ -240,7 +244,7 @@ export default function AdminDashboard() {
                   <tbody className="divide-y divide-slate-100 text-slate-800">
                     {data.properties.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="py-8 px-4 text-center text-slate-500">
+                        <td colSpan={11} className="py-8 px-4 text-center text-slate-500">
                           No properties found.
                         </td>
                       </tr>
@@ -254,6 +258,27 @@ export default function AdminDashboard() {
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${property.current_month_rent_paid ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                               {property.current_month_rent_paid ? "Yes" : "No"}
                             </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                              {property.maintenance_open_count > 0 ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title="Open requests">
+                                  {property.maintenance_open_count} open
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
+                              {property.maintenance_red_count > 0 && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700" title="Open >21 days">
+                                  {property.maintenance_red_count} overdue
+                                </span>
+                              )}
+                              {property.maintenance_closed_count > 0 && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600" title="Closed requests">
+                                  {property.maintenance_closed_count} closed
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 px-4 text-right font-medium text-slate-700">
                             {property.maintenance_pct.toFixed(2)}%
