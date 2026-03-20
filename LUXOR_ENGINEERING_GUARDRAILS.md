@@ -1,3 +1,8 @@
+<!-- COPY-PASTE PROMPT STARTER -->
+> **Start every session with:** "Read `LUXOR_ENGINEERING_GUARDRAILS.md` and apply all rules before proceeding."
+
+---
+
 # LUXOR ENGINEERING GUARDRAILS
 
 ## 1. Purpose
@@ -68,17 +73,28 @@ No state libraries, alternative auth/DB, CSS-in-JS, or ORM layers.
 
 ---
 
-## 8. AI Boundaries
+## 8. AI Boundaries — Always-On Rules
 
-**Must:** Investigate before proposing; reuse existing patterns; present plan before executing; make minimal changes; confirm backward compatibility.
+**Must always:**
+- Investigate before proposing; read files before modifying
+- Reuse existing patterns (Section 4); place new files per Appendix B
+- Present plan before executing; make minimal changes; confirm backward compatibility
+- **Use the relevant Claude skill** for any task that maps to one (see C.22)
+- **Eliminate dead code** created as a side-effect of any change — imports, helpers, useMemos, and IIFE blocks that are no longer referenced
+- **Reconcile conflicting code** — if a change makes another calculation, constant, or branch unreachable or contradictory, fix or remove it in the same PR
+- **Update `LUXOR_ENGINEERING_GUARDRAILS.md`** at the end of every session with new lessons; bump version; push to GitHub
 
-**Must NOT:** Refactor working code; add abstractions for future use; modify code outside scope; propose architectural changes; add comments/docstrings to unchanged code.
+**Must NOT:**
+- Refactor working code; add abstractions for future use
+- Modify code outside scope; propose architectural changes
+- Add comments/docstrings to unchanged code
+- Leave orphaned imports, unused state, or duplicate logic after a change
 
 ---
 
 ## 9. Enforcement
 
-Violations → automatic rejection: missing investigation, breaking API/types, data deletion, duplicating utilities, stack changes, UI modifications without request.
+Violations → automatic rejection: missing investigation, breaking API/types, data deletion, duplicating utilities, stack changes, UI modifications without request, dead code left behind, conflicting logic not reconciled.
 
 ---
 
@@ -151,8 +167,8 @@ Derived aggregates (maintenance open/closed/red counts) computed in API routes, 
 ### C.4 Repo Cleanliness
 Single logo: `public/luxor-logo.svg`. No duplicate assets. New files go in correct locations per Appendix B.
 
-### C.5 Disabling Dead JSX
-Wrap in `{false && (...)}` temporarily. Clean up in a dedicated pass.
+### C.5 Dead Code After Changes
+When a change replaces or removes a feature, immediately remove: orphaned imports, unused useMemos, helper functions, IIFE blocks, and state variables. Do not wrap in `{false && ...}` as a temporary measure — delete the code. Dead code left behind is a guardrails violation.
 
 ### C.6 Batch Save Over onBlur
 Multi-input forms use a single Save button. Avoid per-field `onBlur` handlers.
@@ -209,27 +225,39 @@ End every response with "SQL to run" — even if none: _"No SQL required."_
 - **Since Purchase** = `current_market_value − cost_basis`. Never confuse these.
 
 ### C.21 Plan Gross Income — Deposit Is NOT Subtracted
-The Excel B26 formula is `=SUMIFS(actual_monthly_rent, dates, "<="&EOMONTH(TODAY(),0)) − deposit`. It produces "actual recurring rent to date" not a true budget plan. Our code intentionally does NOT replicate this:
-- **Owner page**: `plan = target_monthly_rent × elapsedMonths` (pure budget target)
-- **Admin financials `plannedYtd`**: uses actual DB values if present, falls back to `target_monthly_rent`, but does NOT subtract deposit
-- **Why correct**: "Plan" = what we budgeted. The deposit is a one-time collection, not recurring rent. Subtracting it from plan would distort Δ vs Plan on every future month.
-- **Deposit is already isolated**: canonical metrics handles it via `lastMonthRentBonus` (added to actual YTD); admin monthly tab subtracts it and shows a footnote. Do not change this.
-- **Past issue**: Attempts to match Excel B26 by subtracting the deposit from plan caused the Δ column to show a false negative in month 1 and inflated plan numbers thereafter.
+Excel B26: `=SUMIFS(actual_monthly_rent, dates, "<="&EOMONTH(TODAY(),0)) − deposit` — this is "actual recurring rent to date", not a budget plan. Our code intentionally differs:
+- **Plan** = `target_monthly_rent × elapsedMonths` (pure budget target). Never subtract deposit from plan.
+- **Deposit is isolated**: canonical metrics adds it via `lastMonthRentBonus` to actual YTD; admin monthly tab subtracts it with a footnote.
+- **Past incident**: Subtracting deposit from plan caused false Δ negatives in month 1 and distorted all future month comparisons.
 
-### C.22 Reading Excel Files — Always Use the xlsx Skill
-When a calculation, formula, or layout needs to be validated against an Excel file:
-1. **Always invoke the `document-skills:xlsx` skill** (`load_workbook` with `data_only=False`) to extract raw formulas.
-2. Never eyeball cell values; always read the formula strings directly.
-3. After extraction, compare each formula to the equivalent code and report matches/discrepancies explicitly.
-4. The reference file is `docs/excel property reporting example.xlsx` (sheet "SWE 26").
-- Past failure: formulas were assumed correct without reading the Excel; maintenance target was 4% in code because the grade-threshold boundary (Excellent < 4%) was mistakenly used as the stated target. Reading the Excel confirmed 5%.
+### C.22 Always Use Relevant Claude Skills
+Before writing code to process files or perform specialized tasks, check if a Claude skill applies:
+
+| Task | Skill |
+|------|-------|
+| Excel formulas / spreadsheet edits | `document-skills:xlsx` — use `load_workbook(data_only=False)` to read raw formulas |
+| PDF read/create/merge | `document-skills:pdf` |
+| Word documents (.docx) | `document-skills:docx` |
+| PowerPoint (.pptx) | `document-skills:pptx` |
+| UI testing / Playwright | `document-skills:webapp-testing` |
+| Claude API / Anthropic SDK | `document-skills:claude-api` |
+| Internal comms / reports | `document-skills:internal-comms` |
+
+**Never eyeball Excel cell values** — always extract formula strings via the skill and compare each formula to the equivalent code. Report matches and discrepancies explicitly.
+
+Reference file: `docs/excel property reporting example.xlsx` (sheet "SWE 26").
+
+Past failure: maintenance target showed as 4% in code because formulas were assumed, not read. The skill confirmed 5%.
 
 ---
 
 ## 11. Recurring Session Checklist
 
 ### 11.1 After Every Prompt
-New files go in correct locations (Appendix B). No new files at root of `luxor-portal/` unless framework config.
+- New files in correct locations (Appendix B)
+- No orphaned imports, unused state, or dead helpers left behind
+- If a skill applies to the task, it was used (C.22)
+- Conflicting or superseded logic removed
 
 ### 11.2 After Any DB Schema Change
 - Migration file in `supabase/migrations/` with timestamp prefix
@@ -242,7 +270,7 @@ New files go in correct locations (Appendix B). No new files at root of `luxor-p
 Stage specific files, commit with clear message, push to `origin main`, confirm success.
 
 ### 11.4 Guardrails Self-Update
-Add new lessons to Appendix C. Update version and Document Control.
+Add new lessons to Appendix C. Update version and Document Control table. Push to GitHub.
 
 ---
 
@@ -250,6 +278,6 @@ Add new lessons to Appendix C. Update version and Document Control.
 
 | Field | Value |
 |-------|-------|
-| Version | 1.4 |
+| Version | 1.5 |
 | Status | Active |
-| Last Updated | 2026-03-20 — Added C.21 Plan deposit handling (do NOT subtract deposit from plan); C.22 always use xlsx skill for Excel validation |
+| Last Updated | 2026-03-20 — Added copy-paste prompt sentence; Section 8 now has always-on rules (skills, dead code, conflict reconciliation, file locations); C.5 updated to require deletion not wrapping; C.22 expanded to full skills table |
