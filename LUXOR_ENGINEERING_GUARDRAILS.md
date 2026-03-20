@@ -208,6 +208,22 @@ End every response with "SQL to run" — even if none: _"No SQL required."_
 - **YTD** = latest − earliest `property_market_estimate` in current year. Use cost_basis as % denominator.
 - **Since Purchase** = `current_market_value − cost_basis`. Never confuse these.
 
+### C.21 Plan Gross Income — Deposit Is NOT Subtracted
+The Excel B26 formula is `=SUMIFS(actual_monthly_rent, dates, "<="&EOMONTH(TODAY(),0)) − deposit`. It produces "actual recurring rent to date" not a true budget plan. Our code intentionally does NOT replicate this:
+- **Owner page**: `plan = target_monthly_rent × elapsedMonths` (pure budget target)
+- **Admin financials `plannedYtd`**: uses actual DB values if present, falls back to `target_monthly_rent`, but does NOT subtract deposit
+- **Why correct**: "Plan" = what we budgeted. The deposit is a one-time collection, not recurring rent. Subtracting it from plan would distort Δ vs Plan on every future month.
+- **Deposit is already isolated**: canonical metrics handles it via `lastMonthRentBonus` (added to actual YTD); admin monthly tab subtracts it and shows a footnote. Do not change this.
+- **Past issue**: Attempts to match Excel B26 by subtracting the deposit from plan caused the Δ column to show a false negative in month 1 and inflated plan numbers thereafter.
+
+### C.22 Reading Excel Files — Always Use the xlsx Skill
+When a calculation, formula, or layout needs to be validated against an Excel file:
+1. **Always invoke the `document-skills:xlsx` skill** (`load_workbook` with `data_only=False`) to extract raw formulas.
+2. Never eyeball cell values; always read the formula strings directly.
+3. After extraction, compare each formula to the equivalent code and report matches/discrepancies explicitly.
+4. The reference file is `docs/excel property reporting example.xlsx` (sheet "SWE 26").
+- Past failure: formulas were assumed correct without reading the Excel; maintenance target was 4% in code because the grade-threshold boundary (Excellent < 4%) was mistakenly used as the stated target. Reading the Excel confirmed 5%.
+
 ---
 
 ## 11. Recurring Session Checklist
@@ -234,6 +250,6 @@ Add new lessons to Appendix C. Update version and Document Control.
 
 | Field | Value |
 |-------|-------|
-| Version | 1.3 |
+| Version | 1.4 |
 | Status | Active |
-| Last Updated | 2026-03-20 — Condensed to ultra-concise; fixed C.9 maintenance threshold to 5%; added InvestmentPerformanceTable to reuse list |
+| Last Updated | 2026-03-20 — Added C.21 Plan deposit handling (do NOT subtract deposit from plan); C.22 always use xlsx skill for Excel validation |
