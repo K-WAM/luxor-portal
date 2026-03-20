@@ -514,11 +514,64 @@ if (error) {
 
 ---
 
+---
+
+## Appendix C: Operational Lessons (Updated as We Go)
+
+### C.1 TypeScript: Supabase Column Type Coercion
+
+Supabase can return numeric columns as `number` OR `string` depending on schema type. Never pass a raw column value to `parseFloat()` directly.
+
+**Wrong:** `parseFloat(row?.some_column || '0')` — breaks if column is already a number.
+**Correct:** `parseFloat(String(row?.some_column ?? 0))`
+
+### C.2 Email: Resend Only, Non-Blocking
+
+Resend REST API via raw `fetch` only — no nodemailer, no SDK package. All email calls must be non-blocking and non-fatal:
+```typescript
+sendEmail({ ... }).catch(() => { /* already logged inside */ });
+```
+Env: `RESEND_API_KEY` (required), `MAINTENANCE_EMAIL_TO` (defaults to connect@luxordev.com).
+
+### C.3 Computed Fields: Query-Time Over Stored
+
+Derived aggregates (e.g., maintenance open/closed/red counts per property) are computed in the API route at query time — not stored as columns. Keeps schema clean and counts always accurate.
+
+### C.4 Repo Cleanliness
+
+- **Portal root should be clean.** Delete untracked noise (dev logs, duplicate assets) promptly. Check `git status --short` before committing.
+- **Single logo source:** `public/luxor-logo.svg` via `next/image`. Do not duplicate elsewhere.
+- **File homes:** planning docs → `docs/`, utility scripts → `scripts/`, old HTML → `legacy/`.
+
+### C.5 Disabling Dead JSX Safely
+
+When a large JSX block needs to be disabled but deletion is risky (complex nesting), wrap in `{false && (...)}` temporarily. Clean up in a dedicated pass.
+
+### C.6 Batch Save Over onBlur Auto-Save
+
+For multi-input forms (monthly performance, property financials), use a single "Save" button. Avoid `onBlur` per-field handlers — they create race conditions and hidden failures.
+
+### C.7 Git: Verify Before Rebasing
+
+Before rebasing, confirm your local changes are not already on remote:
+```bash
+git log --oneline origin/main -10
+git show --name-only <commit-hash>
+```
+If remote already contains equivalent work, abort the rebase and `git reset --hard origin/main` instead.
+
+### C.8 Context File for New Chats
+
+Stack summary: `C:\Users\karee\.claude\projects\c--Users-karee-Desktop-LuxApp\memory\project_stack.md`
+Paste it at the start of any new chat session. Keep it updated when the stack changes.
+
+---
+
 ## Document Control
 
 | Field | Value |
 |-------|-------|
-| Version | 1.0 |
+| Version | 1.1 |
 | Status | Active |
 | Applies To | All Luxor development |
 | Review Cycle | On significant system changes |
