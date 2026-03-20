@@ -422,7 +422,8 @@ export default function FinancialsPage() {
     const earliest = yearData[0].property_market_estimate as number;
     const latest = yearData[yearData.length - 1].property_market_estimate as number;
     const value = latest - earliest;
-    const pct = earliest > 0 ? (value / earliest) * 100 : 0;
+    // Excel I33: pct = delta / cost_basis (not / earliest market value)
+    const pct = calculatedTotalCost > 0 ? (value / calculatedTotalCost) * 100 : 0;
     return { value, pct, hasData: true, earliestMonth: yearData[0].month as number };
   }, [allMonthlyData, performanceYear]);
 
@@ -1998,7 +1999,8 @@ export default function FinancialsPage() {
                   ? new Date(performanceYear, earliestYtdEntry.month - 1).toLocaleString("default", { month: "short" })
                   : null;
                 const appreciationYTD = earliestYtdValue > 0 ? mostRecentMarketValue - earliestYtdValue : 0;
-                const appreciationYTDPct = earliestYtdValue > 0 ? (appreciationYTD / earliestYtdValue) * 100 : 0;
+                // Excel I33: pct = delta / cost_basis (not / earliest market value)
+                const appreciationYTDPct = costBasis > 0 ? (appreciationYTD / costBasis) * 100 : 0;
 
                 // Calculate ROI if sold today
                 const closingCosts = parseFloat(saleClosingCosts) || 0;
