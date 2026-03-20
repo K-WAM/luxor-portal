@@ -612,8 +612,27 @@ If remote already contains equivalent work, abort the rebase and `git reset --ha
 ### C.17 Monthly Tab — YTD Summary Cards + No Nested Scroll
 
 - Remove `max-h-[600px] overflow-y-auto` from monthly input table wrapper. Keep `overflow-x-auto` for horizontal scroll only.
-- YTD summary cards (4 tiles): YTD Income ROI, YTD Home Appreciation, Appreciation Since Purchase, Total YTD ROI (incl. Appreciation). Uses `actualYtd` and `purchaseAppreciation` (already computed).
-- `actualYtd = canonicalMetrics.ytd` — already available via the `actualYtd` useMemo in admin/financials/page.tsx.
+- YTD summary cards (4 tiles): YTD Income ROI, YTD Home Appreciation (YTD), Appreciation Since Purchase, Total YTD ROI.
+- `actualYtd = canonicalMetrics.ytd` — includes last-month deposit bonus. Always subtract `lastMonthRentBonus` for display (`displayYtd`); show footnote when bonus > 0.
+- `ytdAppreciation` = earliest→latest `property_market_estimate` in `performanceYear` from `allMonthlyData`. NOT since-purchase. Show "—" if no data.
+- `purchaseAppreciation` = since purchase (cost basis → current market value). Shown as separate "Appreciation Since Purchase" card — do NOT confuse with YTD.
+- ROI section: use `yearMarketEntries` (earliest market value in year, not Jan-only) for YTD appreciation. Show `from {month}` label. Never show "No Jan data".
+
+### C.18 SQL Disclosure Rule
+
+**ALWAYS** end every response with a "SQL to run" section — even if none is required. If no SQL is needed, explicitly say so: _"No SQL required for these changes."_
+
+This prevents the user from having to ask and ensures database state is always in sync.
+
+### C.19 Temporal Dead Zone (TDZ) in React Components
+
+`const` declarations are hoisted but not initialized. If a `useMemo` callback references a `const` declared later in the same function body, it will throw a ReferenceError at runtime (TDZ). Always declare `const`/helper variables BEFORE the `useMemo` that uses them.
+
+### C.20 YTD Calculations — Appreciation vs Since Purchase
+
+- **YTD Appreciation** = `(latest market value this year) - (earliest market value this year)` from `property_monthly_performance`. Use `allMonthlyData.filter(m => m.year === performanceYear && m.property_market_estimate > 0)`.
+- **Since Purchase Appreciation** = `current_market_value - cost_basis` from canonical metrics.
+- These are distinct values. Never use since-purchase as a proxy for YTD.
 
 ### C.10 Context File for New Chats
 
