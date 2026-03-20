@@ -1825,7 +1825,7 @@ export default function FinancialsPage() {
                 const janEntry = allMonthlyData.find(
                   (m: any) => m.month === 1 && m.year === performanceYear
                 );
-                const janMarketValue = parseFloat(janEntry?.property_market_estimate || '0') || 0;
+                const janMarketValue = parseFloat(String(janEntry?.property_market_estimate ?? 0)) || 0;
                 const appreciationYTD = janMarketValue > 0 ? mostRecentMarketValue - janMarketValue : 0;
                 const appreciationYTDPct = janMarketValue > 0 ? (appreciationYTD / janMarketValue) * 100 : 0;
 
