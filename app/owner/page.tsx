@@ -49,6 +49,7 @@ type PropertyFinancials = {
   planned_garden_cost?: number;
   planned_pool_cost?: number;
   planned_hoa_cost?: number;
+  planned_pm_fee_monthly?: number;
   purchase_date: string;
   lease_start?: string;
   lease_end?: string;
@@ -553,32 +554,31 @@ Use the provided property and document context from the server; do not guess.`;
     );
   }
 
-  const expectedRoi = calculateExpectedRoi({
+  // Projected ROI — canonical single calc: annual plan net income / cost basis
+  // Same formula used in admin dashboard and admin financials page.
+  const projectedRoi = calculateExpectedRoi({
     targetMonthlyRent: property.target_monthly_rent || 0,
     plannedPoolMonthly: property.planned_pool_cost || 0,
     plannedGardenMonthly: property.planned_garden_cost || 0,
     plannedHoaMonthly: property.planned_hoa_cost || 0,
+    plannedPmFeeMonthly: property.planned_pm_fee_monthly || 0,
     costBasis: metrics.cost_basis || 0,
   });
-
-  // Projected ROI: annualize from elapsed months with actual data
   const elapsedMonths = Math.max(
     filteredMonthly.filter(m => (m.rent_income || 0) > 0 || (m.total_expenses || 0) > 0).length,
     1
   );
-  const projectedRoi = metrics.cost_basis > 0
-    ? ((metrics.ytd_net_income / elapsedMonths) * 12 / metrics.cost_basis) * 100
-    : 0;
 
-  // Plan values for the same elapsed period
+  // Plan values for the same elapsed period (all plan expense lines, including PM fee)
   const planRentPeriod = (property.target_monthly_rent || 0) * elapsedMonths;
   const planMaintenancePeriod = planRentPeriod * 0.05;
-  const planOtherPeriod = (
+  const planHoaPoolGardenPeriod = (
     (property.planned_pool_cost || 0) +
     (property.planned_garden_cost || 0) +
     (property.planned_hoa_cost || 0)
   ) * elapsedMonths;
-  const planNetIncomePeriod = planRentPeriod - planMaintenancePeriod - planOtherPeriod;
+  const planPmFeePeriod = (property.planned_pm_fee_monthly || 0) * elapsedMonths;
+  const planNetIncomePeriod = planRentPeriod - planMaintenancePeriod - planHoaPoolGardenPeriod - planPmFeePeriod;
   const planRoiPeriod = metrics.cost_basis > 0
     ? (planNetIncomePeriod / metrics.cost_basis) * 100
     : 0;
@@ -586,7 +586,7 @@ Use the provided property and document context from the server; do not guess.`;
   const fmt$ = formatCurrency;
   const fmtPct = (v: number) => `${v.toFixed(2)}%`;
 
-  // Performance: uses projectedRoi + updated maintenance thresholds
+  // Performance: grade against plan-based projected ROI (same unified calc)
   const performanceStatus =
     projectedRoi >= 5 && metrics.maintenance_pct < 5 ? "green" :
     projectedRoi >= 3 && metrics.maintenance_pct < 7 ? "yellow" : "red";
@@ -668,21 +668,21 @@ Use the provided property and document context from the server; do not guess.`;
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Return on Investment</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div
-              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Expected: (Target Rent − Planned Expenses) / Cost Basis × 100 — annualized from plan"
-            >
-              <GaugeChart value={expectedRoi} target={0} label="Expected ROI (Plan)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
-            </div>
-            <div
               className={`bg-white border-2 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help ${projectedRoi >= 5 ? "border-green-400" : projectedRoi >= 3 ? "border-yellow-400" : "border-red-400"}`}
-              title={`Projected: (Net Income ÷ ${elapsedMonths} months × 12) / Cost Basis × 100`}
+              title="Projected ROI (Pre-Tax): Annual Plan Net Income / Cost Basis × 100"
             >
-              <GaugeChart value={projectedRoi} target={0} label="Projected ROI (Annualized)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
+              <GaugeChart value={projectedRoi} target={0} label="Projected ROI (Pre-Tax)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
               {activeRole === "admin" && (
                 <div className="mt-1 text-center text-[10px] text-slate-400 leading-tight">
-                  ({formatCurrency(metrics.ytd_net_income)} ÷ {elapsedMonths}mo × 12) ÷ {formatCurrency(metrics.cost_basis)}
+                  Plan net ÷ {formatCurrency(metrics.cost_basis)}
                 </div>
               )}
+            </div>
+            <div
+              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
+              title="Actual ROI (Period): Period Net Income / Cost Basis × 100"
+            >
+              <GaugeChart value={metrics.roi_pre_tax} target={0} label="Actual ROI (Period)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
             </div>
             <div
               className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
@@ -712,7 +712,7 @@ Use the provided property and document context from the server; do not guess.`;
             </p>
             <p>
               <span className="font-semibold">Operating Income & Expenses: </span>
-              {periodLabel} income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 4 ? "text-green-700" : metrics.maintenance_pct < 5 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> — target is under 5%. Other fees (HOA, pool, garden) are {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. The property is projected to yield <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)} annualized</span> — plan for this period is {formatPercentage(planRoiPeriod)} ({formatPercentage(expectedRoi)} annualized).
+              {periodLabel} gross income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 5 ? "text-green-700" : metrics.maintenance_pct < 7 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> — target is under 5%. Other expenses (HOA, pool, garden, PM fee) total {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden + metrics.ytd_pm_fee)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. Projected ROI (pre-tax) is <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)}</span> (annual plan net ÷ cost basis); actual ROI this period is {formatPercentage(metrics.roi_pre_tax)} against a period plan of {formatPercentage(planRoiPeriod)}.
             </p>
             {metrics.ytd_property_tax > 0 ? (
               <p>
@@ -752,9 +752,9 @@ Use the provided property and document context from the server; do not guess.`;
             plan={{
               grossIncome: planRentPeriod,
               maintenance: planMaintenancePeriod,
-              hoaPoolGarden: planOtherPeriod,
-              pmFee: 0,
-              totalExpenses: planMaintenancePeriod + planOtherPeriod,
+              hoaPoolGarden: planHoaPoolGardenPeriod,
+              pmFee: planPmFeePeriod,
+              totalExpenses: planMaintenancePeriod + planHoaPoolGardenPeriod + planPmFeePeriod,
               netIncome: planNetIncomePeriod,
             }}
             yeTarget={yeTarget ? {
@@ -773,7 +773,7 @@ Use the provided property and document context from the server; do not guess.`;
               postTax: metrics.roi_post_tax,
               appreciationPct: metrics.appreciation_pct,
               planRoi: planRoiPeriod,
-              yeTargetRoi: yeTarget && metrics.cost_basis > 0 ? yeTarget.net_income / metrics.cost_basis * 100 : null,
+              yeTargetRoi: yeTarget && metrics.cost_basis > 0 ? (yeTarget.net_income / metrics.cost_basis) * 100 : null,
             }}
             home={{
               costBasis: metrics.cost_basis,

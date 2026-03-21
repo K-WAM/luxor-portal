@@ -13,13 +13,13 @@ const delta = (actual: number, plan: number, lowerIsBetter = false) => {
 };
 
 export type InvestmentTableActual = {
-  grossIncome: number;       // recurring only (deposit excluded)
+  grossIncome: number;       // total gross income (includes last-month deposit in the month received)
   maintenance: number;
   maintenancePct: number;
   hoaPoolGarden: number;
   pmFee: number;
   totalExpenses: number;
-  netIncome: number;         // recurring only (deposit excluded)
+  netIncome: number;         // total net income (includes last-month deposit in the month received)
   propertyTax: number;
 };
 
@@ -43,11 +43,11 @@ export type InvestmentTableYeTarget = {
 } | null;
 
 export type InvestmentTableRoi = {
-  preTax: number;            // recurring (deposit excluded)
-  postTax: number;           // recurring post property tax
+  preTax: number;            // net_income / cost_basis (includes deposit in month received)
+  postTax: number;           // (net_income - property_tax) / cost_basis
   appreciationPct: number;   // since purchase
-  planRoi: number;
-  yeTargetRoi: number | null;
+  planRoi: number;           // plan_net_income / cost_basis
+  yeTargetRoi: number | null; // ye_target_net_income / cost_basis
 };
 
 export type InvestmentTableHome = {
@@ -73,9 +73,12 @@ type Props = {
   home: InvestmentTableHome;
   closingCosts: string;
   onClosingCostsChange: (v: string) => void;
-  /** Amount of last-month deposit collected (0 if not collected). */
+  /**
+   * Amount of last-month deposit included in this period's gross income (0 = not in this view).
+   * When > 0 a breakdown sub-row is shown under Gross Income for transparency.
+   */
   lastMonthDeposit?: number;
-  /** Label for lease-end month, e.g. "Dec 2025" — shown on deposit row. */
+  /** Label for lease-end month, e.g. "Dec 2025" — shown on deposit breakdown row. */
   leaseEndMonthLabel?: string | null;
 };
 
@@ -97,15 +100,7 @@ export default function InvestmentPerformanceTable({
   const closingCostsNum = parseFloat(closingCosts) || 0;
   const hasDeposit = lastMonthDeposit > 0;
 
-  // With-deposit variants (computed only when deposit exists)
-  const grossWithDeposit = actual.grossIncome + lastMonthDeposit;
-  const netWithDeposit = actual.netIncome + lastMonthDeposit;
-  const roiWithDeposit = home.costBasis > 0 ? (netWithDeposit / home.costBasis) * 100 : 0;
-  const postTaxWithDeposit = home.costBasis > 0
-    ? ((netWithDeposit - (actual.propertyTax || 0)) / home.costBasis) * 100
-    : 0;
-
-  // ROI if sold (uses recurring net income — deposit is not a recurring income stream)
+  // ROI if sold — total net income (includes deposit) minus tax and closing costs, plus appreciation
   const roiIfSold = home.costBasis > 0
     ? ((actual.netIncome - actual.propertyTax - closingCostsNum + home.appreciationValue) / home.costBasis) * 100
     : 0;
@@ -113,19 +108,12 @@ export default function InvestmentPerformanceTable({
   const hasYeTarget = !!yeTarget;
   const cols = hasYeTarget ? 5 : 4;
 
-  // Dash cell for sub-rows (no plan/yeTarget/delta comparison)
+  // Dash cells for sub-rows (no plan/yeTarget/delta comparison)
   const dashes = (
     <>
       <td className={SUB_TD}>—</td>
       {hasYeTarget && <td className={SUB_TD}>—</td>}
       <td className={SUB_TD}>—</td>
-    </>
-  );
-  const totalDashes = (
-    <>
-      <td className={TOTAL_TD}>—</td>
-      {hasYeTarget && <td className={TOTAL_TD}>—</td>}
-      <td className={TOTAL_TD}>—</td>
     </>
   );
 
@@ -147,14 +135,12 @@ export default function InvestmentPerformanceTable({
             </thead>
             <tbody>
 
-              {/* ── Gross Income (recurring) ── */}
+              {/* ── Gross Income ── */}
               {(() => {
                 const d = delta(actual.grossIncome, plan.grossIncome);
                 return (
                   <tr className="hover:bg-slate-50/70">
-                    <td className={TD_L}>
-                      Gross Income{hasDeposit ? <span className="ml-1 text-[10px] text-slate-400 font-normal">recurring</span> : null}
-                    </td>
+                    <td className={TD_L}>Gross Income</td>
                     <td className={`${TD} font-semibold text-slate-900`}>{fmtC(actual.grossIncome)}</td>
                     <td className={`${TD} text-slate-500`}>{fmtC(plan.grossIncome)}</td>
                     {hasYeTarget && <td className={`${TD} text-slate-500`}>{fmtC(yeTarget!.grossIncome)}</td>}
@@ -163,22 +149,15 @@ export default function InvestmentPerformanceTable({
                 );
               })()}
 
-              {/* Deposit sub-row + Total Collected — only when deposit was collected */}
+              {/* Last-month deposit breakdown — informational only, shown when deposit is in this period's data */}
               {hasDeposit && (
-                <>
-                  <tr>
-                    <td className={`${SUB_TD_L} pl-5`}>
-                      ↳ Last-Month Deposit{leaseEndMonthLabel ? ` (${leaseEndMonthLabel})` : ""}
-                    </td>
-                    <td className={`${SUB_TD} text-slate-500`}>+{fmtC(lastMonthDeposit)}</td>
-                    {dashes}
-                  </tr>
-                  <tr>
-                    <td className={`${TOTAL_TD_L} pl-5`}>= Total Collected</td>
-                    <td className={TOTAL_TD}>{fmtC(grossWithDeposit)}</td>
-                    {totalDashes}
-                  </tr>
-                </>
+                <tr className="bg-slate-50/40">
+                  <td className={`${SUB_TD_L} pl-5`}>
+                    ↳ incl. Last-Month Deposit{leaseEndMonthLabel ? ` (covers ${leaseEndMonthLabel})` : ""}
+                  </td>
+                  <td className={`${SUB_TD} text-slate-400`}>{fmtC(lastMonthDeposit)}</td>
+                  {dashes}
+                </tr>
               )}
 
               {/* ── Maintenance ── */}
@@ -253,14 +232,12 @@ export default function InvestmentPerformanceTable({
                 );
               })()}
 
-              {/* ── Net Income (recurring) ── */}
+              {/* ── Net Income ── */}
               {(() => {
                 const d = delta(actual.netIncome, plan.netIncome);
                 return (
                   <tr className="bg-slate-50 border-t-2 border-slate-200">
-                    <td className={`${TD_L} font-semibold text-slate-800`}>
-                      Net Income{hasDeposit ? <span className="ml-1 text-[10px] text-slate-400 font-normal">recurring</span> : null}
-                    </td>
+                    <td className={`${TD_L} font-semibold text-slate-800`}>Net Income</td>
                     <td className={`${TD} font-bold text-base ${actual.netIncome >= 0 ? "text-emerald-700" : "text-red-700"}`}>{fmtC(actual.netIncome)}</td>
                     <td className={`${TD} font-medium text-slate-600`}>{fmtC(plan.netIncome)}</td>
                     {hasYeTarget && <td className={`${TD} font-medium text-slate-600`}>{fmtC(yeTarget!.netIncome)}</td>}
@@ -268,24 +245,6 @@ export default function InvestmentPerformanceTable({
                   </tr>
                 );
               })()}
-
-              {/* Net Income with deposit sub-row */}
-              {hasDeposit && (
-                <>
-                  <tr>
-                    <td className={`${SUB_TD_L} pl-5`}>
-                      ↳ + Last-Month Deposit{leaseEndMonthLabel ? ` (${leaseEndMonthLabel})` : ""}
-                    </td>
-                    <td className={`${SUB_TD} text-slate-500`}>+{fmtC(lastMonthDeposit)}</td>
-                    {dashes}
-                  </tr>
-                  <tr>
-                    <td className={`${TOTAL_TD_L} pl-5`}>= Net Income incl. Deposit</td>
-                    <td className={`${TOTAL_TD} ${netWithDeposit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{fmtC(netWithDeposit)}</td>
-                    {totalDashes}
-                  </tr>
-                </>
-              )}
 
               {/* ── Property Tax (below the line) ── */}
               <tr className="hover:bg-slate-50/70">
@@ -306,14 +265,12 @@ export default function InvestmentPerformanceTable({
                 </th>
               </tr>
 
-              {/* ROI – Recurring (no deposit) */}
+              {/* ROI Pre-Tax */}
               {(() => {
                 const d = roi.planRoi ? delta(roi.preTax, roi.planRoi) : { text: "—", color: "text-slate-400" };
                 return (
                   <tr className="hover:bg-slate-50/70">
-                    <td className={`${TD_L} font-medium`}>
-                      ROI — Net Income{hasDeposit ? <span className="ml-1 text-[10px] text-slate-400 font-normal">recurring</span> : null}
-                    </td>
+                    <td className={`${TD_L} font-medium`}>ROI — Net Income (Pre-Tax)</td>
                     <td className={`${TD} font-bold text-base ${roi.preTax >= 5 ? "text-emerald-700" : roi.preTax >= 3 ? "text-amber-700" : "text-red-700"}`}>
                       {fmtPct(roi.preTax)}
                     </td>
@@ -324,36 +281,14 @@ export default function InvestmentPerformanceTable({
                 );
               })()}
 
-              {/* ROI – incl. deposit (sub-row, only when deposit exists) */}
-              {hasDeposit && (
-                <tr className="bg-slate-50/40">
-                  <td className={`${SUB_TD_L} pl-5`}>↳ ROI incl. Last-Month Deposit</td>
-                  <td className={`${SUB_TD} font-semibold ${roiWithDeposit >= 5 ? "text-emerald-600" : roiWithDeposit >= 3 ? "text-amber-600" : "text-red-600"}`}>
-                    {fmtPct(roiWithDeposit)}
-                  </td>
-                  {dashes}
-                </tr>
-              )}
-
               {/* ROI Post Property Tax */}
               <tr className="hover:bg-slate-50/70">
-                <td className={TD_L}>
-                  ROI Post Property Tax{hasDeposit ? <span className="ml-1 text-[10px] text-slate-400 font-normal">recurring</span> : null}
-                </td>
+                <td className={TD_L}>ROI Post Property Tax</td>
                 <td className={`${TD} font-semibold text-slate-900`}>{fmtPct(roi.postTax)}</td>
                 <td className={`${TD} text-slate-400`}>—</td>
                 {hasYeTarget && <td className={`${TD} text-slate-400`}>—</td>}
                 <td className={`${TD} text-slate-400`}>—</td>
               </tr>
-              {hasDeposit && (
-                <tr className="bg-slate-50/40">
-                  <td className={`${SUB_TD_L} pl-5`}>↳ Post Tax incl. Deposit</td>
-                  <td className={`${SUB_TD} font-semibold ${postTaxWithDeposit >= 5 ? "text-emerald-600" : postTaxWithDeposit >= 3 ? "text-amber-600" : "text-red-600"}`}>
-                    {fmtPct(postTaxWithDeposit)}
-                  </td>
-                  {dashes}
-                </tr>
-              )}
 
               {/* Home Value Appreciation */}
               <tr className="hover:bg-slate-50/70">

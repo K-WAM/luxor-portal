@@ -110,25 +110,6 @@ export default function FinancialsPage() {
     property_tax: "",
   });
 
-  // Auto-calculated YE Target values
-  const calculatedYeTarget = useMemo(() => {
-    const rent = parseFloat(yeTarget.rent_income) || 0;
-    const maint = parseFloat(yeTarget.maintenance) || 0;
-    const pool = parseFloat(yeTarget.pool) || 0;
-    const garden = parseFloat(yeTarget.garden) || 0;
-    const hoa = parseFloat(yeTarget.hoa) || 0;
-    const propTax = parseFloat(yeTarget.property_tax) || 0;
-
-    // Excel formula: total_expenses = maintenance + pool + garden + hoa (EXCLUDES property_tax)
-    const totalExpenses = maint + pool + garden + hoa;
-    // Excel formula: net_income = rent_income - total_expenses (EXCLUDES property_tax)
-    const netIncome = rent - totalExpenses;
-
-    return {
-      total_expenses: totalExpenses,
-      net_income: netIncome,
-    };
-  }, [yeTarget]);
 
   // Monthly performance
   const [performanceYear, setPerformanceYear] = useState(new Date().getFullYear());
@@ -417,39 +398,13 @@ export default function FinancialsPage() {
     return parts?.year ?? null;
   }, [propertyFinancials.lease_start]);
 
-  // Year the deposit conceptually covers (lease-end year = last month of lease)
-  const leaseEndYear = useMemo(() => {
-    if (!propertyFinancials.lease_end) return null;
-    const parts = getDateOnlyParts(propertyFinancials.lease_end);
-    return parts?.year ?? null;
-  }, [propertyFinancials.lease_end]);
-
-  // True when the deposit is physically inside the data for the current period
-  // (it was collected in the lease-start year; alltime view covers all years)
-  const depositInCurrentViewData = useMemo(() => {
+  // Show deposit breakdown sub-row when deposit is physically in the current period's data:
+  // alltime/lease views always include lease-start month; ytd only when viewing the lease-start year.
+  const showDepositBreakdown = useMemo(() => {
     if (lastMonthRentBonus <= 0) return false;
-    if (periodType === "alltime") return true;
+    if (periodType !== "ytd") return true; // alltime and lease always include lease-start month
     return performanceYear === leaseStartYear;
   }, [lastMonthRentBonus, periodType, performanceYear, leaseStartYear]);
-
-  // True when deposit sub-rows and deposit-inclusive ROI should be shown
-  // (only for the view that covers the last month of the lease)
-  const depositAppliesThisView = useMemo(() => {
-    if (lastMonthRentBonus <= 0) return false;
-    if (periodType === "alltime") return true;
-    return performanceYear === leaseEndYear;
-  }, [lastMonthRentBonus, periodType, performanceYear, leaseEndYear]);
-
-  // Recurring YTD: subtract deposit only when it is physically in the period's data
-  // (avoids incorrectly deflating other years where the deposit wasn't collected)
-  const displayYtd = useMemo(() => {
-    if (!depositInCurrentViewData) return actualYtd;
-    return {
-      ...actualYtd,
-      rent_income: actualYtd.rent_income - lastMonthRentBonus,
-      net_income: actualYtd.net_income - lastMonthRentBonus,
-    };
-  }, [actualYtd, lastMonthRentBonus, depositInCurrentViewData]);
 
   // YTD appreciation: earliest → latest market value entered in performanceYear
   const ytdAppreciation = useMemo(() => {
@@ -1640,9 +1595,9 @@ export default function FinancialsPage() {
                 {[
                   {
                     label: "YTD Income ROI",
-                    value: `${(displayYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
-                    sub: `Net ${formatCurrency(displayYtd.net_income)} ÷ cost basis${lastMonthRentBonus > 0 ? " *" : ""}`,
-                    color: displayYtd.net_income >= 0 ? "text-emerald-700" : "text-red-600",
+                    value: `${(actualYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
+                    sub: `Net ${formatCurrency(actualYtd.net_income)} ÷ cost basis`,
+                    color: actualYtd.net_income >= 0 ? "text-emerald-700" : "text-red-600",
                   },
                   {
                     label: `YTD Home Appreciation (${performanceYear})`,
@@ -1663,12 +1618,12 @@ export default function FinancialsPage() {
                   {
                     label: "Total YTD ROI (Net + YTD Appr.)",
                     value: ytdAppreciation.hasData
-                      ? `${((displayYtd.net_income + ytdAppreciation.value) / calculatedTotalCost * 100).toFixed(2)}%`
-                      : `${(displayYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
+                      ? `${((actualYtd.net_income + ytdAppreciation.value) / calculatedTotalCost * 100).toFixed(2)}%`
+                      : `${(actualYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
                     sub: ytdAppreciation.hasData
                       ? `Net income + YTD appreciation ÷ cost basis`
                       : "Net income only — no market data this year",
-                    color: (displayYtd.net_income + (ytdAppreciation.hasData ? ytdAppreciation.value : 0)) >= 0
+                    color: (actualYtd.net_income + (ytdAppreciation.hasData ? ytdAppreciation.value : 0)) >= 0
                       ? "text-emerald-700" : "text-red-600",
                   },
                 ].map(({ label, value, sub, color }) => (
@@ -1679,9 +1634,9 @@ export default function FinancialsPage() {
                   </div>
                 ))}
               </div>
-              {depositInCurrentViewData && (
+              {showDepositBreakdown && (
                 <div className="mt-2 text-xs text-slate-400">
-                  * Recurring income excludes last-month deposit ({formatCurrency(lastMonthRentBonus)}) — collected at lease start, allocated to lease-end month ({leaseEndMonthLabel ?? "last month of lease"}).
+                  Gross income includes last-month deposit ({formatCurrency(lastMonthRentBonus)}) — collected at lease start, covers {leaseEndMonthLabel ?? "last month of lease"}.
                 </div>
               )}
             </div>
@@ -1988,15 +1943,16 @@ export default function FinancialsPage() {
                     pool: parseFloat(yeTarget.pool) || 0,
                     garden: parseFloat(yeTarget.garden) || 0,
                     hoa: parseFloat(yeTarget.hoa) || 0,
+                    pm_fee: (parseFloat(propertyFinancials.planned_pm_fee_monthly) || 0) * 12,
                     property_tax: parseFloat(yeTarget.property_tax) || 0,
                     total_expenses: 0,
                     net_income: 0,
                   };
 
-                  // Excel formula: total_expenses EXCLUDES property_tax
+                  // total_expenses EXCLUDES property_tax, INCLUDES pm_fee
                   yearEndTarget.total_expenses = yearEndTarget.maintenance + yearEndTarget.pool +
-                    yearEndTarget.garden + yearEndTarget.hoa;
-                  // Excel formula: net_income = rent_income - total_expenses (EXCLUDES property_tax)
+                    yearEndTarget.garden + yearEndTarget.hoa + yearEndTarget.pm_fee;
+                  // net_income = rent_income - total_expenses (EXCLUDES property_tax)
                   yearEndTarget.net_income = yearEndTarget.rent_income - yearEndTarget.total_expenses;
 
                   return (
@@ -2020,7 +1976,7 @@ export default function FinancialsPage() {
                       {formatCurrency(yearEndTarget.hoa)}
                     </td>
                     <td className="border border-slate-300 px-3 py-2 text-right">
-                      {formatCurrency(0)}
+                      {formatCurrency(yearEndTarget.pm_fee)}
                     </td>
                     <td className="border border-slate-300 px-3 py-2 text-right">
                       {formatCurrency(yearEndTarget.property_tax)}
@@ -2060,21 +2016,20 @@ export default function FinancialsPage() {
                 const yeTargetTotalExp = yeTargetMaint + yeTargetPool + yeTargetGarden + yeTargetHoa + yeTargetPmFee;
                 const yeTargetNet = yeTargetRent - yeTargetTotalExp;
                 const hasYeTargetData = yeTargetRent > 0;
-                // Use displayYtd (deposit excluded) so gross income, net income, and ROI all match the YTD cards
-                const displayMaintenancePct = displayYtd.rent_income > 0
-                  ? (displayYtd.maintenance / displayYtd.rent_income * 100)
+                const actualMaintenancePct = actualYtd.rent_income > 0
+                  ? (actualYtd.maintenance / actualYtd.rent_income * 100)
                   : 0;
                 return (
                   <InvestmentPerformanceTable
                     actual={{
-                      grossIncome: displayYtd.rent_income,
-                      maintenance: displayYtd.maintenance,
-                      maintenancePct: displayMaintenancePct,
-                      hoaPoolGarden: displayYtd.hoa_payments + displayYtd.pool + displayYtd.garden,
-                      pmFee: displayYtd.pm_fee || 0,
-                      totalExpenses: displayYtd.total_expenses,
-                      netIncome: displayYtd.net_income,
-                      propertyTax: displayYtd.property_tax,
+                      grossIncome: actualYtd.rent_income,
+                      maintenance: actualYtd.maintenance,
+                      maintenancePct: actualMaintenancePct,
+                      hoaPoolGarden: actualYtd.hoa_payments + actualYtd.pool + actualYtd.garden,
+                      pmFee: actualYtd.pm_fee || 0,
+                      totalExpenses: actualYtd.total_expenses,
+                      netIncome: actualYtd.net_income,
+                      propertyTax: actualYtd.property_tax,
                     }}
                     plan={{
                       grossIncome: plannedYtd.rent_income,
@@ -2094,8 +2049,8 @@ export default function FinancialsPage() {
                       propertyTax: yeTargetTax,
                     } : null}
                     roi={{
-                      preTax: costBasis > 0 ? (displayYtd.net_income / costBasis * 100) : 0,
-                      postTax: costBasis > 0 ? ((displayYtd.net_income - (displayYtd.property_tax || 0)) / costBasis * 100) : 0,
+                      preTax: costBasis > 0 ? (actualYtd.net_income / costBasis * 100) : 0,
+                      postTax: costBasis > 0 ? ((actualYtd.net_income - (actualYtd.property_tax || 0)) / costBasis * 100) : 0,
                       appreciationPct: canonicalMetrics.appreciation_pct,
                       planRoi: costBasis > 0 ? (plannedYtd.net_income / costBasis * 100) : 0,
                       yeTargetRoi: hasYeTargetData && costBasis > 0 ? (yeTargetNet / costBasis * 100) : null,
@@ -2116,7 +2071,7 @@ export default function FinancialsPage() {
                     }}
                     closingCosts={saleClosingCosts}
                     onClosingCostsChange={setSaleClosingCosts}
-                    lastMonthDeposit={depositAppliesThisView ? lastMonthRentBonus : 0}
+                    lastMonthDeposit={showDepositBreakdown ? lastMonthRentBonus : 0}
                     leaseEndMonthLabel={leaseEndMonthLabel}
                   />
                 );
@@ -2183,13 +2138,11 @@ export default function FinancialsPage() {
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["Gross Income (recurring)", "Sum of monthly rent_income for the period, excluding last-month deposit"],
-                        ["Last-Month Deposit", "target_monthly_rent — collected upfront at lease start, attributed to the last month of lease. Shown only in the view that covers the lease-end month."],
-                        ["Total Collected", "Gross Income (recurring) + Last-Month Deposit"],
-                        ["Maintenance %", "Maintenance ÷ Gross Income (recurring) × 100  |  Target: < 5%"],
+                        ["Gross Income", "Sum of monthly rent_income for the period. Includes last-month deposit in the month it was physically received."],
+                        ["Last-Month Deposit (sub-row)", "target_monthly_rent collected upfront at lease start. Shown as an informational breakdown of Gross Income when the deposit falls within the current view period."],
+                        ["Maintenance %", "Maintenance ÷ Gross Income × 100  |  Target: < 5%"],
                         ["Total Expenses", "Maintenance + HOA + Pool + Garden + PM Fee  (property tax excluded from this line)"],
-                        ["Net Income (recurring)", "Gross Income (recurring) − Total Expenses"],
-                        ["Net Income incl. Deposit", "Net Income (recurring) + Last-Month Deposit"],
+                        ["Net Income", "Gross Income − Total Expenses"],
                         ["Property Tax", "Actual entered — displayed below the line, not included in Net Income or Total Expenses"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
@@ -2206,11 +2159,10 @@ export default function FinancialsPage() {
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["ROI — Net Income (recurring)", "Net Income (recurring) ÷ Cost Basis × 100"],
-                        ["ROI — incl. Last-Month Deposit", "(Net Income recurring + Last-Month Deposit) ÷ Cost Basis × 100  (shown only in lease-end year view)"],
-                        ["ROI Post Property Tax (recurring)", "(Net Income recurring − Property Tax) ÷ Cost Basis × 100"],
-                        ["ROI Post Tax incl. Deposit", "(Net Income incl. Deposit − Property Tax) ÷ Cost Basis × 100"],
-                        ["ROI if Sold", "(Net Income recurring − Property Tax − Est. Closing Costs + Appreciation since purchase) ÷ Cost Basis × 100"],
+                        ["ROI — Net Income (Pre-Tax)", "Net Income ÷ Cost Basis × 100"],
+                        ["ROI Post Property Tax", "(Net Income − Property Tax) ÷ Cost Basis × 100"],
+                        ["Projected ROI (Pre-Tax)", "(target_monthly_rent − planned_pool − planned_garden − planned_hoa − planned_pm_fee) × 12 ÷ Cost Basis × 100"],
+                        ["ROI if Sold", "(Net Income − Property Tax − Est. Closing Costs + Appreciation since purchase) ÷ Cost Basis × 100"],
                         ["Δ to Plan", "(Actual − Plan) ÷ |Plan| × 100  |  Green = favorable, Red = unfavorable"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
@@ -2246,10 +2198,10 @@ export default function FinancialsPage() {
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["YTD Income ROI", "Net Income (recurring) ÷ Cost Basis × 100"],
+                        ["YTD Income ROI", "Net Income ÷ Cost Basis × 100"],
                         ["YTD Home Appreciation", "(Latest − Earliest market estimate in year) ÷ Cost Basis × 100"],
                         ["Appreciation Since Purchase", "(Current Market Value − Cost Basis) ÷ Cost Basis × 100"],
-                        ["Total YTD ROI", "(Net Income recurring + YTD Appreciation $) ÷ Cost Basis × 100"],
+                        ["Total YTD ROI", "(Net Income + YTD Appreciation $) ÷ Cost Basis × 100"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>

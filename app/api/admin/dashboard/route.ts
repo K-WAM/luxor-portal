@@ -31,6 +31,7 @@ export async function GET(request: Request) {
         planned_garden_cost,
         planned_pool_cost,
         planned_hoa_cost,
+        planned_pm_fee_monthly,
         total_cost,
         home_cost,
         home_repair_cost,
@@ -110,6 +111,7 @@ export async function GET(request: Request) {
           plannedPoolMonthly: property.planned_pool_cost || 0,
           plannedGardenMonthly: property.planned_garden_cost || 0,
           plannedHoaMonthly: property.planned_hoa_cost || 0,
+          plannedPmFeeMonthly: property.planned_pm_fee_monthly || 0,
         });
 
         const projected_roi = calculateExpectedRoi({
@@ -117,6 +119,7 @@ export async function GET(request: Request) {
           plannedPoolMonthly: property.planned_pool_cost || 0,
           plannedGardenMonthly: property.planned_garden_cost || 0,
           plannedHoaMonthly: property.planned_hoa_cost || 0,
+          plannedPmFeeMonthly: property.planned_pm_fee_monthly || 0,
           costBasis: metrics.cost_basis || 0,
         });
 
@@ -162,17 +165,10 @@ export async function GET(request: Request) {
         const currentMonthRow = (monthlyData || []).find(r => r.month === currentMonth);
         const current_month_rent_paid = (currentMonthRow?.rent_income || 0) > 0;
 
-        // Performance status (mirrors owner page logic)
-        const elapsedMonthsCount = Math.max(
-          (monthlyData || []).filter(m => (m.rent_income || 0) > 0 || (m.maintenance || 0) > 0).length,
-          1
-        );
-        const projectedRoiActual = metrics.cost_basis > 0
-          ? (metrics.ytd.net_income / elapsedMonthsCount * 12 / metrics.cost_basis) * 100
-          : 0;
+        // Performance status: grade against plan-based projected ROI (same unified calc)
         const performance_status: "green" | "yellow" | "red" =
-          projectedRoiActual >= 5 && metrics.maintenance_pct < 5 ? "green" :
-          projectedRoiActual >= 3 && metrics.maintenance_pct < 7 ? "yellow" : "red";
+          projected_roi >= 5 && metrics.maintenance_pct < 5 ? "green" :
+          projected_roi >= 3 && metrics.maintenance_pct < 7 ? "yellow" : "red";
 
         return {
           id: property.id,

@@ -459,6 +459,7 @@ export type ExpectedRoiInputs = {
   plannedPoolMonthly?: number;
   plannedGardenMonthly?: number;
   plannedHoaMonthly?: number;
+  plannedPmFeeMonthly?: number;
   maintenanceRate?: number;
 };
 
@@ -467,6 +468,7 @@ export function calculateExpectedAnnualNet({
   plannedPoolMonthly = 0,
   plannedGardenMonthly = 0,
   plannedHoaMonthly = 0,
+  plannedPmFeeMonthly = 0,
   maintenanceRate = 0.05,
 }: ExpectedRoiInputs): number {
   const annualRent = (targetMonthlyRent || 0) * 12;
@@ -474,7 +476,8 @@ export function calculateExpectedAnnualNet({
   const expectedPool = (plannedPoolMonthly || 0) * 12;
   const expectedGarden = (plannedGardenMonthly || 0) * 12;
   const expectedHoa = (plannedHoaMonthly || 0) * 12;
-  return annualRent - (expectedMaintenance + expectedPool + expectedGarden + expectedHoa);
+  const expectedPmFee = (plannedPmFeeMonthly || 0) * 12;
+  return annualRent - (expectedMaintenance + expectedPool + expectedGarden + expectedHoa + expectedPmFee);
 }
 
 export function calculateExpectedRoi(

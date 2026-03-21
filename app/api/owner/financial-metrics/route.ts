@@ -177,6 +177,7 @@ export async function GET(request: Request) {
       planned_garden_cost: parseFloat(property.planned_garden_cost || 0),
       planned_pool_cost: parseFloat(property.planned_pool_cost || 0),
       planned_hoa_cost: parseFloat(property.planned_hoa_cost || 0),
+      planned_pm_fee_monthly: parseFloat(property.planned_pm_fee_monthly || 0),
       purchase_date: property.purchase_date,
       lease_start: property.lease_start,
       lease_end: property.lease_end,
