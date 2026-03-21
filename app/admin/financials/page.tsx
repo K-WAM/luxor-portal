@@ -52,6 +52,7 @@ export default function FinancialsPage() {
   const [activeTab, setActiveTab] = useState<"property" | "monthly">("property");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showFormulas, setShowFormulas] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -400,7 +401,7 @@ export default function FinancialsPage() {
 
   const actualYtd = useMemo(() => canonicalMetrics.ytd, [canonicalMetrics]);
 
-  // Last-month rent deposit bonus (added by canonical metrics, shown separately)
+  // Last-month rent deposit bonus (collected upfront at lease start, covers last month)
   const lastMonthRentBonus = useMemo(() => {
     if (!propertyFinancials.last_month_rent_collected) return 0;
     const rent = parseFloat(propertyFinancials.target_monthly_rent) || 0;
@@ -409,12 +410,46 @@ export default function FinancialsPage() {
     return deposit;
   }, [propertyFinancials.last_month_rent_collected, propertyFinancials.target_monthly_rent, propertyFinancials.deposit]);
 
-  // YTD totals excluding the last-month rent deposit (for display in YTD cards/tables)
-  const displayYtd = useMemo(() => ({
-    ...actualYtd,
-    rent_income: actualYtd.rent_income - lastMonthRentBonus,
-    net_income: actualYtd.net_income - lastMonthRentBonus,
-  }), [actualYtd, lastMonthRentBonus]);
+  // Year the deposit was physically collected (lease-start year)
+  const leaseStartYear = useMemo(() => {
+    if (!propertyFinancials.lease_start) return null;
+    const parts = getDateOnlyParts(propertyFinancials.lease_start);
+    return parts?.year ?? null;
+  }, [propertyFinancials.lease_start]);
+
+  // Year the deposit conceptually covers (lease-end year = last month of lease)
+  const leaseEndYear = useMemo(() => {
+    if (!propertyFinancials.lease_end) return null;
+    const parts = getDateOnlyParts(propertyFinancials.lease_end);
+    return parts?.year ?? null;
+  }, [propertyFinancials.lease_end]);
+
+  // True when the deposit is physically inside the data for the current period
+  // (it was collected in the lease-start year; alltime view covers all years)
+  const depositInCurrentViewData = useMemo(() => {
+    if (lastMonthRentBonus <= 0) return false;
+    if (periodType === "alltime") return true;
+    return performanceYear === leaseStartYear;
+  }, [lastMonthRentBonus, periodType, performanceYear, leaseStartYear]);
+
+  // True when deposit sub-rows and deposit-inclusive ROI should be shown
+  // (only for the view that covers the last month of the lease)
+  const depositAppliesThisView = useMemo(() => {
+    if (lastMonthRentBonus <= 0) return false;
+    if (periodType === "alltime") return true;
+    return performanceYear === leaseEndYear;
+  }, [lastMonthRentBonus, periodType, performanceYear, leaseEndYear]);
+
+  // Recurring YTD: subtract deposit only when it is physically in the period's data
+  // (avoids incorrectly deflating other years where the deposit wasn't collected)
+  const displayYtd = useMemo(() => {
+    if (!depositInCurrentViewData) return actualYtd;
+    return {
+      ...actualYtd,
+      rent_income: actualYtd.rent_income - lastMonthRentBonus,
+      net_income: actualYtd.net_income - lastMonthRentBonus,
+    };
+  }, [actualYtd, lastMonthRentBonus, depositInCurrentViewData]);
 
   // YTD appreciation: earliest → latest market value entered in performanceYear
   const ytdAppreciation = useMemo(() => {
@@ -1644,9 +1679,9 @@ export default function FinancialsPage() {
                   </div>
                 ))}
               </div>
-              {lastMonthRentBonus > 0 && (
+              {depositInCurrentViewData && (
                 <div className="mt-2 text-xs text-slate-400">
-                  * Excludes last-month deposit ({formatCurrency(lastMonthRentBonus)}) — collected upfront, not in {performanceYear} YTD.
+                  * Recurring income excludes last-month deposit ({formatCurrency(lastMonthRentBonus)}) — collected at lease start, allocated to lease-end month ({leaseEndMonthLabel ?? "last month of lease"}).
                 </div>
               )}
             </div>
@@ -2081,13 +2116,153 @@ export default function FinancialsPage() {
                     }}
                     closingCosts={saleClosingCosts}
                     onClosingCostsChange={setSaleClosingCosts}
-                    lastMonthDeposit={lastMonthRentBonus}
+                    lastMonthDeposit={depositAppliesThisView ? lastMonthRentBonus : 0}
                     leaseEndMonthLabel={leaseEndMonthLabel}
                   />
                 );
               })()}
             </div>
           )}
+
+          {/* Formula Reference Accordion */}
+          <div className="mt-8 border border-slate-200 rounded-xl overflow-hidden">
+            <button
+              onClick={() => setShowFormulas(f => !f)}
+              className="w-full flex items-center justify-between px-5 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+            >
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Formula Reference
+              </span>
+              <span className="text-slate-400 text-sm">{showFormulas ? "▲ Hide" : "▼ Show"}</span>
+            </button>
+            {showFormulas && (
+              <div className="px-5 py-4 text-xs text-slate-600 space-y-4 bg-white">
+
+                <div>
+                  <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Basis &amp; Period</div>
+                  <table className="w-full border-collapse">
+                    <tbody className="divide-y divide-slate-100">
+                      {[
+                        ["Cost Basis", "Purchase Price + Repairs + Closing Costs"],
+                        ["Months Elapsed (Plan)", "Months from lease start (or Jan 1) through current month, capped at 12. First month prorated by days remaining."],
+                        ["Months Owned", "DATEDIF(purchase_date, today, 'm') — full months since purchase"],
+                      ].map(([label, formula]) => (
+                        <tr key={label}>
+                          <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
+                          <td className="py-1.5 text-slate-500 font-mono text-[11px]">{formula}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Plan Values (YTD period)</div>
+                  <table className="w-full border-collapse">
+                    <tbody className="divide-y divide-slate-100">
+                      {[
+                        ["Plan Gross Income", "target_monthly_rent × months_elapsed (uses actual collected rent for months where data exists)"],
+                        ["Plan Maintenance", "Plan Gross Income × 5%"],
+                        ["Plan Pool / Garden", "planned_monthly_cost × months_elapsed"],
+                        ["Plan HOA", "(planned_annual_hoa ÷ 12) × months_elapsed"],
+                        ["Plan PM Fee", "planned_pm_fee_monthly × months_elapsed"],
+                        ["Plan Total Expenses", "Maintenance + HOA + Pool + Garden + PM Fee  (property tax excluded)"],
+                        ["Plan Net Income", "Plan Gross Income − Plan Total Expenses"],
+                      ].map(([label, formula]) => (
+                        <tr key={label}>
+                          <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
+                          <td className="py-1.5 text-slate-500 font-mono text-[11px]">{formula}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Income &amp; Expenses (Actual)</div>
+                  <table className="w-full border-collapse">
+                    <tbody className="divide-y divide-slate-100">
+                      {[
+                        ["Gross Income (recurring)", "Sum of monthly rent_income for the period, excluding last-month deposit"],
+                        ["Last-Month Deposit", "target_monthly_rent — collected upfront at lease start, attributed to the last month of lease. Shown only in the view that covers the lease-end month."],
+                        ["Total Collected", "Gross Income (recurring) + Last-Month Deposit"],
+                        ["Maintenance %", "Maintenance ÷ Gross Income (recurring) × 100  |  Target: < 5%"],
+                        ["Total Expenses", "Maintenance + HOA + Pool + Garden + PM Fee  (property tax excluded from this line)"],
+                        ["Net Income (recurring)", "Gross Income (recurring) − Total Expenses"],
+                        ["Net Income incl. Deposit", "Net Income (recurring) + Last-Month Deposit"],
+                        ["Property Tax", "Actual entered — displayed below the line, not included in Net Income or Total Expenses"],
+                      ].map(([label, formula]) => (
+                        <tr key={label}>
+                          <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
+                          <td className="py-1.5 text-slate-500 font-mono text-[11px]">{formula}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">ROI Calculations</div>
+                  <table className="w-full border-collapse">
+                    <tbody className="divide-y divide-slate-100">
+                      {[
+                        ["ROI — Net Income (recurring)", "Net Income (recurring) ÷ Cost Basis × 100"],
+                        ["ROI — incl. Last-Month Deposit", "(Net Income recurring + Last-Month Deposit) ÷ Cost Basis × 100  (shown only in lease-end year view)"],
+                        ["ROI Post Property Tax (recurring)", "(Net Income recurring − Property Tax) ÷ Cost Basis × 100"],
+                        ["ROI Post Tax incl. Deposit", "(Net Income incl. Deposit − Property Tax) ÷ Cost Basis × 100"],
+                        ["ROI if Sold", "(Net Income recurring − Property Tax − Est. Closing Costs + Appreciation since purchase) ÷ Cost Basis × 100"],
+                        ["Δ to Plan", "(Actual − Plan) ÷ |Plan| × 100  |  Green = favorable, Red = unfavorable"],
+                      ].map(([label, formula]) => (
+                        <tr key={label}>
+                          <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
+                          <td className="py-1.5 text-slate-500 font-mono text-[11px]">{formula}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Home Value &amp; Appreciation</div>
+                  <table className="w-full border-collapse">
+                    <tbody className="divide-y divide-slate-100">
+                      {[
+                        ["Appreciation since purchase", "(Current Market Value − Cost Basis) ÷ Cost Basis × 100"],
+                        ["YTD Appreciation", "(Latest − Earliest market estimate entered in performance year) ÷ Cost Basis × 100"],
+                        ["Monthly Gain", "Appreciation since purchase ($) ÷ Months Owned"],
+                        ["Annualized Gain", "Monthly Gain × 12"],
+                      ].map(([label, formula]) => (
+                        <tr key={label}>
+                          <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
+                          <td className="py-1.5 text-slate-500 font-mono text-[11px]">{formula}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">YTD Performance Cards</div>
+                  <table className="w-full border-collapse">
+                    <tbody className="divide-y divide-slate-100">
+                      {[
+                        ["YTD Income ROI", "Net Income (recurring) ÷ Cost Basis × 100"],
+                        ["YTD Home Appreciation", "(Latest − Earliest market estimate in year) ÷ Cost Basis × 100"],
+                        ["Appreciation Since Purchase", "(Current Market Value − Cost Basis) ÷ Cost Basis × 100"],
+                        ["Total YTD ROI", "(Net Income recurring + YTD Appreciation $) ÷ Cost Basis × 100"],
+                      ].map(([label, formula]) => (
+                        <tr key={label}>
+                          <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
+                          <td className="py-1.5 text-slate-500 font-mono text-[11px]">{formula}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+              </div>
+            )}
+          </div>
 
           {/* Last Updated Indicator */}
           {lastMonthlyUpdate && (

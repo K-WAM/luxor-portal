@@ -251,11 +251,18 @@ Reference file: `docs/excel property reporting example.xlsx` (sheet "SWE 26").
 
 Past failure: maintenance target showed as 4% in code because formulas were assumed, not read. The skill confirmed 5%.
 
-### C.23 Admin Financials — Deposit Exclusion & ROI Consistency
-- **`displayYtd`** = `actualYtd` with last-month deposit subtracted from `rent_income` and `net_income`. Always pass `displayYtd` (not `actualYtd`) to `InvestmentPerformanceTable` so gross income, net income, and ROI all match the YTD Performance cards.
-- **`maintenancePct` when using `displayYtd`**: recompute inline as `displayYtd.rent_income > 0 ? (displayYtd.maintenance / displayYtd.rent_income * 100) : 0` — do NOT use `canonicalMetrics.maintenance_pct` (which still includes the deposit in rent).
-- **`roi.preTax` and `roi.postTax`**: compute inline from `displayYtd.net_income / costBasis * 100`, not from `canonicalMetrics.roi_pre_tax`/`roi_post_tax`. This keeps them consistent with the YTD Income ROI card.
-- **YE Target PM fee**: `(planned_pm_fee_monthly * 12)` added to `yeTargetTotalExp` so YE Target column totals reconcile.
+### C.23 Admin Financials — Deposit Period Logic (Critical)
+The last-month deposit is physically collected at **lease start** but conceptually covers the **last month of the lease**. Two separate booleans gate its behavior:
+
+| Variable | True when | Effect |
+|----------|-----------|--------|
+| `depositInCurrentViewData` | `performanceYear === leaseStartYear` OR `periodType === "alltime"` | `displayYtd` subtracts deposit from `rent_income`/`net_income` (it's physically in this period's data) |
+| `depositAppliesThisView` | `performanceYear === leaseEndYear` OR `periodType === "alltime"` | Pass `lastMonthDeposit={lastMonthRentBonus}` to table → deposit sub-rows visible |
+
+- `displayYtd` = `actualYtd - lastMonthRentBonus` **only when** `depositInCurrentViewData`. For any other year, `displayYtd === actualYtd` (no subtraction — deposit isn't in the data).
+- `lastMonthDeposit` prop to `InvestmentPerformanceTable` = `depositAppliesThisView ? lastMonthRentBonus : 0`
+- **`maintenancePct`** for `displayYtd`: `displayYtd.rent_income > 0 ? (displayYtd.maintenance / displayYtd.rent_income * 100) : 0` — do NOT use `canonicalMetrics.maintenance_pct`.
+- **`roi.preTax` / `roi.postTax`**: compute inline from `displayYtd.net_income / costBasis`, not `canonicalMetrics.roi_pre_tax`.
 
 ### C.24 PM Fee Plan Input
 `planned_pm_fee_monthly` (numeric, nullable) lives on the `properties` table. It powers:
@@ -414,6 +421,6 @@ Add new lessons to Appendix C/D. Update version and Document Control table. Ask 
 
 | Field | Value |
 |-------|-------|
-| Version | 1.8 |
+| Version | 1.9 |
 | Status | Active |
-| Last Updated | 2026-03-21 — D.2: Total YTD ROI uses YTD appreciation (not since-purchase); D.3: deposit sub-rows with leaseEndMonthLabel; D.4: ROI rows with/without deposit |
+| Last Updated | 2026-03-21 — C.23 rewritten with full deposit period logic (depositInCurrentViewData vs depositAppliesThisView); formula accordion added to admin monthly tab |
