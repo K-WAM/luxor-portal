@@ -435,6 +435,14 @@ export default function FinancialsPage() {
     return new Date(performanceYear, ytdAppreciation.earliestMonth - 1).toLocaleString("default", { month: "short" });
   }, [ytdAppreciation.hasData, ytdAppreciation.earliestMonth, performanceYear]);
 
+  // Label for the lease-end month, used to annotate the last-month deposit row in the table
+  const leaseEndMonthLabel = useMemo(() => {
+    if (!propertyFinancials.lease_end || lastMonthRentBonus <= 0) return null;
+    const parts = getDateOnlyParts(propertyFinancials.lease_end);
+    if (!parts) return null;
+    return new Date(parts.year, parts.month - 1).toLocaleString("default", { month: "short", year: "numeric" });
+  }, [propertyFinancials.lease_end, lastMonthRentBonus]);
+
   // Appreciation gain metrics (used in InvestmentPerformanceTable)
   const appreciationGains = useMemo(() => {
     const monthsOwned = canonicalMetrics.months_owned;
@@ -1618,10 +1626,15 @@ export default function FinancialsPage() {
                     color: purchaseAppreciation.value >= 0 ? "text-emerald-700" : "text-red-600",
                   },
                   {
-                    label: "Total YTD ROI (incl. Appr.)",
-                    value: `${((displayYtd.net_income + purchaseAppreciation.value) / calculatedTotalCost * 100).toFixed(2)}%`,
-                    sub: "Net income + appreciation",
-                    color: (displayYtd.net_income + purchaseAppreciation.value) >= 0 ? "text-emerald-700" : "text-red-600",
+                    label: "Total YTD ROI (Net + YTD Appr.)",
+                    value: ytdAppreciation.hasData
+                      ? `${((displayYtd.net_income + ytdAppreciation.value) / calculatedTotalCost * 100).toFixed(2)}%`
+                      : `${(displayYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
+                    sub: ytdAppreciation.hasData
+                      ? `Net income + YTD appreciation ÷ cost basis`
+                      : "Net income only — no market data this year",
+                    color: (displayYtd.net_income + (ytdAppreciation.hasData ? ytdAppreciation.value : 0)) >= 0
+                      ? "text-emerald-700" : "text-red-600",
                   },
                 ].map(({ label, value, sub, color }) => (
                   <div key={label} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
@@ -2068,6 +2081,8 @@ export default function FinancialsPage() {
                     }}
                     closingCosts={saleClosingCosts}
                     onClosingCostsChange={setSaleClosingCosts}
+                    lastMonthDeposit={lastMonthRentBonus}
+                    leaseEndMonthLabel={leaseEndMonthLabel}
                   />
                 );
               })()}

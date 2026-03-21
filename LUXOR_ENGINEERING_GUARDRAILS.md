@@ -286,16 +286,22 @@ This is the authoritative reference for which calculation powers which UI elemen
 
 | Card | Formula | Variable |
 |------|---------|----------|
-| YTD Income ROI | `displayYtd.net_income / calculatedTotalCost * 100` | admin financials page |
+| YTD Income ROI | `displayYtd.net_income / calculatedTotalCost * 100` (recurring, deposit excluded) | admin financials page |
 | YTD Home Appreciation | `(latest − earliest market_estimate in year) / cost_basis * 100` | `ytdAppreciation.pct` |
 | Appreciation Since Purchase | `(current_market_value − cost_basis) / cost_basis * 100` | `purchaseAppreciation.pct` |
-| Total YTD ROI (incl. Appr.) | `(displayYtd.net_income + purchaseAppreciation.value) / calculatedTotalCost * 100` | admin financials page |
+| Total YTD ROI (Net + YTD Appr.) | `(displayYtd.net_income + ytdAppreciation.value) / calculatedTotalCost * 100` — uses **YTD** appreciation, not since-purchase | admin financials page |
+
+> **Total YTD ROI uses YTD appreciation** (`ytdAppreciation.value`), not since-purchase (`purchaseAppreciation.value`). These are different — do not swap them.
 
 ---
 
 ### D.3 Admin Financials — InvestmentPerformanceTable (Income & Expenses section)
 
-All **Actual** values come from `displayYtd` (deposit excluded). See C.23.
+All **Actual** primary values come from `displayYtd` (deposit excluded). When `lastMonthDeposit > 0`, sub-rows show the deposit and an "incl. deposit" total. See C.23.
+
+**Deposit sub-row props:** `lastMonthDeposit={lastMonthRentBonus}`, `leaseEndMonthLabel` (derived from `lease_end` date, format "Dec 2025"). Both are optional — no sub-rows render when `lastMonthDeposit = 0`.
+
+**`leaseEndMonthLabel`** — computed in admin financials page: `getDateOnlyParts(lease_end)` → `new Date(year, month-1).toLocaleString("default", { month: "short", year: "numeric" })`. Only set when `lastMonthRentBonus > 0`.
 
 | Row | Actual | Plan | YE Target |
 |-----|--------|------|-----------|
@@ -316,12 +322,16 @@ All **Actual** values come from `displayYtd` (deposit excluded). See C.23.
 
 | Row | Actual | Plan | YE Target |
 |-----|--------|------|-----------|
-| Return on Investment (Net Income) | `displayYtd.net_income / costBasis × 100` | `plannedYtd.net_income / costBasis × 100` | `yeTargetNet / costBasis × 100` |
-| ROI Post Property Tax | `(displayYtd.net_income − displayYtd.property_tax) / costBasis × 100` | — | — |
+| ROI — Net Income (recurring) | `displayYtd.net_income / costBasis × 100` | `plannedYtd.net_income / costBasis × 100` | `yeTargetNet / costBasis × 100` |
+| ↳ ROI incl. Last-Month Deposit | `(displayYtd.net_income + lastMonthDeposit) / costBasis × 100` — sub-row, only when deposit > 0 | — | — |
+| ROI Post Property Tax (recurring) | `(displayYtd.net_income − displayYtd.property_tax) / costBasis × 100` | — | — |
+| ↳ Post Tax incl. Deposit | `(netWithDeposit − propertyTax) / costBasis × 100` — sub-row, only when deposit > 0 | — | — |
 | Home Value Appreciation | `canonicalMetrics.appreciation_pct` = `(current_market_value − cost_basis) / cost_basis × 100` | — | — |
-| ROI Post Tax + Appr − Closing Cost | `(netIncome − propertyTax − closingCosts + appreciationValue) / costBasis × 100` | — | — |
+| ROI Post Tax + Appr − Closing Cost | `(netIncome − propertyTax − closingCosts + appreciationValue) / costBasis × 100` — uses recurring net income | — | — |
 
-> **The ROI (Net Income) row and the YTD Income ROI card must use the same numerator (`displayYtd.net_income`) and denominator (`cost_basis`). Never use `canonicalMetrics.roi_pre_tax` for the table row — it includes the deposit.**
+> **The ROI (recurring) row and the YTD Income ROI card must use the same numerator (`displayYtd.net_income`) and same denominator (`cost_basis`). Never use `canonicalMetrics.roi_pre_tax` for the table row — it includes the deposit.**
+>
+> `roiWithDeposit` and `postTaxWithDeposit` are computed inside `InvestmentPerformanceTable` from `home.costBasis` and the `lastMonthDeposit` prop. They are never passed as ROI type fields — keep them internal to the component.
 
 ---
 
@@ -404,6 +414,6 @@ Add new lessons to Appendix C/D. Update version and Document Control table. Ask 
 
 | Field | Value |
 |-------|-------|
-| Version | 1.7 |
+| Version | 1.8 |
 | Status | Active |
-| Last Updated | 2026-03-20 — Never push without user approval (Section 8, 11.3); added Appendix D: full calc→output map for all financial metrics |
+| Last Updated | 2026-03-21 — D.2: Total YTD ROI uses YTD appreciation (not since-purchase); D.3: deposit sub-rows with leaseEndMonthLabel; D.4: ROI rows with/without deposit |
