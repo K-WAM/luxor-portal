@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     const { data: property, error} = await supabaseAdmin
       .from("properties")
       .select(
-        "id, home_cost, home_repair_cost, closing_costs, total_cost, current_market_estimate, target_monthly_rent, planned_garden_cost, planned_pool_cost, planned_hoa_cost, planned_hoa_cost_2, hoa_frequency, hoa_frequency_2, purchase_date, lease_start, lease_end, deposit, last_month_rent_collected, financials_updated_at"
+        "id, home_cost, home_repair_cost, closing_costs, total_cost, current_market_estimate, target_monthly_rent, planned_garden_cost, planned_pool_cost, planned_hoa_cost, planned_hoa_cost_2, planned_pm_fee_monthly, hoa_frequency, hoa_frequency_2, purchase_date, lease_start, lease_end, deposit, last_month_rent_collected, financials_updated_at"
       )
       .eq("id", propertyId)
       .single();
@@ -123,6 +123,7 @@ export async function PUT(request: Request) {
       'planned_pool_cost',
       'planned_hoa_cost',
       'planned_hoa_cost_2',
+      'planned_pm_fee_monthly',
       'deposit'
     ];
 

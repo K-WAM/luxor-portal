@@ -230,6 +230,19 @@ Excel B26: `=SUMIFS(actual_monthly_rent, dates, "<="&EOMONTH(TODAY(),0)) − dep
 - **Deposit is isolated**: canonical metrics adds it via `lastMonthRentBonus` to actual YTD; admin monthly tab subtracts it with a footnote.
 - **Past incident**: Subtracting deposit from plan caused false Δ negatives in month 1 and distorted all future month comparisons.
 
+### C.23 Admin Financials — Deposit Exclusion & ROI Consistency
+- **`displayYtd`** = `actualYtd` with last-month deposit subtracted from `rent_income` and `net_income`. Always pass `displayYtd` (not `actualYtd`) to `InvestmentPerformanceTable` so gross income, net income, and ROI all match the YTD Performance cards.
+- **`maintenancePct` when using `displayYtd`**: recompute inline as `displayYtd.rent_income > 0 ? (displayYtd.maintenance / displayYtd.rent_income * 100) : 0` — do NOT use `canonicalMetrics.maintenance_pct` (which still includes the deposit in rent).
+- **`roi.preTax` and `roi.postTax`**: compute inline from `displayYtd.net_income / costBasis * 100`, not from `canonicalMetrics.roi_pre_tax`/`roi_post_tax`. This keeps them consistent with the YTD Income ROI card.
+- **YE Target PM fee**: `(planned_pm_fee_monthly * 12)` added to `yeTargetTotalExp` so YE Target column totals reconcile.
+
+### C.24 PM Fee Plan Input
+`planned_pm_fee_monthly` (numeric, nullable) lives on the `properties` table. It powers:
+- `plannedYtd.pm_fee = pmFeeMonthly * monthsElapsedPlanned` (included in `total_expenses` and `net_income`)
+- `annualPlan.pmFee = pmFeeMonthly * 12` (included in `totalExpenses`)
+- `yeTarget.pmFee = pmFeeMonthly * 12` for the YE Target column in `InvestmentPerformanceTable`
+Pattern mirrors `planned_pool_cost` / `planned_garden_cost`. API route GET select and PUT numericFields must both include it.
+
 ### C.22 Always Use Relevant Claude Skills
 Before writing code to process files or perform specialized tasks, check if a Claude skill applies:
 
@@ -278,6 +291,6 @@ Add new lessons to Appendix C. Update version and Document Control table. Push t
 
 | Field | Value |
 |-------|-------|
-| Version | 1.5 |
+| Version | 1.6 |
 | Status | Active |
-| Last Updated | 2026-03-20 — Added copy-paste prompt sentence; Section 8 now has always-on rules (skills, dead code, conflict reconciliation, file locations); C.5 updated to require deletion not wrapping; C.22 expanded to full skills table |
+| Last Updated | 2026-03-20 — C.23: deposit exclusion pattern (always pass displayYtd, recompute ROI inline); C.24: PM fee plan input (planned_pm_fee_monthly) |

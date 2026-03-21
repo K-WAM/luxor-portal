@@ -23,6 +23,7 @@ type Property = {
   planned_garden_cost?: number;
   planned_pool_cost?: number;
   planned_hoa_cost?: number;
+  planned_pm_fee_monthly?: number;
   purchase_date?: string;
   lease_start?: string;
   financials_updated_at?: string;
@@ -65,6 +66,7 @@ export default function FinancialsPage() {
     planned_pool_cost: "",
     planned_hoa_cost: "",
     planned_hoa_cost_2: "",
+    planned_pm_fee_monthly: "",
     hoa_frequency: "monthly" as "monthly" | "quarterly",
     hoa_frequency_2: "monthly" as "monthly" | "quarterly",
     purchase_date: "",
@@ -194,6 +196,7 @@ export default function FinancialsPage() {
     const rentMonthly = parseFloat(propertyFinancials.target_monthly_rent) || 0;
     const poolMonthly = parseFloat(propertyFinancials.planned_pool_cost) || 0;
     const gardenMonthly = parseFloat(propertyFinancials.planned_garden_cost) || 0;
+    const pmFeeMonthly = parseFloat(propertyFinancials.planned_pm_fee_monthly) || 0;
     const hoaAnnual = calculatedAnnualHoa || 0;
     const leaseStart = propertyFinancials.lease_start
       ? getDateOnlyParts(propertyFinancials.lease_start)
@@ -271,10 +274,11 @@ export default function FinancialsPage() {
     const pool = poolMonthly * monthsElapsedPlanned;
     const garden = gardenMonthly * monthsElapsedPlanned;
     const hoa_payments = (hoaAnnual / 12) * monthsElapsedPlanned;
+    const pm_fee = pmFeeMonthly * monthsElapsedPlanned;
     const property_tax = 0; // plan row leaves tax out unless a separate plan is defined
 
     // Excel rule: total_expenses excludes property_tax
-    const total_expenses = maintenance + pool + garden + hoa_payments;
+    const total_expenses = maintenance + pool + garden + hoa_payments + pm_fee;
     const net_income = rent_income - total_expenses;
 
     return {
@@ -284,7 +288,7 @@ export default function FinancialsPage() {
       pool,
       garden,
       hoa_payments,
-      pm_fee: 0,
+      pm_fee,
       property_tax,
       total_expenses,
       net_income,
@@ -295,6 +299,7 @@ export default function FinancialsPage() {
     performanceYear,
     propertyFinancials.lease_start,
     propertyFinancials.planned_garden_cost,
+    propertyFinancials.planned_pm_fee_monthly,
     propertyFinancials.planned_pool_cost,
     propertyFinancials.target_monthly_rent,
   ]);
@@ -452,11 +457,12 @@ export default function FinancialsPage() {
     const pool = (parseFloat(propertyFinancials.planned_pool_cost) || 0) * 12;
     const garden = (parseFloat(propertyFinancials.planned_garden_cost) || 0) * 12;
     const hoa = calculatedAnnualHoa;
+    const pmFee = (parseFloat(propertyFinancials.planned_pm_fee_monthly) || 0) * 12;
     const propertyTax = parseFloat(yeTarget.property_tax) || 0;
-    const totalExpenses = maintenance + pool + garden + hoa;
+    const totalExpenses = maintenance + pool + garden + hoa + pmFee;
     const netIncome = rent - totalExpenses;
-    return { rent, maintenance, pool, garden, hoa, propertyTax, totalExpenses, netIncome };
-  }, [propertyFinancials.target_monthly_rent, propertyFinancials.planned_pool_cost, propertyFinancials.planned_garden_cost, calculatedAnnualHoa, yeTarget.property_tax]);
+    return { rent, maintenance, pool, garden, hoa, pmFee, propertyTax, totalExpenses, netIncome };
+  }, [propertyFinancials.target_monthly_rent, propertyFinancials.planned_pool_cost, propertyFinancials.planned_garden_cost, propertyFinancials.planned_pm_fee_monthly, calculatedAnnualHoa, yeTarget.property_tax]);
 
   // Calculate appreciation metrics using helper functions
   const purchaseAppreciation = useMemo(() => {
@@ -578,6 +584,7 @@ export default function FinancialsPage() {
           planned_pool_cost: data.planned_pool_cost?.toString() || "",
           planned_hoa_cost: data.planned_hoa_cost?.toString() || "",
           planned_hoa_cost_2: data.planned_hoa_cost_2?.toString() || "",
+          planned_pm_fee_monthly: data.planned_pm_fee_monthly?.toString() || "",
           hoa_frequency: (data.hoa_frequency as "monthly" | "quarterly") || "monthly",
           hoa_frequency_2: (data.hoa_frequency_2 as "monthly" | "quarterly") || "monthly",
           purchase_date: toDateOnlyString(data.purchase_date) || "",
@@ -1285,6 +1292,22 @@ export default function FinancialsPage() {
                         {formatCurrency(calculatedAnnualHoa)}
                       </td>
                     </tr>
+                    <tr>
+                      <td className="border border-slate-300 px-4 py-2 font-medium">Planned PM Fee (monthly)</td>
+                      <td className="border border-slate-300 px-4 py-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={propertyFinancials.planned_pm_fee_monthly}
+                          onChange={(e) => setPropertyFinancials({ ...propertyFinancials, planned_pm_fee_monthly: e.target.value })}
+                          className="w-full border border-slate-300 rounded px-2 py-1"
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="border border-slate-300 px-4 py-2 text-sm">
+                        {formatCurrency((parseFloat(propertyFinancials.planned_pm_fee_monthly) || 0) * 12)}
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -1985,26 +2008,31 @@ export default function FinancialsPage() {
                 const yeTargetGarden = parseFloat(yeTarget.garden) || 0;
                 const yeTargetHoa = parseFloat(yeTarget.hoa) || 0;
                 const yeTargetTax = parseFloat(yeTarget.property_tax) || 0;
-                const yeTargetTotalExp = yeTargetMaint + yeTargetPool + yeTargetGarden + yeTargetHoa;
+                const yeTargetPmFee = (parseFloat(propertyFinancials.planned_pm_fee_monthly) || 0) * 12;
+                const yeTargetTotalExp = yeTargetMaint + yeTargetPool + yeTargetGarden + yeTargetHoa + yeTargetPmFee;
                 const yeTargetNet = yeTargetRent - yeTargetTotalExp;
                 const hasYeTargetData = yeTargetRent > 0;
+                // Use displayYtd (deposit excluded) so gross income, net income, and ROI all match the YTD cards
+                const displayMaintenancePct = displayYtd.rent_income > 0
+                  ? (displayYtd.maintenance / displayYtd.rent_income * 100)
+                  : 0;
                 return (
                   <InvestmentPerformanceTable
                     actual={{
-                      grossIncome: actualYtd.rent_income,
-                      maintenance: actualYtd.maintenance,
-                      maintenancePct: canonicalMetrics.maintenance_pct,
-                      hoaPoolGarden: actualYtd.hoa_payments + actualYtd.pool + actualYtd.garden,
-                      pmFee: actualYtd.pm_fee || 0,
-                      totalExpenses: actualYtd.total_expenses,
-                      netIncome: actualYtd.net_income,
-                      propertyTax: actualYtd.property_tax,
+                      grossIncome: displayYtd.rent_income,
+                      maintenance: displayYtd.maintenance,
+                      maintenancePct: displayMaintenancePct,
+                      hoaPoolGarden: displayYtd.hoa_payments + displayYtd.pool + displayYtd.garden,
+                      pmFee: displayYtd.pm_fee || 0,
+                      totalExpenses: displayYtd.total_expenses,
+                      netIncome: displayYtd.net_income,
+                      propertyTax: displayYtd.property_tax,
                     }}
                     plan={{
                       grossIncome: plannedYtd.rent_income,
                       maintenance: plannedYtd.maintenance,
                       hoaPoolGarden: plannedYtd.hoa_payments + plannedYtd.pool + plannedYtd.garden,
-                      pmFee: plannedYtd.pm_fee || 0,
+                      pmFee: plannedYtd.pm_fee,
                       totalExpenses: plannedYtd.total_expenses,
                       netIncome: plannedYtd.net_income,
                     }}
@@ -2012,14 +2040,14 @@ export default function FinancialsPage() {
                       grossIncome: yeTargetRent,
                       maintenance: yeTargetMaint,
                       hoaPoolGarden: yeTargetPool + yeTargetGarden + yeTargetHoa,
-                      pmFee: 0,
+                      pmFee: yeTargetPmFee,
                       totalExpenses: yeTargetTotalExp,
                       netIncome: yeTargetNet,
                       propertyTax: yeTargetTax,
                     } : null}
                     roi={{
-                      preTax: canonicalMetrics.roi_pre_tax,
-                      postTax: canonicalMetrics.roi_post_tax,
+                      preTax: costBasis > 0 ? (displayYtd.net_income / costBasis * 100) : 0,
+                      postTax: costBasis > 0 ? ((displayYtd.net_income - (displayYtd.property_tax || 0)) / costBasis * 100) : 0,
                       appreciationPct: canonicalMetrics.appreciation_pct,
                       planRoi: costBasis > 0 ? (plannedYtd.net_income / costBasis * 100) : 0,
                       yeTargetRoi: hasYeTargetData && costBasis > 0 ? (yeTargetNet / costBasis * 100) : null,
