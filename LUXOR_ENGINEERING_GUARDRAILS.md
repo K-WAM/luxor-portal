@@ -285,7 +285,7 @@ Every financial variable in the app, with its Actual, Plan, and YE Target formul
 
 | Variable | Actual Formula | Plan Formula | YE Target Formula |
 |----------|---------------|--------------|-------------------|
-| **Gross Income** | `canonicalMetrics.ytd.rent_income` — sum of monthly `rent_income` (includes last-month deposit in the month received) | `target_monthly_rent × monthsElapsedPlanned` (prorated for partial first month) | `yeTarget.rent_income` (user-entered) |
+| **Gross Income** | `canonicalMetrics.ytd.rent_income` — sum of monthly `rent_income` (includes last-month deposit in the month received) | `target_monthly_rent × monthsElapsedPlanned` (prorated for partial lease-start month; adds `target_monthly_rent` deposit in lease-start month when `last_month_rent_collected`). **Pure plan — no actual-rent override.** Period-aware: YTD uses `performanceYear`; Lease/Alltime spans full elapsed lease months. | `yeTarget.rent_income` (user-entered) |
 | **Maintenance** | `canonicalMetrics.ytd.maintenance` — sum of monthly `maintenance` | `plannedYtd.rent_income × 0.05` | `yeTarget.maintenance` (user-entered) |
 | **Maintenance %** | `ytd.maintenance / ytd.rent_income × 100` | 5.00% (fixed) | 5.00% (fixed) |
 | **HOA, Pool, Garden** | `ytd.hoa_payments + ytd.pool + ytd.garden` | `(hoaAnnual/12 + poolMonthly + gardenMonthly) × monthsElapsedPlanned` | `yeTarget.hoa + yeTarget.pool + yeTarget.garden` |
@@ -413,11 +413,21 @@ Same component as admin. Key prop differences:
 
 ### D.8 Planned YTD — `plannedYtd` useMemo
 
-Lives in `app/admin/financials/page.tsx`. Single source of plan figures for the period.
+Lives in `app/admin/financials/page.tsx`. Single source of plan figures for the selected period. **Period-aware** — recalculates when `periodType` changes.
+
+**Period range logic:**
+- `YTD`: lease-start month (or Jan 1 if lease started in a prior year) through current month of `performanceYear`
+- `Lease`: lease-start through today, capped at `lease_end`
+- `Alltime`: lease-start through today
+
+**`rent_income` rules (pure plan, no actual-rent override):**
+- Each month = `target_monthly_rent`
+- Lease-start month prorated: `rentMonthly × (daysRemainingInMonth / daysInMonth)`
+- Deposit added in lease-start month when `last_month_rent_collected === true`: `+target_monthly_rent`
 
 | Field | Formula |
 |-------|---------|
-| `rent_income` | Actual monthly rent if entered, else `target_monthly_rent` per month (prorated first month). Count = `monthsElapsedPlanned` |
+| `rent_income` | Sum of pure plan rent per month (see above) |
 | `maintenance` | `rent_income × 0.05` |
 | `pool` | `planned_pool_cost × monthsElapsedPlanned` |
 | `garden` | `planned_garden_cost × monthsElapsedPlanned` |
@@ -425,6 +435,8 @@ Lives in `app/admin/financials/page.tsx`. Single source of plan figures for the 
 | `pm_fee` | `planned_pm_fee_monthly × monthsElapsedPlanned` |
 | `total_expenses` | `maintenance + pool + garden + hoa_payments + pm_fee` (NO property_tax) |
 | `net_income` | `rent_income − total_expenses` |
+
+> **Never** use actual `rent_income` from `allMonthlyData` to override plan figures. Plan is plan. Actual is actual. Mixing the two was the root cause of prior inconsistencies.
 
 ---
 
@@ -559,6 +571,6 @@ Before marking a formula task done:
 
 | Field | Value |
 |-------|-------|
-| Version | 2.1 |
+| Version | 2.2 |
 | Status | Active |
-| Last Updated | 2026-03-21 — v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist; v2.0: Full variable consistency audit: D.0 Master Variable Table added (Actual/Plan/YE Target for all 10 variables); deposit model changed to inclusive (last-month deposit counted in gross income for the month received); displayYtd removed → showDepositBreakdown; calculatedYeTarget dead useMemo removed; YE Target monthly table row now includes PM fee; formula accordion updated to deposit-inclusive model; Projected ROI unified to single calculateExpectedRoi() with PM fee across all three locations (admin dashboard, admin financials, owner page) |
+| Last Updated | 2026-03-21 — v2.2: plannedYtd made period-aware (YTD/Lease/Alltime); removed actual-rent override from plan; deposit added to plan gross income in lease-start month when last_month_rent_collected; D.8 rewritten; D.0 Plan Gross Income updated; formula accordion updated. v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist; v2.0: Full variable consistency audit: D.0 Master Variable Table added (Actual/Plan/YE Target for all 10 variables); deposit model changed to inclusive (last-month deposit counted in gross income for the month received); displayYtd removed → showDepositBreakdown; calculatedYeTarget dead useMemo removed; YE Target monthly table row now includes PM fee; formula accordion updated to deposit-inclusive model; Projected ROI unified to single calculateExpectedRoi() with PM fee across all three locations (admin dashboard, admin financials, owner page) |

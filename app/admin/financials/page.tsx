@@ -180,86 +180,82 @@ export default function FinancialsPage() {
     const gardenMonthly = parseFloat(propertyFinancials.planned_garden_cost) || 0;
     const pmFeeMonthly = parseFloat(propertyFinancials.planned_pm_fee_monthly) || 0;
     const hoaAnnual = calculatedAnnualHoa || 0;
-    const leaseStart = propertyFinancials.lease_start
-      ? getDateOnlyParts(propertyFinancials.lease_start)
-      : null;
+    const lastMonthCollected = !!propertyFinancials.last_month_rent_collected;
+    const leaseStart = propertyFinancials.lease_start ? getDateOnlyParts(propertyFinancials.lease_start) : null;
+    const leaseEnd = propertyFinancials.lease_end ? getDateOnlyParts(propertyFinancials.lease_end) : null;
 
     const today = new Date();
-    const refYear = today.getFullYear();
-    const refMonth = today.getMonth(); // 0-based
+    const todayYear = today.getFullYear();
+    const todayMonth = today.getMonth() + 1; // 1-based
 
     const zeroPlan = {
-      monthsElapsed: 0,
-      rent_income: 0,
-      maintenance: 0,
-      pool: 0,
-      garden: 0,
-      hoa_payments: 0,
-      pm_fee: 0,
-      property_tax: 0,
-      total_expenses: 0,
-      net_income: 0,
+      monthsElapsed: 0, rent_income: 0, maintenance: 0, pool: 0, garden: 0,
+      hoa_payments: 0, pm_fee: 0, property_tax: 0, total_expenses: 0, net_income: 0,
     };
 
-    if (performanceYear > refYear) return zeroPlan;
+    if (!leaseStart) return zeroPlan;
 
-    // Start month: lease start month if in/before this year, else Jan
-    let startMonth = 0;
-    if (leaseStart) {
-      const startYear = leaseStart.year;
-      if (startYear > performanceYear) return zeroPlan;
-      startMonth = startYear < performanceYear ? 0 : leaseStart.month - 1;
+    // Determine plan date range based on selected period
+    let planStart: { year: number; month: number } | null = null;
+    let planEnd: { year: number; month: number } | null = null;
+
+    if (periodType === "ytd") {
+      if (performanceYear > todayYear) return zeroPlan;
+      // Start at lease start month (if lease started this year) or Jan 1
+      if (leaseStart.year > performanceYear) return zeroPlan;
+      const ytdStartMonth = leaseStart.year === performanceYear ? leaseStart.month : 1;
+      planStart = { year: performanceYear, month: ytdStartMonth };
+      planEnd = { year: performanceYear, month: performanceYear === todayYear ? todayMonth : 12 };
+    } else {
+      // lease and alltime: from lease start through today (capped at lease_end for "lease")
+      planStart = { year: leaseStart.year, month: leaseStart.month };
+      if (periodType === "lease" && leaseEnd) {
+        const leaseEndPassed = leaseEnd.year < todayYear || (leaseEnd.year === todayYear && leaseEnd.month <= todayMonth);
+        planEnd = leaseEndPassed
+          ? { year: leaseEnd.year, month: leaseEnd.month }
+          : { year: todayYear, month: todayMonth };
+      } else {
+        planEnd = { year: todayYear, month: todayMonth };
+      }
     }
 
-    const effectiveCurrentMonth = performanceYear === refYear ? refMonth : 11; // inclusive of current month
-    if (effectiveCurrentMonth < startMonth) return zeroPlan;
+    if (!planStart || !planEnd) return zeroPlan;
+    if (planEnd.year < planStart.year || (planEnd.year === planStart.year && planEnd.month < planStart.month)) return zeroPlan;
 
-    const monthsElapsedBase = Math.min(12, effectiveCurrentMonth - startMonth + 1);
-    // Keep UX rule: count current month as fully elapsed (+1), capped at 12.
-    const monthsElapsedPlanned = Math.min(12, monthsElapsedBase + 1);
+    // Build ordered list of (year, month) pairs
+    const planMonths: Array<{ year: number; month: number }> = [];
+    let y = planStart.year;
+    let m = planStart.month;
+    while (y < planEnd.year || (y === planEnd.year && m <= planEnd.month)) {
+      planMonths.push({ year: y, month: m });
+      m++;
+      if (m > 12) { m = 1; y++; }
+    }
 
-    // Map of actual rent by month for the performance year (overrides plan if present)
-    const monthlyMap = new Map<number, number>();
-    allMonthlyData
-      .filter((m) => m.year === performanceYear)
-      .forEach((m) => {
-        monthlyMap.set(m.month, m.rent_income || 0);
-      });
+    if (planMonths.length === 0) return zeroPlan;
 
+    // Pure plan rent: target_monthly_rent × months, prorated for lease-start month.
+    // Deposit (last month's rent collected upfront) added to lease-start month when checked.
     let rent_income = 0;
-    const startMonthIndex = startMonth; // 0-based
-
-    for (let i = 0; i < monthsElapsedPlanned; i++) {
-      const monthIndex = startMonthIndex + i;
-      if (monthIndex > 11) break;
-      const monthNumber = monthIndex + 1; // 1-based for data
-
-      // If a rent value exists for that month, use it (captures mid-lease changes/previous rents)
-      const overrideRent = monthlyMap.get(monthNumber);
-      if (overrideRent !== undefined) {
-        rent_income += overrideRent;
-        continue;
-      }
-
-      // Otherwise use plan rent (prorate first month if lease starts this year and this is the start month)
-      if (leaseStart && leaseStart.year === performanceYear && monthIndex === leaseStart.month - 1) {
-        const dim = daysInMonth(performanceYear, monthIndex);
+    for (const { year, month } of planMonths) {
+      const isLeaseStartMonth = year === leaseStart.year && month === leaseStart.month;
+      if (isLeaseStartMonth) {
+        const dim = daysInMonth(year, month - 1);
         const daysRemaining = dim - leaseStart.day + 1;
         rent_income += rentMonthly * (daysRemaining / dim);
+        if (lastMonthCollected) rent_income += rentMonthly; // deposit in lease-start month
       } else {
         rent_income += rentMonthly;
       }
     }
 
-    // Maintenance planned as 5% of rent income (matches targets logic)
+    const monthsElapsedPlanned = planMonths.length;
     const maintenance = rent_income * 0.05;
     const pool = poolMonthly * monthsElapsedPlanned;
     const garden = gardenMonthly * monthsElapsedPlanned;
     const hoa_payments = (hoaAnnual / 12) * monthsElapsedPlanned;
     const pm_fee = pmFeeMonthly * monthsElapsedPlanned;
-    const property_tax = 0; // plan row leaves tax out unless a separate plan is defined
-
-    // Excel rule: total_expenses excludes property_tax
+    const property_tax = 0;
     const total_expenses = maintenance + pool + garden + hoa_payments + pm_fee;
     const net_income = rent_income - total_expenses;
 
@@ -276,14 +272,16 @@ export default function FinancialsPage() {
       net_income,
     };
   }, [
-    allMonthlyData,
-    calculatedAnnualHoa,
+    periodType,
     performanceYear,
+    calculatedAnnualHoa,
     propertyFinancials.lease_start,
+    propertyFinancials.lease_end,
+    propertyFinancials.target_monthly_rent,
+    propertyFinancials.planned_pool_cost,
     propertyFinancials.planned_garden_cost,
     propertyFinancials.planned_pm_fee_monthly,
-    propertyFinancials.planned_pool_cost,
-    propertyFinancials.target_monthly_rent,
+    propertyFinancials.last_month_rent_collected,
   ]);
 
   const monthsElapsedPurchase = useMemo(() => {
@@ -1898,10 +1896,10 @@ export default function FinancialsPage() {
                   </td>
                 </tr>
 
-                {/* Plan Row (elapsed months including current month, with first month proration) */}
+                {/* Plan Row — pure plan for the selected period, prorated lease-start month, deposit included */}
                 <tr className="bg-purple-50 font-semibold border-t border-slate-300">
                   <td className="border border-slate-300 px-3 py-2 sticky left-0 bg-purple-50">
-                    Plan (thru {plannedYtd.monthsElapsed} mo)
+                    Plan ({plannedYtd.monthsElapsed} mo)
                   </td>
                   <td className="border border-slate-300 px-3 py-2 text-right">
                     {formatCurrency(plannedYtd.rent_income)}
@@ -2112,11 +2110,12 @@ export default function FinancialsPage() {
                 </div>
 
                 <div>
-                  <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Plan Values (YTD period)</div>
+                  <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Plan Values (selected period)</div>
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["Plan Gross Income", "target_monthly_rent × months_elapsed (uses actual collected rent for months where data exists)"],
+                        ["Plan Period", "YTD: lease-start month (or Jan) through current month of selected year. Lease / All-Time: lease-start through today (capped at lease_end for Lease view)."],
+                        ["Plan Gross Income", "target_monthly_rent × months_elapsed. First month prorated by days remaining after lease start. Includes deposit (target_monthly_rent) in lease-start month when last_month_rent_collected is checked. Pure plan — no actual override."],
                         ["Plan Maintenance", "Plan Gross Income × 5%"],
                         ["Plan Pool / Garden", "planned_monthly_cost × months_elapsed"],
                         ["Plan HOA", "(planned_annual_hoa ÷ 12) × months_elapsed"],
