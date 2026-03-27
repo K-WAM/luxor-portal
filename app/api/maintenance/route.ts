@@ -220,7 +220,7 @@ async function sendTenantScheduleEmail(params: {
 
   try {
     if (apiKey) {
-      await fetch("https://api.resend.com/emails", {
+      const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -233,7 +233,12 @@ async function sendTenantScheduleEmail(params: {
           html,
         }),
       });
-      return;
+      if (res.ok) {
+        return;
+      }
+
+      const err = await res.text();
+      console.error("[maintenance email] Resend tenant schedule email error:", err);
     }
 
     const host = process.env.SMTP_HOST;
