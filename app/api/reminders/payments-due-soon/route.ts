@@ -102,12 +102,21 @@ const alreadySent = async (recipientEmail: string, targetMonth: string) => {
   return (data || []).length > 0;
 };
 
-export async function POST(request: Request) {
+const getBearerSecret = (request: Request) => {
+  const authHeader = request.headers.get("authorization") || "";
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+  const token = authHeader.slice(7).trim();
+  return token || null;
+};
+
+const runReminder = async (request: Request) => {
   const cronSecret = process.env.CRON_SECRET;
   const headerSecret = request.headers.get("x-cron-secret");
-  const isCronAuthorized = !!cronSecret && headerSecret === cronSecret;
+  const bearerSecret = getBearerSecret(request);
+  const providedSecret = headerSecret || bearerSecret;
+  const isCronAuthorized = !!cronSecret && providedSecret === cronSecret;
 
-  if (headerSecret && !isCronAuthorized) {
+  if (providedSecret && !isCronAuthorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -263,4 +272,12 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ targetMonth, results });
+};
+
+export async function GET(request: Request) {
+  return runReminder(request);
+}
+
+export async function POST(request: Request) {
+  return runReminder(request);
 }
