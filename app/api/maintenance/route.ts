@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import nodemailer from "nodemailer";
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers'
 
@@ -67,14 +68,12 @@ async function sendMaintenanceEmail(params: {
   description: string;
   requestId: string;
   schedulingDetails?: SchedulingDetails | null;
+  createdAt?: string;
 }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn('[maintenance email] RESEND_API_KEY not set — skipping email');
-    return;
-  }
-
   const to = process.env.MAINTENANCE_EMAIL_TO || 'connect@luxordev.com';
+  const createdAtLabel = params.createdAt
+    ? new Date(params.createdAt).toLocaleString("en-US", { timeZone: "UTC" }) + " UTC"
+    : new Date().toLocaleString("en-US", { timeZone: "UTC" }) + " UTC";
   const categoryLabel = params.category
     ? params.category.charAt(0).toUpperCase() + params.category.slice(1)
     : 'General';
@@ -88,6 +87,10 @@ async function sendMaintenanceEmail(params: {
       </div>
       <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; padding: 28px 32px; border-radius: 0 0 8px 8px;">
         <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 0; font-size: 13px; color: #64748b; width: 140px; vertical-align: top;">Created</td>
+            <td style="padding: 8px 0; font-size: 14px; color: #0f172a;">${createdAtLabel}</td>
+          </tr>
           <tr>
             <td style="padding: 8px 0; font-size: 13px; color: #64748b; width: 140px; vertical-align: top;">Property</td>
             <td style="padding: 8px 0; font-size: 14px; font-weight: 500; color: #0f172a;">${params.propertyAddress}</td>
@@ -135,24 +138,50 @@ async function sendMaintenanceEmail(params: {
     </div>
   `;
 
+  const apiKey = process.env.RESEND_API_KEY;
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'Luxor Maintenance <noreply@luxordev.com>',
-        to: [to],
-        subject: 'Maintenance request logged',
-        html,
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      console.error('[maintenance email] Resend error:', err);
+    if (apiKey) {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'Luxor Maintenance <noreply@luxordev.com>',
+          to: [to],
+          subject: 'Maintenance request logged',
+          html,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        console.error('[maintenance email] Resend error:', err);
+      }
+      return;
     }
+
+    const host = process.env.SMTP_HOST;
+    const port = Number(process.env.SMTP_PORT || 0);
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    const from = process.env.SMTP_FROM;
+    if (!host || !port || !user || !pass || !from) {
+      console.warn('[maintenance email] No provider configured (missing RESEND_API_KEY and SMTP vars)');
+      return;
+    }
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+    });
+    await transporter.sendMail({
+      from,
+      to,
+      subject: 'Maintenance request logged',
+      html,
+    });
   } catch (err) {
     console.error('[maintenance email] Failed to send:', err);
   }
@@ -170,7 +199,7 @@ async function sendTenantScheduleEmail(params: {
   note?: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey || !params.tenantEmail) return;
+  if (!params.tenantEmail) return;
 
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; color: #1e293b;">
@@ -190,18 +219,43 @@ async function sendTenantScheduleEmail(params: {
   `;
 
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "Luxor Maintenance <noreply@luxordev.com>",
-        to: [params.tenantEmail],
-        subject: "Maintenance visit scheduled",
-        html,
-      }),
+    if (apiKey) {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "Luxor Maintenance <noreply@luxordev.com>",
+          to: [params.tenantEmail],
+          subject: "Maintenance visit scheduled",
+          html,
+        }),
+      });
+      return;
+    }
+
+    const host = process.env.SMTP_HOST;
+    const port = Number(process.env.SMTP_PORT || 0);
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    const from = process.env.SMTP_FROM;
+    if (!host || !port || !user || !pass || !from) {
+      console.warn("[maintenance email] No provider configured for tenant schedule email");
+      return;
+    }
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+    });
+    await transporter.sendMail({
+      from,
+      to: params.tenantEmail,
+      subject: "Maintenance visit scheduled",
+      html,
     });
   } catch (err) {
     console.error("[maintenance email] Failed to send tenant schedule email:", err);
@@ -381,6 +435,7 @@ export async function POST(request: Request) {
       description: body.description || '',
       requestId: data?.id || '',
       schedulingDetails,
+      createdAt: data?.created_at || new Date().toISOString(),
     }).catch(() => { /* already logged inside */ });
 
     return NextResponse.json(data)
@@ -518,3 +573,4 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Failed to delete maintenance request' }, { status: 500 })
   }
 }
+
