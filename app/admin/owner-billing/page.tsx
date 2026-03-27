@@ -150,6 +150,16 @@ export default function OwnerBillingDetailsPage() {
     return a.id.localeCompare(b.id);
   };
 
+  const getDisplayStatus = (status?: string | null, dueDate?: string | null) => {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized !== "due") return normalized || "due";
+    const due = parseDateOnly(dueDate);
+    if (!due) return normalized;
+    const now = new Date();
+    const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return due.getTime() < todayUtcMs ? "overdue" : normalized;
+  };
+
   if (process.env.NODE_ENV !== "production") {
     const sample = [
       { id: "a", dueDate: "2026-02-05" },
@@ -169,7 +179,7 @@ export default function OwnerBillingDetailsPage() {
       .filter((bill) => {
         if (!showVoidedOwnerBills && bill.status === "voided") return false;
         if (ownerBillPropertyFilter && bill.propertyId !== ownerBillPropertyFilter) return false;
-        if (ownerBillStatusFilter && bill.status !== ownerBillStatusFilter) return false;
+        if (ownerBillStatusFilter && getDisplayStatus(bill.status, bill.dueDate) !== ownerBillStatusFilter) return false;
         return true;
       })
       .sort(compareDueDateAsc);
@@ -1027,6 +1037,7 @@ export default function OwnerBillingDetailsPage() {
               ) : (
                 visibleOwnerBills.map((bill) => {
                   const edits = editAmounts[bill.id] || {};
+                  const displayStatus = edits.status ?? getDisplayStatus(bill.status, bill.dueDate);
                   const isVoided = bill.status === "voided";
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
@@ -1127,7 +1138,7 @@ export default function OwnerBillingDetailsPage() {
                         ) : (
                           <select
                             className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
-                            value={edits.status ?? bill.status}
+                            value={displayStatus}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
                                 ...prev,

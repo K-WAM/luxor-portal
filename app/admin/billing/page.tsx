@@ -89,6 +89,16 @@ export default function AdminBilling() {
     return a.id.localeCompare(b.id);
   };
 
+  const getDisplayStatus = (status?: string | null, dueDate?: string | null) => {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized !== "due") return normalized || "due";
+    const due = parseDateOnly(dueDate);
+    if (!due) return normalized;
+    const now = new Date();
+    const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return due.getTime() < todayUtcMs ? "overdue" : normalized;
+  };
+
   if (process.env.NODE_ENV !== "production") {
     const sample = [
       { id: "a", dueDate: "2026-02-05" },
@@ -188,7 +198,7 @@ export default function AdminBilling() {
       // Property filter
       if (tenantBillPropertyFilter && bill.propertyId !== tenantBillPropertyFilter) return false;
       // Status filter
-      if (tenantBillStatusFilter && bill.status !== tenantBillStatusFilter) return false;
+      if (tenantBillStatusFilter && getDisplayStatus(bill.status, bill.due_date) !== tenantBillStatusFilter) return false;
       return true;
     }).sort((a, b) => compareDueDateAsc({ dueDate: a.due_date, id: a.id }, { dueDate: b.due_date, id: b.id }));
   }, [tenantBills, showVoidedTenantBills, tenantBillPropertyFilter, tenantBillStatusFilter]);
@@ -700,6 +710,7 @@ export default function AdminBilling() {
               ) : (
                 visibleTenantBills.map((bill) => {
                   const isVoided = bill.status === "voided";
+                  const displayStatus = tenantEdits[bill.id]?.status ?? getDisplayStatus(bill.status, bill.due_date);
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
                       <td className="px-4 py-3 text-slate-900 break-words">
@@ -833,7 +844,7 @@ export default function AdminBilling() {
                         ) : (
                           <select
                             className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
-                            value={tenantEdits[bill.id]?.status ?? bill.status}
+                            value={displayStatus}
                             onChange={(e) =>
                               setTenantEdits((prev) => ({
                                 ...prev,
