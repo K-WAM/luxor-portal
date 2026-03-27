@@ -10,25 +10,15 @@ import {
 
 const REMINDER_TYPE = "payments_due_soon";
 
-const getNextMonthRange = () => {
+const getDueInFiveDays = () => {
   const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth() + 1;
-  const nextMonth = month === 12 ? 1 : month + 1;
-  const nextYear = month === 12 ? year + 1 : year;
-  const targetMonth = `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
-  const day1 = `${targetMonth}-01`;
-  const day3 = `${targetMonth}-03`;
-  return { nextYear, nextMonth, targetMonth, day1, day3 };
-};
-
-const isTriggerDay = () => {
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const triggerDay = lastDay - 5;
-  return now.getUTCDate() === triggerDay;
+  const target = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 5)
+  );
+  const iso = `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    target.getUTCDate()
+  ).padStart(2, "0")}`;
+  return { iso };
 };
 
 const createTransport = () => {
@@ -132,24 +122,20 @@ const runReminder = async (request: Request) => {
     return NextResponse.json({ error: "APP_BASE_URL is required" }, { status: 500 });
   }
 
-  if (!isTriggerDay()) {
-    return NextResponse.json({ status: "skipped", reason: "Not trigger day" });
-  }
-
   const transport = createTransport();
   if (!transport) {
     return NextResponse.json({ error: "SMTP configuration missing" }, { status: 500 });
   }
 
-  const { day1, day3, targetMonth } = getNextMonthRange();
+  const { iso: dueInFiveDaysIso } = getDueInFiveDays();
+  const targetMonth = dueInFiveDaysIso;
 
   const { data: ownerBills, error: ownerError } = await supabaseAdmin
     .from("billing_invoices")
     .select(
       `id, owner_id, property_id, total_due, fee_amount, base_rent, description, due_date, status, category, invoice_number, properties ( address )`
     )
-    .gte("due_date", day1)
-    .lte("due_date", day3)
+    .eq("due_date", dueInFiveDaysIso)
     .neq("status", "paid")
     .neq("status", "processing")
     .neq("status", "voided");
@@ -163,8 +149,7 @@ const runReminder = async (request: Request) => {
     .select(
       `id, tenant_id, property_id, bill_type, description, amount, due_date, status, properties ( address )`
     )
-    .gte("due_date", day1)
-    .lte("due_date", day3)
+    .eq("due_date", dueInFiveDaysIso)
     .neq("status", "paid")
     .neq("status", "processing")
     .neq("status", "voided");
