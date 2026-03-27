@@ -2,6 +2,57 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers'
 
+const TIME_BLOCKS = new Set(["morning", "midday", "afternoon", "evening"]);
+
+type AvailabilityOption = { date: string; window: string };
+type SchedulingDetails = {
+  availability_options: AvailabilityOption[];
+  is_flexible: boolean;
+  vendor_can_enter_without_tenant: boolean;
+  confirmed?: {
+    date: string;
+    window: string;
+    note?: string;
+    source: "proposed" | "custom";
+    confirmed_at: string;
+  } | null;
+};
+
+const normalizeSchedulingDetails = (value: any): SchedulingDetails | null => {
+  if (!value || typeof value !== "object") return null;
+  const options = Array.isArray(value.availability_options)
+    ? value.availability_options
+        .map((item: any) => ({
+          date: String(item?.date || ""),
+          window: String(item?.window || "").toLowerCase(),
+        }))
+        .filter((item: any) => item.date && TIME_BLOCKS.has(item.window))
+    : [];
+  const isFlexible = !!value.is_flexible;
+  const vendorAccess = !!value.vendor_can_enter_without_tenant;
+  const confirmedRaw = value.confirmed;
+  const confirmed =
+    confirmedRaw &&
+    typeof confirmedRaw === "object" &&
+    String(confirmedRaw.date || "") &&
+    TIME_BLOCKS.has(String(confirmedRaw.window || "").toLowerCase())
+      ? {
+          date: String(confirmedRaw.date),
+          window: String(confirmedRaw.window).toLowerCase(),
+          note: confirmedRaw.note ? String(confirmedRaw.note) : "",
+          source: (confirmedRaw.source === "custom" ? "custom" : "proposed") as "custom" | "proposed",
+          confirmed_at: confirmedRaw.confirmed_at ? String(confirmedRaw.confirmed_at) : new Date().toISOString(),
+        }
+      : null;
+
+  return {
+    availability_options: options,
+    is_flexible: isFlexible,
+    vendor_can_enter_without_tenant: vendorAccess,
+    confirmed,
+  };
+};
+
 /**
  * Send a maintenance request notification email.
  * Uses Resend REST API. Requires RESEND_API_KEY env var.
@@ -15,6 +66,7 @@ async function sendMaintenanceEmail(params: {
   category: string;
   description: string;
   requestId: string;
+  schedulingDetails?: SchedulingDetails | null;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -56,6 +108,28 @@ async function sendMaintenanceEmail(params: {
             <td style="padding: 8px 0; font-size: 13px; color: #64748b; vertical-align: top;">Request ID</td>
             <td style="padding: 8px 0; font-size: 12px; color: #94a3b8; font-family: monospace;">${params.requestId}</td>
           </tr>
+          ${
+            params.schedulingDetails
+              ? `
+          <tr>
+            <td style="padding: 8px 0; font-size: 13px; color: #64748b; vertical-align: top; border-top: 1px solid #f1f5f9;">Availability</td>
+            <td style="padding: 8px 0; font-size: 14px; color: #0f172a; border-top: 1px solid #f1f5f9;">
+              ${params.schedulingDetails.availability_options
+                .map((opt, idx) => `${idx + 1}. ${opt.date} (${opt.window})`)
+                .join("<br/>")}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; font-size: 13px; color: #64748b; vertical-align: top;">Flexible</td>
+            <td style="padding: 8px 0; font-size: 14px; color: #0f172a;">${params.schedulingDetails.is_flexible ? "Yes" : "No"}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; font-size: 13px; color: #64748b; vertical-align: top;">Vendor access if tenant absent</td>
+            <td style="padding: 8px 0; font-size: 14px; color: #0f172a;">${params.schedulingDetails.vendor_can_enter_without_tenant ? "Yes" : "No"}</td>
+          </tr>
+            `
+              : ""
+          }
         </table>
       </div>
     </div>
@@ -81,6 +155,56 @@ async function sendMaintenanceEmail(params: {
     }
   } catch (err) {
     console.error('[maintenance email] Failed to send:', err);
+  }
+}
+
+async function sendTenantScheduleEmail(params: {
+  tenantEmail: string;
+  tenantName: string;
+  propertyAddress: string;
+  category: string;
+  description: string;
+  confirmedDate: string;
+  confirmedWindow: string;
+  vendorCanEnterWithoutTenant: boolean;
+  note?: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey || !params.tenantEmail) return;
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; color: #1e293b;">
+      <div style="background: #0f172a; padding: 24px 32px; border-radius: 8px 8px 0 0;">
+        <h1 style="margin: 0; font-size: 18px; font-weight: 600; color: #f8fafc;">Maintenance Visit Scheduled</h1>
+      </div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; padding: 28px 32px; border-radius: 0 0 8px 8px;">
+        <p style="margin-top: 0;">Hi ${params.tenantName || "there"},</p>
+        <p>Your maintenance request has been scheduled.</p>
+        <p><strong>Property:</strong> ${params.propertyAddress}</p>
+        <p><strong>Issue:</strong> ${params.category || "General"} — ${params.description}</p>
+        <p><strong>Expected vendor time:</strong> ${params.confirmedDate} (${params.confirmedWindow})</p>
+        <p><strong>Vendor access if tenant not home:</strong> ${params.vendorCanEnterWithoutTenant ? "Yes" : "No"}</p>
+        ${params.note ? `<p><strong>Note:</strong> ${params.note}</p>` : ""}
+      </div>
+    </div>
+  `;
+
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Luxor Maintenance <noreply@luxordev.com>",
+        to: [params.tenantEmail],
+        subject: "Maintenance visit scheduled",
+        html,
+      }),
+    });
+  } catch (err) {
+    console.error("[maintenance email] Failed to send tenant schedule email:", err);
   }
 }
 
@@ -154,7 +278,9 @@ export async function GET(request: Request) {
       cost: item.cost,
       createdAt: item.created_at,
       closedAt: item.closed_at,
-      propertyAddress: item.properties?.address
+      propertyAddress: item.properties?.address,
+      attachments: item.attachments || [],
+      schedulingDetails: normalizeSchedulingDetails(item.scheduling_details),
     }))
 
     return NextResponse.json(formatted)
@@ -172,6 +298,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
+    const schedulingDetails = normalizeSchedulingDetails(body.schedulingDetails)
 
     // Only allow admins or users posting for their own property
     if (!isAdmin(role)) {
@@ -192,6 +319,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Tenant email is required" }, { status: 400 })
     }
 
+    if (role === "tenant") {
+      if (!schedulingDetails || schedulingDetails.availability_options.length !== 3) {
+        return NextResponse.json({ error: "Three availability options are required" }, { status: 400 })
+      }
+      const seen = new Set<string>()
+      for (const option of schedulingDetails.availability_options) {
+        if (!option.date || !TIME_BLOCKS.has(option.window)) {
+          return NextResponse.json({ error: "Each availability option must include date and valid time block" }, { status: 400 })
+        }
+        const key = `${option.date}|${option.window}`
+        if (seen.has(key)) {
+          return NextResponse.json({ error: "Availability options must be unique" }, { status: 400 })
+        }
+        seen.add(key)
+      }
+    }
+
     const insertData: any = {
       property_id: body.propertyId,
       tenant_name: tenantName,
@@ -199,11 +343,13 @@ export async function POST(request: Request) {
       category: body.category,
       description: body.description,
       status: 'open',
+      scheduling_details: schedulingDetails,
     }
 
     // Add optional fields if provided
     if (body.cost !== undefined) insertData.cost = body.cost
     if (body.internalComments) insertData.internal_comments = body.internalComments
+    if (body.attachments) insertData.attachments = body.attachments
 
     const { data, error } = await supabaseAdmin
       .from('maintenance_requests')
@@ -234,6 +380,7 @@ export async function POST(request: Request) {
       category: body.category || '',
       description: body.description || '',
       requestId: data?.id || '',
+      schedulingDetails,
     }).catch(() => { /* already logged inside */ });
 
     return NextResponse.json(data)
@@ -263,6 +410,8 @@ export async function PATCH(request: Request) {
       description,
       createdAt,
       closedAt,
+      schedulingDetails,
+      sendConfirmationEmail,
     } = body
 
     if (!id) {
@@ -272,7 +421,7 @@ export async function PATCH(request: Request) {
     const updateData: any = {}
     if (status) {
       updateData.status = status
-      if (status === 'closed') {
+      if (status === 'closed' || status === 'completed' || status === 'cancelled') {
         updateData.closed_at = new Date().toISOString()
       }
     }
@@ -295,6 +444,9 @@ export async function PATCH(request: Request) {
         updateData.closed_at = closedAt
       }
     }
+    if (schedulingDetails !== undefined) {
+      updateData.scheduling_details = normalizeSchedulingDetails(schedulingDetails)
+    }
 
     const { data, error } = await supabaseAdmin
       .from('maintenance_requests')
@@ -304,6 +456,33 @@ export async function PATCH(request: Request) {
       .single()
 
     if (error) throw error
+
+    const normalizedScheduling = normalizeSchedulingDetails(data?.scheduling_details)
+    if (sendConfirmationEmail && normalizedScheduling?.confirmed && data?.tenant_email) {
+      let propertyAddress = data.property_id || ''
+      try {
+        const { data: propData } = await supabaseAdmin
+          .from('properties')
+          .select('address')
+          .eq('id', data.property_id)
+          .single();
+        if (propData?.address) propertyAddress = propData.address;
+      } catch {
+        // ignore lookup errors
+      }
+
+      sendTenantScheduleEmail({
+        tenantEmail: data.tenant_email,
+        tenantName: data.tenant_name || "Tenant",
+        propertyAddress,
+        category: data.category || "General",
+        description: data.description || "",
+        confirmedDate: normalizedScheduling.confirmed.date,
+        confirmedWindow: normalizedScheduling.confirmed.window,
+        vendorCanEnterWithoutTenant: normalizedScheduling.vendor_can_enter_without_tenant,
+        note: normalizedScheduling.confirmed.note || "",
+      }).catch(() => { /* already logged */ });
+    }
 
     return NextResponse.json(data)
   } catch (error) {

@@ -16,9 +16,23 @@ type MaintenanceRequest = {
   cost?: number;
   createdAt?: string;
   closedAt?: string;
+  attachments?: { url: string; name: string; type?: string; size?: number }[];
+  schedulingDetails?: {
+    availability_options: { date: string; window: string }[];
+    is_flexible: boolean;
+    vendor_can_enter_without_tenant: boolean;
+    confirmed?: { date: string; window: string; note?: string; source?: "proposed" | "custom" } | null;
+  } | null;
 };
 
 type Property = { id: string; address: string };
+
+const TIME_BLOCK_OPTIONS = [
+  { value: "morning", label: "Morning: 8–12" },
+  { value: "midday", label: "Midday: 12–3" },
+  { value: "afternoon", label: "Afternoon: 3–5" },
+  { value: "evening", label: "Evening: 5–8" },
+];
 
 const toDateTimeLocal = (value?: string) => {
   if (!value) return "";
@@ -67,6 +81,10 @@ export default function MaintenanceRequestsPage() {
     status: "open",
     createdAt: "",
     closedAt: "",
+    scheduleChoice: "",
+    customScheduleDate: "",
+    customScheduleWindow: "morning",
+    schedulingNote: "",
   });
 
   useEffect(() => {
@@ -232,6 +250,10 @@ export default function MaintenanceRequestsPage() {
       status: req.status || "open",
       createdAt: toDateTimeLocal(req.createdAt),
       closedAt: toDateTimeLocal(req.closedAt),
+      scheduleChoice: "",
+      customScheduleDate: req.schedulingDetails?.confirmed?.date || "",
+      customScheduleWindow: req.schedulingDetails?.confirmed?.window || "morning",
+      schedulingNote: req.schedulingDetails?.confirmed?.note || "",
     });
   };
 
@@ -273,6 +295,49 @@ export default function MaintenanceRequestsPage() {
       setEditingRequestId(null);
     } catch (err: any) {
       setError(err.message || "Failed to save changes.");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleConfirmSchedule = async (req: MaintenanceRequest) => {
+    const selectedOption = req.schedulingDetails?.availability_options?.[Number(editForm.scheduleChoice)];
+    const confirmedDate = selectedOption?.date || editForm.customScheduleDate;
+    const confirmedWindow = selectedOption?.window || editForm.customScheduleWindow;
+    if (!confirmedDate || !confirmedWindow) {
+      setError("Please choose a proposed window or enter a custom date/time block.");
+      return;
+    }
+    try {
+      setSavingId(req.id);
+      const schedulingDetails = {
+        availability_options: req.schedulingDetails?.availability_options || [],
+        is_flexible: !!req.schedulingDetails?.is_flexible,
+        vendor_can_enter_without_tenant: !!req.schedulingDetails?.vendor_can_enter_without_tenant,
+        confirmed: {
+          date: confirmedDate,
+          window: confirmedWindow,
+          note: editForm.schedulingNote || "",
+          source: selectedOption ? "proposed" : "custom",
+          confirmed_at: new Date().toISOString(),
+        },
+      };
+      const res = await fetch("/api/maintenance", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: req.id,
+          status: "in_progress",
+          schedulingDetails,
+          sendConfirmationEmail: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to confirm schedule");
+      await loadRequests();
+      setEditingRequestId(null);
+    } catch (err: any) {
+      setError(err.message || "Failed to confirm schedule.");
     } finally {
       setSavingId(null);
     }
@@ -503,6 +568,16 @@ export default function MaintenanceRequestsPage() {
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-700 max-w-xs">
                           <p className="truncate">{req.description}</p>
+                          {req.schedulingDetails?.confirmed && (
+                            <p className="text-xs text-emerald-700 mt-0.5 truncate">
+                              Scheduled: {req.schedulingDetails.confirmed.date} ({req.schedulingDetails.confirmed.window})
+                            </p>
+                          )}
+                          {req.schedulingDetails?.availability_options?.length ? (
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {req.schedulingDetails.availability_options.length} proposed windows
+                            </p>
+                          ) : null}
                           {req.internalComments && (
                             <p className="text-xs text-slate-500 mt-0.5 italic truncate">Note: {req.internalComments}</p>
                           )}
@@ -591,6 +666,73 @@ export default function MaintenanceRequestsPage() {
                               <div className="flex flex-col gap-1 md:col-span-3">
                                 <label className="font-medium">Description</label>
                                 <textarea name="description" value={editForm.description} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" rows={2} />
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:col-span-3 border border-slate-200 rounded-md p-3">
+                                <div className="md:col-span-3 font-medium text-sm">Scheduling response</div>
+                                <div className="flex flex-col gap-1 md:col-span-3">
+                                  <label className="font-medium">Choose one of tenant proposed windows</label>
+                                  <select
+                                    name="scheduleChoice"
+                                    value={editForm.scheduleChoice}
+                                    onChange={handleEditChange}
+                                    className="border border-slate-300 rounded-md px-2 py-1.5"
+                                  >
+                                    <option value="">Select proposed window...</option>
+                                    {(req.schedulingDetails?.availability_options || []).map((opt, idx) => (
+                                      <option key={`${opt.date}-${opt.window}-${idx}`} value={String(idx)}>
+                                        {opt.date} ({opt.window})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <label className="font-medium">Or custom date</label>
+                                  <input
+                                    type="date"
+                                    name="customScheduleDate"
+                                    value={editForm.customScheduleDate}
+                                    onChange={handleEditChange}
+                                    className="border border-slate-300 rounded-md px-2 py-1.5"
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <label className="font-medium">Custom time block</label>
+                                  <select
+                                    name="customScheduleWindow"
+                                    value={editForm.customScheduleWindow}
+                                    onChange={handleEditChange}
+                                    className="border border-slate-300 rounded-md px-2 py-1.5"
+                                  >
+                                    {TIME_BLOCK_OPTIONS.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="flex flex-col gap-1 md:col-span-3">
+                                  <label className="font-medium">Scheduling note (optional)</label>
+                                  <input
+                                    type="text"
+                                    name="schedulingNote"
+                                    value={editForm.schedulingNote}
+                                    onChange={handleEditChange}
+                                    className="border border-slate-300 rounded-md px-2 py-1.5"
+                                  />
+                                </div>
+                                <div className="md:col-span-3 text-xs text-slate-600">
+                                  Tenant flexible: {req.schedulingDetails?.is_flexible ? "Yes" : "No"} · Vendor may enter if tenant absent: {req.schedulingDetails?.vendor_can_enter_without_tenant ? "Yes" : "No"}
+                                </div>
+                                <div className="md:col-span-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleConfirmSchedule(req)}
+                                    disabled={savingId === req.id}
+                                    className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300"
+                                  >
+                                    {savingId === req.id ? "Confirming..." : "Confirm Schedule & Email Tenant"}
+                                  </button>
+                                </div>
                               </div>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:col-span-3">
                                 <div className="flex flex-col gap-1">

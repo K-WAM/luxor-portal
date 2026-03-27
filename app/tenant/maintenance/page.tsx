@@ -23,7 +23,20 @@ type MaintenanceRequest = {
   status: string;
   createdAt?: string;
   attachments?: { url: string; name: string; type?: string; size?: number }[];
+  schedulingDetails?: {
+    availability_options: { date: string; window: string }[];
+    is_flexible: boolean;
+    vendor_can_enter_without_tenant: boolean;
+    confirmed?: { date: string; window: string; note?: string } | null;
+  } | null;
 };
+
+const TIME_BLOCK_OPTIONS = [
+  { value: "morning", label: "Morning: 8–12" },
+  { value: "midday", label: "Midday: 12–3" },
+  { value: "afternoon", label: "Afternoon: 3–5" },
+  { value: "evening", label: "Evening: 5–8" },
+];
 
 export default function TenantMaintenance() {
   const { user, role, loading: authLoading } = useAuth();
@@ -34,6 +47,14 @@ export default function TenantMaintenance() {
     tenantEmail: "",
     category: "",
     description: "",
+    availability1Date: "",
+    availability1Window: "morning",
+    availability2Date: "",
+    availability2Window: "midday",
+    availability3Date: "",
+    availability3Window: "afternoon",
+    isFlexible: false,
+    vendorCanEnterWithoutTenant: false,
   });
   const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +125,9 @@ export default function TenantMaintenance() {
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+    const target = e.target as HTMLInputElement;
+    const value = target.type === "checkbox" ? target.checked : target.value;
+    setForm((f) => ({ ...f, [target.name]: value }));
   };
 
   const handleAttachmentChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -144,6 +167,21 @@ export default function TenantMaintenance() {
       return;
     }
 
+    const availabilityOptions = [
+      { date: form.availability1Date, window: form.availability1Window },
+      { date: form.availability2Date, window: form.availability2Window },
+      { date: form.availability3Date, window: form.availability3Window },
+    ];
+    if (availabilityOptions.some((opt) => !opt.date || !opt.window)) {
+      setError("Please provide all three availability options.");
+      return;
+    }
+    const unique = new Set(availabilityOptions.map((opt) => `${opt.date}|${opt.window}`));
+    if (unique.size !== availabilityOptions.length) {
+      setError("Availability options must be unique.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -166,14 +204,34 @@ export default function TenantMaintenance() {
       const res = await fetch("/api/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, attachments: uploadedAttachments }),
+        body: JSON.stringify({
+          ...form,
+          attachments: uploadedAttachments,
+          schedulingDetails: {
+            availability_options: availabilityOptions,
+            is_flexible: form.isFlexible,
+            vendor_can_enter_without_tenant: form.vendorCanEnterWithoutTenant,
+          },
+        }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to submit");
 
       await loadData();
-      setForm((f) => ({ ...f, description: "", category: "" }));
+      setForm((f) => ({
+        ...f,
+        description: "",
+        category: "",
+        availability1Date: "",
+        availability1Window: "morning",
+        availability2Date: "",
+        availability2Window: "midday",
+        availability3Date: "",
+        availability3Window: "afternoon",
+        isFlexible: false,
+        vendorCanEnterWithoutTenant: false,
+      }));
       setAttachments([]);
       setAttachmentError(null);
     } catch (err: any) {
@@ -280,6 +338,69 @@ export default function TenantMaintenance() {
           />
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {[1, 2, 3].map((idx) => (
+            <div key={idx} className="border border-slate-200 rounded-md p-3">
+              <div className="text-sm font-medium mb-2">
+                Availability option {idx} <span className="text-red-500">*</span>
+              </div>
+              <input
+                type="date"
+                name={`availability${idx}Date`}
+                value={(form as any)[`availability${idx}Date`]}
+                onChange={handleChange}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 mb-2"
+                required
+              />
+              <select
+                name={`availability${idx}Window`}
+                value={(form as any)[`availability${idx}Window`]}
+                onChange={handleChange}
+                className="w-full border border-slate-300 rounded-md px-3 py-2"
+                required
+              >
+                {TIME_BLOCK_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="isFlexible"
+              checked={form.isFlexible}
+              onChange={handleChange}
+              className="h-4 w-4"
+            />
+            I&apos;m flexible
+          </label>
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Can vendor enter if tenant is not home? <span className="text-red-500">*</span>
+            </label>
+            <select
+              name="vendorCanEnterWithoutTenant"
+              value={form.vendorCanEnterWithoutTenant ? "yes" : "no"}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  vendorCanEnterWithoutTenant: e.target.value === "yes",
+                }))
+              }
+              className="w-full border border-slate-300 rounded-md px-3 py-2"
+            >
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+          </div>
+        </div>
+
         <div>
           <label className="block text-sm font-medium mb-1">
             Attachments (optional)
@@ -323,6 +444,16 @@ export default function TenantMaintenance() {
         <div className="space-y-3">
           {requests.map((r) => {
             const property = properties.find((p) => p.id === r.propertyId);
+            const isScheduled = r.status === "in_progress" && !!r.schedulingDetails?.confirmed;
+            const displayStatus = r.status === "open"
+              ? "Submitted"
+              : isScheduled
+              ? "Scheduled"
+              : r.status === "in_progress"
+              ? "Scheduling in progress"
+              : r.status === "closed"
+              ? "Completed"
+              : r.status.charAt(0).toUpperCase() + r.status.slice(1);
             const statusColors: Record<string, string> = {
               open: "bg-yellow-100 text-yellow-800",
               in_progress: "bg-blue-100 text-blue-800",
@@ -350,16 +481,22 @@ export default function TenantMaintenance() {
                   </div>
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      statusColors[r.status] || "bg-gray-100 text-gray-800"
+                      isScheduled ? "bg-emerald-100 text-emerald-800" : (statusColors[r.status] || "bg-gray-100 text-gray-800")
                     }`}
                   >
-                    {r.status === "in_progress" ? "In Progress" : r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                    {displayStatus}
                   </span>
                 </div>
                 <div className="text-sm text-slate-600 mb-1">
                   <span className="font-medium">{r.category || "General"}</span>
                 </div>
                 <p className="text-sm text-slate-700">{r.description}</p>
+                {r.schedulingDetails?.confirmed && (
+                  <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-2 py-1">
+                    Scheduled: {r.schedulingDetails.confirmed.date} ({r.schedulingDetails.confirmed.window})
+                    {r.schedulingDetails.confirmed.note ? ` — ${r.schedulingDetails.confirmed.note}` : ""}
+                  </div>
+                )}
                 {r.attachments && r.attachments.length > 0 && (
                   <div className="mt-2 space-y-1">
                     {r.attachments.map((att, index) => (
