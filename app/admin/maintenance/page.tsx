@@ -60,6 +60,7 @@ export default function MaintenanceRequestsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
+  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
 
   const [createForm, setCreateForm] = useState({
     propertyId: "",
@@ -81,6 +82,9 @@ export default function MaintenanceRequestsPage() {
     status: "open",
     createdAt: "",
     closedAt: "",
+  });
+
+  const [respondForm, setRespondForm] = useState({
     scheduleChoice: "",
     customScheduleDate: "",
     customScheduleWindow: "morning",
@@ -240,6 +244,7 @@ export default function MaintenanceRequestsPage() {
   const startEdit = (req: MaintenanceRequest) => {
     const fallbackPropertyId = req.propertyId || properties[0]?.id || "";
     setEditingRequestId(req.id);
+    setRespondingRequestId(null);
     setEditForm({
       propertyId: fallbackPropertyId,
       tenantName: req.tenantName || "",
@@ -250,6 +255,13 @@ export default function MaintenanceRequestsPage() {
       status: req.status || "open",
       createdAt: toDateTimeLocal(req.createdAt),
       closedAt: toDateTimeLocal(req.closedAt),
+    });
+  };
+
+  const startRespond = (req: MaintenanceRequest) => {
+    setRespondingRequestId(req.id);
+    setEditingRequestId(null);
+    setRespondForm({
       scheduleChoice: "",
       customScheduleDate: req.schedulingDetails?.confirmed?.date || "",
       customScheduleWindow: req.schedulingDetails?.confirmed?.window || "morning",
@@ -260,6 +272,10 @@ export default function MaintenanceRequestsPage() {
   const handleEditChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setEditForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handleRespondChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => setRespondForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   const handleEditSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -301,9 +317,9 @@ export default function MaintenanceRequestsPage() {
   };
 
   const handleConfirmSchedule = async (req: MaintenanceRequest) => {
-    const selectedOption = req.schedulingDetails?.availability_options?.[Number(editForm.scheduleChoice)];
-    const confirmedDate = selectedOption?.date || editForm.customScheduleDate;
-    const confirmedWindow = selectedOption?.window || editForm.customScheduleWindow;
+    const selectedOption = req.schedulingDetails?.availability_options?.[Number(respondForm.scheduleChoice)];
+    const confirmedDate = selectedOption?.date || respondForm.customScheduleDate;
+    const confirmedWindow = selectedOption?.window || respondForm.customScheduleWindow;
     if (!confirmedDate || !confirmedWindow) {
       setError("Please choose a proposed window or enter a custom date/time block.");
       return;
@@ -317,7 +333,7 @@ export default function MaintenanceRequestsPage() {
         confirmed: {
           date: confirmedDate,
           window: confirmedWindow,
-          note: editForm.schedulingNote || "",
+          note: respondForm.schedulingNote || "",
           source: selectedOption ? "proposed" : "custom",
           confirmed_at: new Date().toISOString(),
         },
@@ -335,7 +351,7 @@ export default function MaintenanceRequestsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to confirm schedule");
       await loadRequests();
-      setEditingRequestId(null);
+      setRespondingRequestId(null);
     } catch (err: any) {
       setError(err.message || "Failed to confirm schedule.");
     } finally {
@@ -344,6 +360,7 @@ export default function MaintenanceRequestsPage() {
   };
 
   const cancelEdit = () => setEditingRequestId(null);
+  const cancelRespond = () => setRespondingRequestId(null);
 
   const getElapsedTime = (createdAt?: string, closedAt?: string) => {
     if (!createdAt) return "N/A";
@@ -604,6 +621,13 @@ export default function MaintenanceRequestsPage() {
                             Edit
                           </button>
                           <button
+                            className="px-3 py-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                            onClick={() => startRespond(req)}
+                            disabled={savingId === req.id}
+                          >
+                            Respond
+                          </button>
+                          <button
                             className="px-3 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60"
                             onClick={() => {
                               setEditingNotes(req.id);
@@ -667,73 +691,6 @@ export default function MaintenanceRequestsPage() {
                                 <label className="font-medium">Description</label>
                                 <textarea name="description" value={editForm.description} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" rows={2} />
                               </div>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:col-span-3 border border-slate-200 rounded-md p-3">
-                                <div className="md:col-span-3 font-medium text-sm">Scheduling response</div>
-                                <div className="flex flex-col gap-1 md:col-span-3">
-                                  <label className="font-medium">Choose one of tenant proposed windows</label>
-                                  <select
-                                    name="scheduleChoice"
-                                    value={editForm.scheduleChoice}
-                                    onChange={handleEditChange}
-                                    className="border border-slate-300 rounded-md px-2 py-1.5"
-                                  >
-                                    <option value="">Select proposed window...</option>
-                                    {(req.schedulingDetails?.availability_options || []).map((opt, idx) => (
-                                      <option key={`${opt.date}-${opt.window}-${idx}`} value={String(idx)}>
-                                        {opt.date} ({opt.window})
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                  <label className="font-medium">Or custom date</label>
-                                  <input
-                                    type="date"
-                                    name="customScheduleDate"
-                                    value={editForm.customScheduleDate}
-                                    onChange={handleEditChange}
-                                    className="border border-slate-300 rounded-md px-2 py-1.5"
-                                  />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                  <label className="font-medium">Custom time block</label>
-                                  <select
-                                    name="customScheduleWindow"
-                                    value={editForm.customScheduleWindow}
-                                    onChange={handleEditChange}
-                                    className="border border-slate-300 rounded-md px-2 py-1.5"
-                                  >
-                                    {TIME_BLOCK_OPTIONS.map((opt) => (
-                                      <option key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="flex flex-col gap-1 md:col-span-3">
-                                  <label className="font-medium">Scheduling note (optional)</label>
-                                  <input
-                                    type="text"
-                                    name="schedulingNote"
-                                    value={editForm.schedulingNote}
-                                    onChange={handleEditChange}
-                                    className="border border-slate-300 rounded-md px-2 py-1.5"
-                                  />
-                                </div>
-                                <div className="md:col-span-3 text-xs text-slate-600">
-                                  Tenant flexible: {req.schedulingDetails?.is_flexible ? "Yes" : "No"} · Vendor may enter if tenant absent: {req.schedulingDetails?.vendor_can_enter_without_tenant ? "Yes" : "No"}
-                                </div>
-                                <div className="md:col-span-3">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleConfirmSchedule(req)}
-                                    disabled={savingId === req.id}
-                                    className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300"
-                                  >
-                                    {savingId === req.id ? "Confirming..." : "Confirm Schedule & Email Tenant"}
-                                  </button>
-                                </div>
-                              </div>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:col-span-3">
                                 <div className="flex flex-col gap-1">
                                   <label className="font-medium">Created At</label>
@@ -761,6 +718,86 @@ export default function MaintenanceRequestsPage() {
                                 <button type="button" onClick={cancelEdit} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300">Cancel</button>
                               </div>
                             </form>
+                          </td>
+                        </tr>
+                      )}
+                      {respondingRequestId === req.id && (
+                        <tr>
+                          <td colSpan={9} className="bg-slate-50 px-4 py-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm border border-slate-200 rounded-md p-3">
+                              <div className="md:col-span-3 font-medium text-sm">Scheduling response</div>
+                              <div className="flex flex-col gap-1 md:col-span-3">
+                                <label className="font-medium">Choose one of tenant proposed windows</label>
+                                <select
+                                  name="scheduleChoice"
+                                  value={respondForm.scheduleChoice}
+                                  onChange={handleRespondChange}
+                                  className="border border-slate-300 rounded-md px-2 py-1.5"
+                                >
+                                  <option value="">Select proposed window...</option>
+                                  {(req.schedulingDetails?.availability_options || []).map((opt, idx) => (
+                                    <option key={`${opt.date}-${opt.window}-${idx}`} value={String(idx)}>
+                                      {opt.date} ({opt.window})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <label className="font-medium">Or custom date</label>
+                                <input
+                                  type="date"
+                                  name="customScheduleDate"
+                                  value={respondForm.customScheduleDate}
+                                  onChange={handleRespondChange}
+                                  className="border border-slate-300 rounded-md px-2 py-1.5"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <label className="font-medium">Custom time block</label>
+                                <select
+                                  name="customScheduleWindow"
+                                  value={respondForm.customScheduleWindow}
+                                  onChange={handleRespondChange}
+                                  className="border border-slate-300 rounded-md px-2 py-1.5"
+                                >
+                                  {TIME_BLOCK_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="flex flex-col gap-1 md:col-span-3">
+                                <label className="font-medium">Scheduling note (optional)</label>
+                                <input
+                                  type="text"
+                                  name="schedulingNote"
+                                  value={respondForm.schedulingNote}
+                                  onChange={handleRespondChange}
+                                  className="border border-slate-300 rounded-md px-2 py-1.5"
+                                />
+                              </div>
+                              <div className="md:col-span-3 text-xs text-slate-600">
+                                Tenant flexible: {req.schedulingDetails?.is_flexible ? "Yes" : "No"} · Vendor may enter if tenant absent: {req.schedulingDetails?.vendor_can_enter_without_tenant ? "Yes" : "No"}
+                              </div>
+                              <div className="md:col-span-3 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmSchedule(req)}
+                                  disabled={savingId === req.id}
+                                  className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300"
+                                >
+                                  {savingId === req.id ? "Confirming..." : "Confirm Schedule & Email Tenant"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelRespond}
+                                  className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
                           </td>
                         </tr>
                       )}
