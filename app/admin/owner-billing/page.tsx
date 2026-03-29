@@ -1012,19 +1012,19 @@ export default function OwnerBillingDetailsPage() {
           )}
         </div>
         {ownerBillNotice && <div className="px-4 py-3 text-sm text-slate-700">{ownerBillNotice}</div>}
-        <div className="overflow-x-auto md:overflow-visible">
-          <table className="w-full text-sm table-fixed">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1320px] text-sm md:table-fixed">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
               <tr>
-                <th className="px-4 py-3 text-left whitespace-normal">Owner</th>
-                <th className="px-4 py-3 text-left whitespace-normal">Property</th>
-                <th className="px-4 py-3 text-left whitespace-normal">Category</th>
-                <th className="px-4 py-3 text-left whitespace-normal">Description</th>
-                <th className="px-4 py-3 text-right whitespace-normal">Amount</th>
-                <th className="px-4 py-3 text-left whitespace-normal">Due</th>
-                <th className="px-4 py-3 text-left whitespace-normal">Status</th>
-                <th className="px-4 py-3 text-left whitespace-normal">Invoice PDF</th>
-                <th className="px-4 py-3 text-left whitespace-normal">Actions</th>
+                <th className="px-4 py-3 text-left whitespace-normal min-w-[220px]">Owner</th>
+                <th className="px-4 py-3 text-left whitespace-normal min-w-[240px]">Property</th>
+                <th className="px-4 py-3 text-left whitespace-normal min-w-[140px]">Category</th>
+                <th className="px-4 py-3 text-left whitespace-normal min-w-[260px]">Description</th>
+                <th className="px-4 py-3 text-right whitespace-normal min-w-[130px]">Amount</th>
+                <th className="px-4 py-3 text-left whitespace-normal min-w-[150px]">Due</th>
+                <th className="px-4 py-3 text-left whitespace-normal min-w-[150px]">Status</th>
+                <th className="px-4 py-3 text-left whitespace-normal min-w-[170px]">Invoice PDF</th>
+                <th className="px-4 py-3 text-left whitespace-normal min-w-[240px]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1041,7 +1041,7 @@ export default function OwnerBillingDetailsPage() {
                   const isVoided = bill.status === "voided";
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
-                      <td className="px-4 py-3 text-slate-900 break-words">
+                      <td className="px-4 py-3 text-slate-900 break-words min-w-[220px]">
                         {isVoided ? (
                           bill.ownerEmail
                         ) : (
@@ -1063,19 +1063,19 @@ export default function OwnerBillingDetailsPage() {
                           </select>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-800 break-words">
+                      <td className="px-4 py-3 text-slate-800 break-words min-w-[240px]">
                         {bill.propertyAddress || bill.property || bill.propertyId}
                       </td>
-                      <td className="px-4 py-3 text-slate-700 break-words">
+                      <td className="px-4 py-3 text-slate-700 break-words min-w-[140px]">
                         {OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || bill.category || "PM fee"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700 break-words">
+                      <td className="px-4 py-3 text-slate-700 break-words min-w-[260px]">
                         {isVoided ? (
                           bill.description || "-"
                         ) : (
                           <textarea
                             rows={2}
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full resize-none"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full min-w-[240px] resize-none"
                             value={edits.description ?? bill.description ?? ""}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
@@ -1086,7 +1086,7 @@ export default function OwnerBillingDetailsPage() {
                           />
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-900">
+                      <td className="px-4 py-3 text-right text-slate-900 min-w-[130px]">
                         <span className={isVoided ? "line-through" : ""}>
                           ${bill.amount?.toFixed(2)}
                         </span>
@@ -1096,7 +1096,7 @@ export default function OwnerBillingDetailsPage() {
                               type="number"
                               step="0.01"
                               placeholder="$ override"
-                              className="w-20 border border-slate-300 rounded px-2 py-1"
+                              className="w-24 border border-slate-300 rounded px-2 py-1"
                               value={edits.feeAmount ?? (bill.feeAmount ?? "")}
                               onChange={(e) =>
                                 setEditAmounts((prev) => ({
@@ -1108,13 +1108,13 @@ export default function OwnerBillingDetailsPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 min-w-[150px]">
                         {isVoided ? (
                           formatDateOnly(bill.dueDate) || "-"
                         ) : (
                           <input
                             type="date"
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full min-w-[138px]"
                             value={edits.dueDate ?? (bill.dueDate ? bill.dueDate.split("T")[0] : "")}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
@@ -1125,7 +1125,7 @@ export default function OwnerBillingDetailsPage() {
                           />
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 min-w-[150px]">
                         {isVoided ? (
                           <div>
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass("voided")}`}>
@@ -1137,7 +1137,7 @@ export default function OwnerBillingDetailsPage() {
                           </div>
                         ) : (
                           <select
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full min-w-[210px]"
                             value={displayStatus}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
@@ -1154,8 +1154,8 @@ export default function OwnerBillingDetailsPage() {
                           </select>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
+                      <td className="px-4 py-3 min-w-[170px]">
+                        <div className="flex flex-col gap-1 min-w-[150px]">
                           {bill.invoiceUrl ? (
                             <a
                               href={bill.invoiceUrl}
@@ -1214,7 +1214,7 @@ export default function OwnerBillingDetailsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 min-w-[240px]">
                         <div className="flex gap-2 flex-wrap">
                           {!isVoided && (
                             <>

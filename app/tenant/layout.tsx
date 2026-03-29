@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 
 const sidebarItems = [
@@ -20,6 +21,7 @@ export default function TenantLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { user, role, loading, signOut } = useAuth();
   const viewerLabel = loading
     ? "Checking session..."
@@ -27,9 +29,13 @@ export default function TenantLayout({
       ? `${user.email} (${role || "role"})`
       : "Not signed in";
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
+
   return (
     <div className="flex min-h-screen">
-      <aside className="w-64 bg-gray-900 text-white p-6 flex flex-col">
+      <aside className="hidden md:flex w-64 bg-gray-900 text-white p-6 flex-col">
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-700">
           <Image src="/luxor-logo.svg" alt="Luxor" width={48} height={48} className="opacity-90 flex-shrink-0" />
           <div className="text-xl font-bold">Luxor</div>
@@ -72,8 +78,56 @@ export default function TenantLayout({
           </div>
         )}
       </aside>
-      <main className="flex-1 bg-gray-100">
-        <div className="flex items-center justify-end px-6 pt-4">
+      <main className="flex-1 bg-gray-100 min-w-0">
+        <div className="md:hidden border-b border-gray-200 bg-white px-4 py-3 sticky top-0 z-30">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Image src="/luxor-logo.svg" alt="Luxor" width={36} height={36} className="opacity-90 flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">Luxor Tenant</div>
+                <div className="text-[11px] text-gray-500 truncate">{viewerLabel}</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen((prev) => !prev)}
+              className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 bg-white"
+            >
+              Menu
+            </button>
+          </div>
+          {mobileNavOpen && (
+            <div className="mt-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+              <nav className="px-2 py-2 space-y-1 text-sm">
+                {sidebarItems.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`block rounded-md px-3 py-2 ${isActive ? "bg-gray-100 text-gray-900 font-medium" : "text-gray-700"}`}
+                    >
+                      {item.name}
+                    </Link>
+                  );
+                })}
+                {user && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await signOut();
+                      router.push("/");
+                    }}
+                    className="block w-full text-left rounded-md px-3 py-2 text-gray-700"
+                  >
+                    Sign out
+                  </button>
+                )}
+              </nav>
+            </div>
+          )}
+        </div>
+        <div className="hidden md:flex items-center justify-end px-6 pt-4">
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-2 rounded-full bg-white border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -92,7 +146,7 @@ export default function TenantLayout({
             )}
           </div>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-4 md:p-6">{children}</div>
       </main>
     </div>
   );
