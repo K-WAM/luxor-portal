@@ -31,6 +31,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
+  const resolveRoleFromApi = async (accessToken?: string | null): Promise<UserRole> => {
+    if (!accessToken) return null;
+    try {
+      const res = await fetch("/api/me", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        cache: "no-store",
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data.role as UserRole) ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -43,14 +60,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setSession(sessionData.session);
         setUser(sessionUser);
-        setRole((sessionUser?.user_metadata?.role as UserRole) ?? null);
+        setRole(null);
 
         // Re-validate the user from Auth server to ensure fresh metadata
         const { data: userData } = await supabase.auth.getUser();
         if (!isMounted) return;
         if (userData.user) {
           setUser(userData.user);
-          setRole((userData.user?.user_metadata?.role as UserRole) ?? null);
+          const resolvedRole =
+            (await resolveRoleFromApi(sessionData.session?.access_token || null)) ??
+            ((userData.user?.user_metadata?.role as UserRole) ?? null);
+          setRole(resolvedRole);
         }
       } catch (err) {
         console.error("Failed to load auth state", err);
@@ -70,9 +90,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!isMounted) return;
       setSession(session);
-      const metadataRole = (session?.user?.user_metadata?.role as UserRole) ?? null;
       setUser(session?.user ?? null);
-      setRole(metadataRole);
+      if (session?.user) {
+        const resolvedRole =
+          (await resolveRoleFromApi(session.access_token || null)) ??
+          ((session.user.user_metadata?.role as UserRole) ?? null);
+        if (!isMounted) return;
+        setRole(resolvedRole);
+      } else {
+        setRole(null);
+      }
       setLoading(false);
     });
 
@@ -92,10 +119,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) return { error: error.message };
 
       const { data: userData } = await supabase.auth.getUser();
+      const resolvedRole =
+        (await resolveRoleFromApi(data.session?.access_token || null)) ??
+        ((userData.user?.user_metadata?.role as UserRole) ?? (data.user?.user_metadata?.role as UserRole) ?? null);
 
       setSession(data.session);
       setUser(userData.user ?? data.user ?? null);
-      setRole((userData.user?.user_metadata?.role as UserRole) ?? (data.user?.user_metadata?.role as UserRole) ?? null);
+      setRole(resolvedRole);
       setLoading(false);
 
       return { error: null };

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { resolveEffectiveRole, type UserRole } from "@/lib/auth/effective-role";
 
 const PROTECTED_MATCHERS = ["/owner", "/tenant", "/admin"];
 
@@ -41,7 +42,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  const role = (user.user_metadata as any)?.role;
+  const metadataRole = ((user.user_metadata as any)?.role as UserRole) ?? null;
+  const role = await resolveEffectiveRole(user.id, metadataRole);
   const path = request.nextUrl.pathname;
 
   if (path.startsWith("/admin") && role !== "admin") {

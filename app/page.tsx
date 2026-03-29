@@ -62,14 +62,13 @@ function SignInPageInner() {
         });
         if (res.ok) {
           const me = await res.json();
-          const resolvedRole = me.role || "admin";
-          redirectByRole(resolvedRole);
-        } else {
-          // Fallback to admin
-          redirectByRole("admin");
+          const resolvedRole = me.role || null;
+          if (resolvedRole) {
+            redirectByRole(resolvedRole);
+          }
         }
       } catch (err) {
-        redirectByRole("admin");
+        console.error("Failed to resolve role", err);
       } finally {
         setResolvingRole(false);
       }
@@ -91,7 +90,18 @@ function SignInPageInner() {
         const { error: exchangeError, data } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) throw exchangeError;
 
-        const userRole = (data.session?.user?.user_metadata as any)?.role;
+        let userRole = (data.session?.user?.user_metadata as any)?.role;
+        if (data.session?.access_token) {
+          const res = await fetch("/api/me", {
+            headers: {
+              Authorization: `Bearer ${data.session.access_token}`,
+            },
+          });
+          if (res.ok) {
+            const me = await res.json();
+            userRole = me.role || userRole;
+          }
+        }
         if (userRole) {
           redirectByRole(userRole);
         }

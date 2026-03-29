@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { resolveEffectiveRole, type UserRole } from "@/lib/auth/effective-role";
 
 // GET /api/me
 // Returns the current user's identity and property mappings.
@@ -29,7 +30,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Failed to load user properties" }, { status: 500 });
   }
 
-  const effectiveRole = (user.user_metadata?.role as string) || mappings?.[0]?.role || null;
+  const metadataRole = (user.user_metadata?.role as UserRole) ?? null;
+  const effectiveRole = await resolveEffectiveRole(user.id, metadataRole);
 
   return NextResponse.json({
     user_id: user.id,

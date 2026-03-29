@@ -30,11 +30,18 @@ export default function Navbar() {
     return null;
   }
 
+  const visibleNavItems = navItems.filter((item) => {
+    if (role === "admin") return true;
+    if (role === "owner") return item.href === "/owner";
+    if (role === "tenant") return item.href === "/tenant";
+    return false;
+  });
+
   return (
     <nav className="bg-gray-800 text-white px-6 py-3">
       <div className="flex items-center justify-between gap-6">
         <div className="flex gap-6">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}

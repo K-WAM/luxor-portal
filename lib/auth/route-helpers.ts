@@ -1,11 +1,11 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { resolveEffectiveRole, type UserRole } from "@/lib/auth/effective-role";
+export type { UserRole } from "@/lib/auth/effective-role";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-export type UserRole = "tenant" | "owner" | "admin" | "viewer" | null;
 
 export async function getAuthContext() {
   const cookieStore = await cookies();
@@ -39,8 +39,8 @@ export async function getAuthContext() {
   if (error || !user) {
     return { user: null, role: null as UserRole };
   }
-
-  const role = (user.user_metadata?.role as UserRole) ?? null;
+  const metadataRole = (user.user_metadata?.role as UserRole) ?? null;
+  const role = await resolveEffectiveRole(user.id, metadataRole);
   return { user, role };
 }
 
