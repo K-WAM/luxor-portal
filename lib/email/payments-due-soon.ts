@@ -46,7 +46,7 @@ const SECTION_META: Record<
     badgeColor: "#b45309",
   },
   dueSoon: {
-    title: "Due in 5 Days",
+    title: "Due Soon",
     borderColor: "#bfdbfe",
     badgeBg: "#eff6ff",
     badgeColor: "#1d4ed8",

@@ -11,7 +11,12 @@ import {
 } from "@/lib/email/payments-due-soon";
 import { formatDateOnly } from "@/lib/date-only";
 
-const REMINDER_TYPE = "daily_payment_digest";
+const DAILY_REMINDER_TYPE = "daily_payment_digest";
+const CHECKPOINT_TYPES = {
+  dueSoon: "bill_checkpoint_t5",
+  dueTomorrow: "bill_checkpoint_t1",
+  overdue: "bill_checkpoint_overdue",
+} as const;
 
 type ReminderGroup = {
   recipientType: ReminderRecipientType;
@@ -61,6 +66,7 @@ const logReminder = async (payload: {
   recipientEmail: string;
   recipientType: ReminderRecipientType;
   targetDay: string;
+  reminderType: string;
   billIds: string[];
   status: "sent" | "failed";
   providerMessageId?: string | null;
@@ -70,7 +76,7 @@ const logReminder = async (payload: {
     recipient_email: payload.recipientEmail,
     recipient_type: payload.recipientType,
     target_month: payload.targetDay,
-    reminder_type: REMINDER_TYPE,
+    reminder_type: payload.reminderType,
     bill_ids: payload.billIds,
     status: payload.status,
     provider_message_id: payload.providerMessageId || null,
@@ -78,13 +84,14 @@ const logReminder = async (payload: {
   });
 };
 
-const alreadySent = async (recipientEmail: string, targetDay: string) => {
+const alreadySent = async (recipientEmail: string, targetDay: string, reminderType: string) => {
   const { data, error } = await supabaseAdmin
     .from("email_reminders")
     .select("id")
     .eq("recipient_email", recipientEmail)
     .eq("target_month", targetDay)
-    .eq("reminder_type", REMINDER_TYPE)
+    .eq("reminder_type", reminderType)
+    .eq("status", "sent")
     .limit(1);
   if (error) return false;
   return (data || []).length > 0;
@@ -95,18 +102,6 @@ const getBearerSecret = (request: Request) => {
   if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
   const token = authHeader.slice(7).trim();
   return token || null;
-};
-
-const getToday = () => {
-  const now = new Date();
-  return {
-    iso: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(
-      now.getUTCDate()
-    ).padStart(2, "0")}`,
-    tomorrowIso: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(
-      now.getUTCDate() + 1
-    ).padStart(2, "0")}`,
-  };
 };
 
 const addDaysIso = (days: number) => {
@@ -167,7 +162,9 @@ export async function runDailyPaymentReminder(request: Request) {
   }
 
   const todayIso = addDaysIso(0);
+  const yesterdayIso = addDaysIso(-1);
   const tomorrowIso = addDaysIso(1);
+  const dueSoonStartIso = addDaysIso(2);
   const dueSoonIso = addDaysIso(5);
 
   const [ownerOverdue, ownerTomorrow, ownerSoon, tenantOverdue, tenantTomorrow, tenantSoon] = await Promise.all([
@@ -179,6 +176,7 @@ export async function runDailyPaymentReminder(request: Request) {
       .lt("due_date", todayIso)
       .neq("status", "paid")
       .neq("status", "processing")
+      .neq("status", "in_progress")
       .neq("status", "voided"),
     supabaseAdmin
       .from("billing_invoices")
@@ -188,15 +186,18 @@ export async function runDailyPaymentReminder(request: Request) {
       .eq("due_date", tomorrowIso)
       .neq("status", "paid")
       .neq("status", "processing")
+      .neq("status", "in_progress")
       .neq("status", "voided"),
     supabaseAdmin
       .from("billing_invoices")
       .select(
         "id, owner_id, property_id, total_due, fee_amount, base_rent, description, due_date, status, category, invoice_number, properties ( address )"
       )
-      .eq("due_date", dueSoonIso)
+      .gte("due_date", dueSoonStartIso)
+      .lte("due_date", dueSoonIso)
       .neq("status", "paid")
       .neq("status", "processing")
+      .neq("status", "in_progress")
       .neq("status", "voided"),
     supabaseAdmin
       .from("tenant_bills")
@@ -204,6 +205,7 @@ export async function runDailyPaymentReminder(request: Request) {
       .lt("due_date", todayIso)
       .neq("status", "paid")
       .neq("status", "processing")
+      .neq("status", "in_progress")
       .neq("status", "voided"),
     supabaseAdmin
       .from("tenant_bills")
@@ -211,13 +213,16 @@ export async function runDailyPaymentReminder(request: Request) {
       .eq("due_date", tomorrowIso)
       .neq("status", "paid")
       .neq("status", "processing")
+      .neq("status", "in_progress")
       .neq("status", "voided"),
     supabaseAdmin
       .from("tenant_bills")
       .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status, properties ( address )")
-      .eq("due_date", dueSoonIso)
+      .gte("due_date", dueSoonStartIso)
+      .lte("due_date", dueSoonIso)
       .neq("status", "paid")
       .neq("status", "processing")
+      .neq("status", "in_progress")
       .neq("status", "voided"),
   ]);
 
@@ -289,17 +294,71 @@ export async function runDailyPaymentReminder(request: Request) {
     if (userInfo?.email) addBill("tenant", userInfo.email, userInfo.name, "dueSoon", toTenantBill(bill));
   });
 
+  const checkpointCandidates = Object.entries(grouped).map(([key, group]) => {
+    const email = key.split(":")[1];
+    const newlyTriggered = [
+      ...group.sections.overdue
+        .filter((bill) => bill.dueDate === yesterdayIso)
+        .map((bill) => ({
+          reminderType: CHECKPOINT_TYPES.overdue,
+          targetDay: `${todayIso}:${bill.id}`,
+          billId: bill.id || "",
+        })),
+      ...group.sections.dueTomorrow
+        .filter((bill) => bill.dueDate === tomorrowIso)
+        .map((bill) => ({
+          reminderType: CHECKPOINT_TYPES.dueTomorrow,
+          targetDay: `${todayIso}:${bill.id}`,
+          billId: bill.id || "",
+        })),
+      ...group.sections.dueSoon
+        .filter((bill) => bill.dueDate === dueSoonIso)
+        .map((bill) => ({
+          reminderType: CHECKPOINT_TYPES.dueSoon,
+          targetDay: `${todayIso}:${bill.id}`,
+          billId: bill.id || "",
+        })),
+    ];
+
+    return { email, group, newlyTriggered };
+  });
+
+  const checkpointTargetDays = checkpointCandidates.flatMap((entry) => entry.newlyTriggered.map((item) => item.targetDay));
+  const checkpointEmails = checkpointCandidates.map((entry) => entry.email);
+  const existingCheckpointSet = new Set<string>();
+
+  if (checkpointTargetDays.length && checkpointEmails.length) {
+    const { data: existingRows } = await supabaseAdmin
+      .from("email_reminders")
+      .select("recipient_email, reminder_type, target_month")
+      .in("recipient_email", checkpointEmails)
+      .in("target_month", checkpointTargetDays)
+      .in("reminder_type", Object.values(CHECKPOINT_TYPES))
+      .eq("status", "sent");
+
+    (existingRows || []).forEach((row: any) => {
+      existingCheckpointSet.add(`${row.recipient_email}|${row.reminder_type}|${row.target_month}`);
+    });
+  }
+
   const results: any[] = [];
 
-  for (const [key, group] of Object.entries(grouped)) {
-    const email = key.split(":")[1];
+  for (const { email, group, newlyTriggered } of checkpointCandidates) {
     const billIds = Object.values(group.sections)
       .flat()
       .map((bill) => bill.id || "")
       .filter(Boolean);
     if (!billIds.length) continue;
 
-    const already = await alreadySent(email, todayIso);
+    const unsentTriggers = newlyTriggered.filter(
+      (item) => !existingCheckpointSet.has(`${email}|${item.reminderType}|${item.targetDay}`)
+    );
+    if (!unsentTriggers.length) {
+      results.push({ email, status: "skipped" });
+      continue;
+    }
+
+    const already = await alreadySent(email, todayIso, DAILY_REMINDER_TYPE);
     if (already) {
       results.push({ email, status: "skipped" });
       continue;
@@ -325,10 +384,21 @@ export async function runDailyPaymentReminder(request: Request) {
         recipientEmail: email,
         recipientType: group.recipientType,
         targetDay: todayIso,
+        reminderType: DAILY_REMINDER_TYPE,
         billIds,
         status: "sent",
         providerMessageId: (info as any)?.messageId || null,
       });
+      for (const trigger of unsentTriggers) {
+        await logReminder({
+          recipientEmail: email,
+          recipientType: group.recipientType,
+          targetDay: trigger.targetDay,
+          reminderType: trigger.reminderType,
+          billIds: [trigger.billId],
+          status: "sent",
+        });
+      }
       results.push({
         email,
         status: "sent",
@@ -341,6 +411,7 @@ export async function runDailyPaymentReminder(request: Request) {
         recipientEmail: email,
         recipientType: group.recipientType,
         targetDay: todayIso,
+        reminderType: DAILY_REMINDER_TYPE,
         billIds,
         status: "failed",
         error: error?.message || "Send failed",
