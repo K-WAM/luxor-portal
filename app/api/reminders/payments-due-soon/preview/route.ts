@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
-import { buildPaymentsDueSoonEmail } from "@/lib/email/payments-due-soon";
+import { buildPaymentReminderDigestEmail, CANONICAL_PORTAL_URL } from "@/lib/email/payments-due-soon";
 
 export async function GET(request: Request) {
   const { user, role } = await getAuthContext();
@@ -10,32 +10,41 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const recipientType = (searchParams.get("type") as "owner" | "tenant") || "owner";
-  const baseUrl = process.env.APP_BASE_URL || "";
-  const logoUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/luxor-logo.png` : null;
+  const logoUrl = `${CANONICAL_PORTAL_URL}/luxor-logo.png`;
 
-  const { html } = buildPaymentsDueSoonEmail({
+  const { html } = buildPaymentReminderDigestEmail({
     recipientName: "Jane Doe",
     recipientType,
-    baseUrl,
     logoUrl,
-    bills: [
-      {
-        amount: 1250,
-        dueDate: new Date().toISOString(),
-        type: "Rent",
-        propertyName: "Sunset Villas",
-        propertyAddress: "123 Main St, Orlando, FL",
-        reference: "INV-2026-0001",
-        notes: "Autopay not enabled",
-      },
-      {
-        amount: 95,
-        dueDate: new Date().toISOString(),
-        type: "Fee",
-        propertyName: "Sunset Villas",
-        propertyAddress: "123 Main St, Orlando, FL",
-      },
-    ],
+    sections: {
+      overdue: [
+        {
+          amount: 1250,
+          dueDate: new Date().toISOString(),
+          type: "Rent",
+          propertyAddress: "123 Main St, Orlando, FL",
+          notes: "March 2026 Rent",
+        },
+      ],
+      dueTomorrow: [
+        {
+          amount: 95,
+          dueDate: new Date().toISOString(),
+          type: "Fee",
+          propertyAddress: "123 Main St, Orlando, FL",
+          notes: "Utility reimbursement",
+        },
+      ],
+      dueSoon: [
+        {
+          amount: 210,
+          dueDate: new Date().toISOString(),
+          type: "PM Fee",
+          propertyAddress: "456 Lake Ave, Boca Raton, FL",
+          notes: "April 2026 Management Fee",
+        },
+      ],
+    },
   });
 
   return new NextResponse(html, {

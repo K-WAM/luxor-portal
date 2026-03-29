@@ -1,6 +1,7 @@
-﻿import { formatDateOnly } from "@/lib/date-only";
+import { formatDateOnly } from "@/lib/date-only";
 
 export type ReminderRecipientType = "owner" | "tenant";
+export type ReminderSectionKey = "overdue" | "dueTomorrow" | "dueSoon";
 
 export type ReminderBill = {
   id?: string;
@@ -21,10 +22,36 @@ export type PaymentsDueSoonEmail = {
   ctaUrl: string;
 };
 
-const BODY_2 = "If you have already scheduled your payment, please disregard this reminder.";
-const CTA_LABEL = "SCHEDULE MY PAYMENT";
-const BILL_INTRO = "Here are the payments currently due at the beginning of next month:";
+export const CANONICAL_PORTAL_URL = "https://portal.luxordev.com";
+
+const CTA_LABEL = "VIEW & PAY BILLS";
 const FOOTER = "Questions? Contact Luxor Developments at connect@luxordev.com.";
+const INTRO = "The following payment items require your attention:";
+const BODY_2 = "If you have already scheduled your payment, please disregard this reminder.";
+
+const SECTION_META: Record<
+  ReminderSectionKey,
+  { title: string; borderColor: string; badgeBg: string; badgeColor: string }
+> = {
+  overdue: {
+    title: "Overdue",
+    borderColor: "#fecaca",
+    badgeBg: "#fef2f2",
+    badgeColor: "#b91c1c",
+  },
+  dueTomorrow: {
+    title: "Due Tomorrow",
+    borderColor: "#fde68a",
+    badgeBg: "#fffbeb",
+    badgeColor: "#b45309",
+  },
+  dueSoon: {
+    title: "Due in 5 Days",
+    borderColor: "#bfdbfe",
+    badgeBg: "#eff6ff",
+    badgeColor: "#1d4ed8",
+  },
+};
 
 const toFirstName = (value?: string | null) => {
   const trimmed = (value || "").trim();
@@ -43,179 +70,133 @@ const formatAmount = (value?: number | string | null) => {
   }).format(num);
 };
 
-const formatMonthName = (dueDate?: string | null) => {
-  if (!dueDate) return "Upcoming";
-  const date = new Date(dueDate);
-  if (Number.isNaN(date.getTime())) return "Upcoming";
-  return date.toLocaleString("en-US", { month: "long" });
-};
-
-const buildBillTitle = (bill: ReminderBill) => {
-  const monthName = formatMonthName(bill.dueDate);
-  const billType = bill.billTypeLabel || bill.type || "Bill";
-  const propertyDisplay = bill.propertyName || bill.propertyAddress || "Property";
-  return `${monthName} ${billType} for ${propertyDisplay}`;
-};
+const buildPropertyHeading = (bill: ReminderBill) =>
+  bill.propertyName || bill.propertyAddress || "Property";
 
 const buildFieldRow = (label: string, value?: string | null) => {
   if (!value) return "";
   return `
     <tr>
-      <td style="padding: 2px 0; color: #334155; font-size: 14px; width: 110px;">${label}</td>
-      <td style="padding: 2px 0; color: #0f172a; font-size: 14px;">${value}</td>
+      <td style="padding: 4px 0; color: #475569; font-size: 14px; width: 110px; vertical-align: top;">${label}</td>
+      <td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${value}</td>
     </tr>
   `;
 };
 
-const buildReminderEmail = (
-  params: {
-    recipientName?: string | null;
-    recipientType: ReminderRecipientType;
-    bills: ReminderBill[];
-    baseUrl: string;
-    logoUrl?: string | null;
-  },
-  options: {
-    title: string;
-    subtitle: string;
-    body1: string;
-    subject: string;
-  }
-): PaymentsDueSoonEmail => {
+const buildBillCard = (bill: ReminderBill) => {
+  const amount = formatAmount(bill.amount) || "";
+  const dueDate = bill.dueDate ? formatDateOnly(bill.dueDate) : "";
+  return `
+    <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; background: #ffffff;">
+      <div style="font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 10px;">
+        ${buildPropertyHeading(bill)}
+      </div>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tbody>
+          ${buildFieldRow("Amount:", amount)}
+          ${buildFieldRow("Due date:", dueDate)}
+          ${buildFieldRow("Description:", bill.notes || "")}
+        </tbody>
+      </table>
+    </div>
+  `;
+};
+
+const buildSection = (key: ReminderSectionKey, bills: ReminderBill[]) => {
+  if (!bills.length) return "";
+  const meta = SECTION_META[key];
+  return `
+    <div style="margin: 22px 0 0;">
+      <div style="margin: 0 0 12px;">
+        <span style="display: inline-block; padding: 6px 10px; border-radius: 999px; background: ${meta.badgeBg}; color: ${meta.badgeColor}; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;">
+          ${meta.title}
+        </span>
+      </div>
+      <div style="border-left: 4px solid ${meta.borderColor}; padding-left: 12px;">
+        ${bills.map((bill) => buildBillCard(bill)).join("")}
+      </div>
+    </div>
+  `;
+};
+
+export const buildPaymentReminderDigestEmail = (params: {
+  recipientName?: string | null;
+  recipientType: ReminderRecipientType;
+  sections: Partial<Record<ReminderSectionKey, ReminderBill[]>>;
+  logoUrl?: string | null;
+}): PaymentsDueSoonEmail => {
   const firstName = toFirstName(params.recipientName);
   const greeting = `Hi ${firstName},`;
   const ctaUrl =
     params.recipientType === "owner"
-      ? `${params.baseUrl}/owner/billing`
-      : `${params.baseUrl}/tenant/payments`;
+      ? `${CANONICAL_PORTAL_URL}/owner/billing`
+      : `${CANONICAL_PORTAL_URL}/tenant/payments`;
 
-  const logoBlock = params.logoUrl
-    ? `<img src="${params.logoUrl}" alt="Luxor Developments" style="height: 32px;" />`
+  const logoUrl = params.logoUrl || `${CANONICAL_PORTAL_URL}/luxor-logo.png`;
+  const logoBlock = logoUrl
+    ? `<img src="${logoUrl}" alt="Luxor Developments" style="height: 32px;" />`
     : `<div style="font-size: 18px; font-weight: 600; color: #0f172a;">Luxor Developments</div>`;
 
-  const billCards = params.bills
-    .map((bill) => {
-      const amount = formatAmount(bill.amount) || "";
-      const dueDate = bill.dueDate ? formatDateOnly(bill.dueDate) : "";
-      return `
-        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 12px;">
-          <div style="font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 8px;">
-            ${buildBillTitle(bill)}
-          </div>
-          <table style="width: 100%; border-collapse: collapse;">
-            <tbody>
-              ${buildFieldRow("Amount:", amount)}
-              ${buildFieldRow("Due date:", dueDate)}
-              ${buildFieldRow("Type:", bill.billTypeLabel || bill.type || "")}
-              ${buildFieldRow("Property:", bill.propertyName || "")}
-              ${buildFieldRow("Address:", bill.propertyAddress || "")}
-              ${buildFieldRow("Reference:", bill.reference || "")}
-              ${buildFieldRow("Notes:", bill.notes || "")}
-            </tbody>
-          </table>
-        </div>
-      `;
-    })
+  const orderedKeys: ReminderSectionKey[] = ["overdue", "dueTomorrow", "dueSoon"];
+  const sectionHtml = orderedKeys
+    .map((key) => buildSection(key, params.sections[key] || []))
     .join("");
+
+  const textSections = orderedKeys.flatMap((key) => {
+    const bills = params.sections[key] || [];
+    if (!bills.length) return [];
+    return [
+      SECTION_META[key].title,
+      ...bills.flatMap((bill) => {
+        const lines = [buildPropertyHeading(bill)];
+        const amount = formatAmount(bill.amount);
+        if (amount) lines.push(`Amount: ${amount}`);
+        if (bill.dueDate) lines.push(`Due date: ${formatDateOnly(bill.dueDate)}`);
+        if (bill.notes) lines.push(`Description: ${bill.notes}`);
+        lines.push("");
+        return lines;
+      }),
+    ];
+  });
 
   const html = `
     <div style="background-color: #ffffff; padding: 0; margin: 0;">
       <div style="max-width: 600px; margin: 0 auto; padding: 0 20px 32px;">
         <div style="background-color: #0f172a; height: 8px;"></div>
         <div style="padding: 16px 0;">${logoBlock}</div>
-        <h1 style="font-size: 24px; margin: 0 0 6px; color: #0f172a;">${options.title}</h1>
-        <h2 style="font-size: 18px; margin: 0 0 18px; color: #334155;">${options.subtitle}</h2>
-        <p style="margin: 0 0 10px; font-size: 14px; color: #0f172a;">${greeting}</p>
-        <p style="margin: 0 0 12px; font-size: 14px; color: #334155;">${options.body1}</p>
+        <h1 style="font-size: 24px; margin: 0 0 6px; color: #0f172a;">Payment Reminder</h1>
+        <h2 style="font-size: 18px; margin: 0 0 18px; color: #334155;">${INTRO}</h2>
+        <p style="margin: 0 0 12px; font-size: 14px; color: #0f172a;">${greeting}</p>
+        <p style="margin: 0 0 12px; font-size: 14px; color: #334155;">Please review the payment items below.</p>
         <p style="margin: 0 0 20px; font-size: 14px; color: #334155;">${BODY_2}</p>
         <a href="${ctaUrl}" style="display: block; text-align: center; background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 600;">
           ${CTA_LABEL}
         </a>
-        <p style="margin: 24px 0 12px; font-size: 14px; color: #334155;">${BILL_INTRO}</p>
-        ${billCards}
+        ${sectionHtml}
         <p style="margin: 24px 0 0; font-size: 12px; color: #64748b;">${FOOTER}</p>
       </div>
     </div>
   `;
 
-  const textLines = [
-    options.title,
-    options.subtitle,
+  const text = [
+    "Payment Reminder",
+    INTRO,
     "",
     greeting,
-    options.body1,
+    "Please review the payment items below.",
     BODY_2,
     "",
     CTA_LABEL,
     ctaUrl,
     "",
-    BILL_INTRO,
-    ...params.bills.flatMap((bill) => {
-      const lines = [buildBillTitle(bill)];
-      const amount = formatAmount(bill.amount);
-      if (amount) lines.push(`Amount: ${amount}`);
-      if (bill.dueDate) lines.push(`Due date: ${formatDateOnly(bill.dueDate)}`);
-      if (bill.billTypeLabel || bill.type) lines.push(`Type: ${bill.billTypeLabel || bill.type}`);
-      if (bill.propertyName) lines.push(`Property: ${bill.propertyName}`);
-      if (bill.propertyAddress) lines.push(`Address: ${bill.propertyAddress}`);
-      if (bill.reference) lines.push(`Reference: ${bill.reference}`);
-      if (bill.notes) lines.push(`Notes: ${bill.notes}`);
-      lines.push("");
-      return lines;
-    }),
+    ...textSections,
     FOOTER,
-  ];
+  ].join("\n");
 
   return {
-    subject: options.subject,
+    subject: "Action Required — Payment Reminder",
     html,
-    text: textLines.join("\n"),
+    text,
     ctaUrl,
   };
 };
-
-export const buildPaymentsDueSoonEmail = (params: {
-  recipientName?: string | null;
-  recipientType: ReminderRecipientType;
-  bills: ReminderBill[];
-  baseUrl: string;
-  logoUrl?: string | null;
-}): PaymentsDueSoonEmail =>
-  buildReminderEmail(params, {
-    title: "Just a Reminder...",
-    subtitle: "Payments are due soon.",
-    body1:
-      "You have upcoming payments due at the beginning of next month. Please schedule your payment as soon as possible to avoid delays or late fees.",
-    subject: "Action Required — Payments Due Soon",
-  });
-
-export const buildPaymentsDueTomorrowEmail = (params: {
-  recipientName?: string | null;
-  recipientType: ReminderRecipientType;
-  bills: ReminderBill[];
-  baseUrl: string;
-  logoUrl?: string | null;
-  dueDateLabel: string;
-}): PaymentsDueSoonEmail =>
-  buildReminderEmail(params, {
-    title: "A Reminder...",
-    subtitle: "Payments are due tomorrow.",
-    body1: `Payments are due tomorrow, ${params.dueDateLabel}.`,
-    subject: "Action Required — Payments Due Tomorrow",
-  });
-
-export const buildOverdueBillsEmail = (params: {
-  recipientName?: string | null;
-  recipientType: ReminderRecipientType;
-  bills: ReminderBill[];
-  baseUrl: string;
-  logoUrl?: string | null;
-}): PaymentsDueSoonEmail =>
-  buildReminderEmail(params, {
-    title: "Payment Overdue",
-    subtitle: "Payment Overdue",
-    body1:
-      "You have overdue bills that still show as unpaid. Please schedule your payment as soon as possible to avoid additional late fees.",
-    subject: "Action Required — Overdue Bills",
-  });
-
