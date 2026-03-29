@@ -1,0 +1,1 @@
+ALTER TABLE public.email_reminders ENABLE ROW LEVEL SECURITY;
