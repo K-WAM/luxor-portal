@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getShortPropertyName } from "@/lib/property-short-name";
 
 type Property = {
   id: string;
@@ -507,7 +508,7 @@ export default function TenantInvitesPage() {
                 <option value="">Select a property</option>
                 {properties.map((prop) => (
                   <option key={prop.id} value={prop.id}>
-                    {prop.address}
+                    {getShortPropertyName(prop.address)}
                   </option>
                 ))}
               </select>
@@ -627,7 +628,9 @@ export default function TenantInvitesPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-900">
-                      {invite.properties?.address || "-"}
+                      <span title={invite.properties?.address || "-"}>
+                        {invite.properties?.address ? getShortPropertyName(invite.properties.address) : "-"}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <span
@@ -775,7 +778,9 @@ export default function TenantInvitesPage() {
                               className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1"
                             >
                               <span className="text-xs text-slate-800">
-                                {up.properties?.address || up.properties?.name || up.property_id}
+                                <span title={up.properties?.address || up.properties?.name || up.property_id}>
+                                  {getShortPropertyName(up.properties?.address || up.properties?.name) || up.property_id}
+                                </span>
                               </span>
                               {up.role === "owner" && (
                                 <div className="flex items-center gap-1">
@@ -855,7 +860,7 @@ export default function TenantInvitesPage() {
                             <option value="">Add property...</option>
                             {properties.map((p) => (
                               <option key={p.id} value={p.id}>
-                                {p.address}
+                                {getShortPropertyName(p.address)}
                               </option>
                             ))}
                           </select>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useAuth } from "@/app/context/AuthContext";
+import { getShortPropertyName } from "@/lib/property-short-name";
 
 type Property = {
   id: string;
@@ -295,7 +296,7 @@ export default function TenantMaintenance() {
             <option value="">Select a property</option>
             {properties.map((prop) => (
               <option key={prop.id} value={prop.id}>
-                {prop.address}
+                {getShortPropertyName(prop.address)}
               </option>
             ))}
           </select>
@@ -465,7 +466,9 @@ export default function TenantMaintenance() {
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <div className="font-semibold text-slate-900 mb-1">
-                      {property?.address || r.propertyAddress || "Unknown property"}
+                      <span title={property?.address || r.propertyAddress || "Unknown property"}>
+                        {getShortPropertyName(property?.address || r.propertyAddress) || "Unknown property"}
+                      </span>
                     </div>
                     <div className="text-xs text-gray-500">
                       {r.createdAt

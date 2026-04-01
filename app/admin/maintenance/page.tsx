@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
+import { getShortPropertyName } from "@/lib/property-short-name";
 
 type MaintenanceRequest = {
   id: string;
@@ -439,7 +440,7 @@ export default function MaintenanceRequestsPage() {
                   <option value="">Select property...</option>
                   {properties.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.address}
+                      {getShortPropertyName(p.address)}
                     </option>
                   ))}
                 </select>
@@ -575,7 +576,9 @@ export default function MaintenanceRequestsPage() {
                             {isRed && <span className="ml-1 text-xs">(overdue)</span>}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-slate-900 font-medium">{req.propertyAddress || req.propertyId || "N/A"}</td>
+                        <td className="px-4 py-3 text-sm text-slate-900 font-medium" title={req.propertyAddress || req.propertyId || "N/A"}>
+                          {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
+                        </td>
                         <td className="px-4 py-3 text-sm">
                           <div className="font-medium text-slate-900">{req.tenantName}</div>
                           <div className="text-slate-500 text-xs">{req.tenantEmail}</div>
@@ -653,7 +656,7 @@ export default function MaintenanceRequestsPage() {
                                 <label className="font-medium">Property</label>
                                 <select name="propertyId" value={editForm.propertyId} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" required>
                                   <option value="">Select property...</option>
-                                  {properties.map((p) => (<option key={p.id} value={p.id}>{p.address}</option>))}
+                                  {properties.map((p) => (<option key={p.id} value={p.id}>{getShortPropertyName(p.address)}</option>))}
                                 </select>
                               </div>
                               <div className="flex flex-col gap-1">
@@ -866,7 +869,9 @@ export default function MaintenanceRequestsPage() {
               <React.Fragment key={req.id}>
                 <tr className="hover:bg-slate-50 transition-colors text-sm">
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{shortId(req.id)}</td>
-                  <td className="px-4 py-3 text-slate-700 font-medium">{req.propertyAddress || req.propertyId || "N/A"}</td>
+                  <td className="px-4 py-3 text-slate-700 font-medium" title={req.propertyAddress || req.propertyId || "N/A"}>
+                    {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="text-slate-800">{req.tenantName}</div>
                     <div className="text-xs text-slate-400">{req.tenantEmail}</div>
@@ -914,7 +919,7 @@ export default function MaintenanceRequestsPage() {
                           <label className="font-medium">Property</label>
                           <select name="propertyId" value={editForm.propertyId} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" required>
                             <option value="">Select property...</option>
-                            {properties.map((p) => (<option key={p.id} value={p.id}>{p.address}</option>))}
+                            {properties.map((p) => (<option key={p.id} value={p.id}>{getShortPropertyName(p.address)}</option>))}
                           </select>
                         </div>
                         <div className="flex flex-col gap-1">
