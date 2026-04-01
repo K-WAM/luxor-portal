@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { formatDateOnly, parseDateOnly } from "@/lib/date-only";
+import { getShortPropertyName } from "@/lib/property-short-name";
 
 type Bill = {
   id: string;
@@ -299,7 +300,10 @@ export default function OwnerBilling() {
                         />
                         <div className="flex-1">
                           <div className="text-slate-700">
-                            {bill.propertyAddress} · {bill.description || "Invoice"}
+                            <span title={bill.propertyAddress}>
+                              {getShortPropertyName(bill.propertyAddress)}
+                            </span>{" "}
+                            · {bill.description || "Invoice"}
                           </div>
                           <div className="text-xs text-slate-500">
                             Due {formatDateOnly(bill.dueDate) || "-"} ·{" "}
@@ -361,7 +365,7 @@ export default function OwnerBilling() {
               <option value="all">All properties</option>
               {uniqueProps.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.address}
+                  {getShortPropertyName(p.address)}
                 </option>
               ))}
             </select>
@@ -397,7 +401,9 @@ export default function OwnerBilling() {
             <div className="md:hidden space-y-3 p-4">
               {displayedFiltered.map((bill) => (
                 <div key={bill.id} className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-sm font-semibold text-slate-900">{bill.propertyAddress}</div>
+                  <div className="text-sm font-semibold text-slate-900" title={bill.propertyAddress}>
+                    {getShortPropertyName(bill.propertyAddress)}
+                  </div>
                   <div className="text-sm text-slate-700 mt-1">{bill.description}</div>
                   <div className="mt-2 flex items-center justify-between text-sm">
                     <span className="text-slate-500">Due</span>
@@ -454,7 +460,9 @@ export default function OwnerBilling() {
                 <tbody className="divide-y divide-slate-100">
                   {displayedFiltered.map((bill) => (
                     <tr key={bill.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-900">{bill.propertyAddress}</td>
+                      <td className="px-4 py-3 text-slate-900" title={bill.propertyAddress}>
+                        {getShortPropertyName(bill.propertyAddress)}
+                      </td>
                       <td className="px-4 py-3 text-slate-700">{bill.description}</td>
                       <td className="px-4 py-3 text-right text-slate-900">${bill.amount.toFixed(2)}</td>
                       <td className="px-4 py-3 text-slate-700">

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { formatDateOnly, formatMonthYearFromParts, getDateOnlyParts, parseDateOnly } from "@/lib/date-only";
+import { getShortPropertyName } from "@/lib/property-short-name";
 
 type Property = {
   id: string;
@@ -337,7 +338,9 @@ export default function TenantPayments() {
                           const billTitle = `${billTypeLabel}${billDetail}`;
                           const selectedProperty =
                             properties.find((p) => p.id === selectedPropertyId) || properties[0];
-                          const propertyDisplay = selectedProperty?.name || selectedProperty?.address || "Property";
+                          const propertyDisplay = getShortPropertyName(
+                            selectedProperty?.address || selectedProperty?.name || "Property"
+                          );
                           return (
                             <label key={bill.id} className="flex items-start gap-2 text-sm text-slate-700">
                               <input
@@ -442,7 +445,7 @@ export default function TenantPayments() {
                 >
                   {properties.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name || p.address || "Property"}
+                      {getShortPropertyName(p.address || p.name || "Property")}
                     </option>
                   ))}
                 </select>

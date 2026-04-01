@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ROISpeedometer from "@/app/components/ROISpeedometer";
 import { formatDateOnly } from "@/lib/date-only";
+import { getShortPropertyName } from "@/lib/property-short-name";
 
 type PropertyMetrics = {
   id: string;
@@ -251,7 +252,9 @@ export default function AdminDashboard() {
                     ) : (
                       data.properties.map((property, idx) => (
                         <tr key={property.id} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                          <td className="py-3 px-4 font-medium text-slate-900">{property.address}</td>
+                          <td className="py-3 px-4 font-medium text-slate-900" title={property.address}>
+                            {getShortPropertyName(property.address)}
+                          </td>
                           <td className="py-3 px-4 text-right">{formatCurrency(property.monthly_rent)}</td>
                           <td className="py-3 px-4 text-right">{formatDate(property.lease_end)}</td>
                           <td className="py-3 px-4 text-center">
@@ -373,7 +376,9 @@ export default function AdminDashboard() {
                               minute: "2-digit",
                             })}
                           </td>
-                          <td className="py-3 px-4">{request.property_address}</td>
+                          <td className="py-3 px-4" title={request.property_address}>
+                            {getShortPropertyName(request.property_address)}
+                          </td>
                           <td className="py-3 px-4">
                             <div className="font-medium text-slate-900">{request.tenant_name}</div>
                             <div className="text-xs text-slate-500">{request.tenant_email}</div>
@@ -432,7 +437,9 @@ export default function AdminDashboard() {
                     <tbody className="divide-y divide-slate-100 text-slate-800">
                       {data.pendingPayments.map((p, idx) => (
                         <tr key={`${p.property_id}-${p.month}-${p.year}`} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                          <td className="py-3 px-4">{p.address}</td>
+                          <td className="py-3 px-4" title={p.address}>
+                            {getShortPropertyName(p.address)}
+                          </td>
                           <td className="py-3 px-4">{monthNames[p.month - 1]} {p.year}</td>
                           <td className="py-3 px-4 text-right">${(p.amount_due || 0).toLocaleString()}</td>
                         </tr>

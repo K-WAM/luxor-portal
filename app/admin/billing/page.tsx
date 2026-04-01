@@ -3,6 +3,7 @@
 import React, { useMemo, useEffect, useState } from "react";
 import { formatDateOnly, parseDateOnly } from "@/lib/date-only";
 import { getStatusBadgeClass } from "@/app/admin/billing/utils";
+import { getShortPropertyName } from "@/lib/property-short-name";
 
 type TenantOption = {
   userId: string;
@@ -493,7 +494,7 @@ export default function AdminBilling() {
               <option value="">Select property...</option>
               {properties.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.address}
+                  {getShortPropertyName(p.address)}
                 </option>
               ))}
             </select>
@@ -651,7 +652,7 @@ export default function AdminBilling() {
             <option value="">All Properties</option>
             {properties.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.address}
+                {getShortPropertyName(p.address)}
               </option>
             ))}
           </select>
@@ -737,7 +738,9 @@ export default function AdminBilling() {
                       </td>
                       <td className="px-4 py-3 text-slate-700 break-words min-w-[220px]">
                         {isVoided ? (
-                          bill.propertyAddress || bill.propertyId
+                          <span title={bill.propertyAddress || bill.propertyId}>
+                            {getShortPropertyName(bill.propertyAddress) || bill.propertyId}
+                          </span>
                         ) : (
                           <select
                             className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full min-w-[210px]"
@@ -751,7 +754,7 @@ export default function AdminBilling() {
                           >
                             {properties.map((p) => (
                               <option key={p.id} value={p.id}>
-                                {p.address}
+                                {getShortPropertyName(p.address)}
                               </option>
                             ))}
                           </select>

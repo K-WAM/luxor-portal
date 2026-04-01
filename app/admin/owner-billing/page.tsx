@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatDateOnly, parseDateOnly } from "@/lib/date-only";
 import { getStatusBadgeClass } from "@/app/admin/billing/utils";
+import { getShortPropertyName } from "@/lib/property-short-name";
 
 type BillRow = {
   id: string;
@@ -718,7 +719,9 @@ export default function OwnerBillingDetailsPage() {
                   return (
                     <tr key={group.propertyId} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-5 py-3.5 text-sm font-medium text-slate-900">
-                        {group.propertyAddress || group.propertyId}
+                        <span title={group.propertyAddress || group.propertyId}>
+                          {getShortPropertyName(group.propertyAddress) || group.propertyId}
+                        </span>
                       </td>
                       <td className="px-5 py-3.5 text-sm text-slate-600">
                         {isEditing ? (
@@ -844,13 +847,13 @@ export default function OwnerBillingDetailsPage() {
               value={newBill.propertyId}
               onChange={(e) => setNewBill((prev) => ({ ...prev, propertyId: e.target.value }))}
             >
-              <option value="">Select property...</option>
-              {properties.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.address}
-                </option>
-              ))}
-            </select>
+                  <option value="">Select property...</option>
+                  {properties.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {getShortPropertyName(p.address)}
+                    </option>
+                  ))}
+                </select>
           </div>
           <div className="flex flex-col text-sm">
             <label className="text-slate-600 mb-1">Owner</label>
@@ -982,7 +985,7 @@ export default function OwnerBillingDetailsPage() {
             <option value="">All Properties</option>
             {properties.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.address}
+                {getShortPropertyName(p.address)}
               </option>
             ))}
           </select>
@@ -1064,7 +1067,9 @@ export default function OwnerBillingDetailsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-slate-800 break-words min-w-[240px]">
-                        {bill.propertyAddress || bill.property || bill.propertyId}
+                        <span title={bill.propertyAddress || bill.property || bill.propertyId}>
+                          {getShortPropertyName(bill.propertyAddress || bill.property) || bill.propertyId}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-slate-700 break-words min-w-[140px]">
                         {OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || bill.category || "PM fee"}
