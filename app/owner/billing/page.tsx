@@ -33,6 +33,25 @@ const getDueDateMs = (dateStr?: string | null) => {
   return date ? date.getTime() : null;
 };
 
+const getDisplayStatus = (status?: string | null, dueDate?: string | null) => {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "paid") return "Paid";
+  if (normalized === "processing") return "Processing (ACH)";
+  if (normalized === "voided") return "Voided";
+
+  const due = parseDateOnly(dueDate);
+  if (!due) return "Due";
+
+  const now = new Date();
+  const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const tomorrowUtcMs = todayUtcMs + DAY_MS;
+  const dueUtcMs = due.getTime();
+
+  if (dueUtcMs < todayUtcMs) return "Overdue";
+  if (dueUtcMs === tomorrowUtcMs) return "Due Tomorrow";
+  return "Upcoming";
+};
+
 const getQualifyingBills = (items: Bill[], nowMs: number) => {
   const windowEndMs = nowMs + 30 * DAY_MS;
   return items.filter((bill) => {
@@ -169,8 +188,8 @@ export default function OwnerBilling() {
       const bTime = bDate ? bDate.getTime() : Number.MAX_SAFE_INTEGER;
       return aTime - bTime;
     });
-  const activeFiltered = filtered.filter((bill) => bill.status !== "paid");
-  const paidFiltered = filtered.filter((bill) => bill.status === "paid");
+  const activeFiltered = filtered.filter((bill) => getDisplayStatus(bill.status, bill.dueDate) !== "Paid");
+  const paidFiltered = filtered.filter((bill) => getDisplayStatus(bill.status, bill.dueDate) === "Paid");
   const displayedFiltered = showPaidInvoices ? [...activeFiltered, ...paidFiltered] : activeFiltered;
 
   const nowMs = Date.now();
@@ -399,7 +418,9 @@ export default function OwnerBilling() {
         ) : (
           <>
             <div className="md:hidden space-y-3 p-4">
-              {displayedFiltered.map((bill) => (
+              {displayedFiltered.map((bill) => {
+                const displayStatus = getDisplayStatus(bill.status, bill.dueDate);
+                return (
                 <div key={bill.id} className="border border-slate-200 rounded-lg p-3">
                   <div className="text-sm font-semibold text-slate-900" title={bill.propertyAddress}>
                     {getShortPropertyName(bill.propertyAddress)}
@@ -416,18 +437,18 @@ export default function OwnerBilling() {
                   <div className="mt-2 flex items-center justify-between">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        bill.status === "paid"
+                        displayStatus === "Paid"
                           ? "bg-emerald-100 text-emerald-700"
-                          : bill.status === "overdue"
+                          : displayStatus === "Processing (ACH)"
+                          ? "bg-blue-100 text-blue-700"
+                          : displayStatus === "Overdue"
                           ? "bg-red-100 text-red-700"
-                          : bill.status === "voided"
+                          : displayStatus === "Voided"
                           ? "bg-slate-100 text-slate-600"
                           : "bg-amber-100 text-amber-800"
                       }`}
                     >
-                      {bill.status === "processing"
-                        ? "Processing (ACH)"
-                        : bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
+                      {displayStatus}
                     </span>
                     {bill.invoiceUrl ? (
                       <a
@@ -443,7 +464,8 @@ export default function OwnerBilling() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
@@ -458,7 +480,9 @@ export default function OwnerBilling() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {displayedFiltered.map((bill) => (
+                  {displayedFiltered.map((bill) => {
+                    const displayStatus = getDisplayStatus(bill.status, bill.dueDate);
+                    return (
                     <tr key={bill.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 text-slate-900" title={bill.propertyAddress}>
                         {getShortPropertyName(bill.propertyAddress)}
@@ -471,18 +495,18 @@ export default function OwnerBilling() {
                       <td className="px-4 py-3">
                         <span
                           className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            bill.status === "paid"
+                            displayStatus === "Paid"
                               ? "bg-emerald-100 text-emerald-700"
-                              : bill.status === "overdue"
+                              : displayStatus === "Processing (ACH)"
+                              ? "bg-blue-100 text-blue-700"
+                              : displayStatus === "Overdue"
                               ? "bg-red-100 text-red-700"
-                              : bill.status === "voided"
+                              : displayStatus === "Voided"
                               ? "bg-slate-100 text-slate-600"
                               : "bg-amber-100 text-amber-800"
                           }`}
                         >
-                          {bill.status === "processing"
-                            ? "Processing (ACH)"
-                            : bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
+                          {displayStatus}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -495,7 +519,8 @@ export default function OwnerBilling() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
