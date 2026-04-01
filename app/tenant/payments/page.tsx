@@ -177,7 +177,26 @@ export default function TenantPayments() {
     return date ? date.getTime() : null;
   };
 
-  // Memoize to prevent infinite render loop (windowEndMs → qualifyingBills → useEffect → setState)
+  const getDisplayStatus = (status?: string | null, dueDate?: string | null) => {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized === "paid") return "Paid";
+    if (normalized === "processing") return "Processing (ACH)";
+    if (normalized === "voided") return "Voided";
+
+    const due = parseDateOnly(dueDate);
+    if (!due) return "Due";
+
+    const now = new Date();
+    const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const tomorrowUtcMs = todayUtcMs + DAY_MS;
+    const dueUtcMs = due.getTime();
+
+    if (dueUtcMs < todayUtcMs) return "Overdue";
+    if (dueUtcMs === tomorrowUtcMs) return "Due Tomorrow";
+    return "Upcoming";
+  };
+
+  // Memoize to prevent infinite render loop (windowEndMs -> qualifyingBills -> useEffect -> setState)
   const nowMs = useMemo(() => Date.now(), []);
   const windowEndMs = nowMs + 30 * DAY_MS;
 
@@ -187,12 +206,6 @@ export default function TenantPayments() {
       .map((bill) => {
         const label = BILL_TYPE_LABELS[bill.bill_type] || bill.bill_type;
         const detail = bill.description ? ` - ${bill.description}` : "";
-        const dueParts = getDateOnlyParts(bill.due_date);
-        const dueMs = dueParts
-          ? new Date(Date.UTC(dueParts.year, dueParts.month - 1, dueParts.day)).getTime()
-          : null;
-        const isUnpaid = bill.status !== "paid" && bill.status !== "processing";
-        const isFutureUnpaid = isUnpaid && dueMs !== null && dueMs > nowMs + 10 * DAY_MS;
         return {
           id: bill.id,
           year: bill.year,
@@ -201,10 +214,10 @@ export default function TenantPayments() {
           description: `${label}${detail}`,
           amount: bill.amount || 0,
           status: bill.status || "due",
+          displayStatus: getDisplayStatus(bill.status, bill.due_date),
           dueDate: bill.due_date,
           invoiceUrl: bill.invoice_url,
           paymentLinkUrl: bill.payment_link_url,
-          isFutureUnpaid,
         };
       })
       .sort((a, b) => {
@@ -220,8 +233,8 @@ export default function TenantPayments() {
       });
   }, [bills, year]);
 
-  const activeBillRows = useMemo(() => billRows.filter((row) => row.status !== "paid"), [billRows]);
-  const paidBillRows = useMemo(() => billRows.filter((row) => row.status === "paid"), [billRows]);
+  const activeBillRows = useMemo(() => billRows.filter((row) => row.displayStatus !== "Paid"), [billRows]);
+  const paidBillRows = useMemo(() => billRows.filter((row) => row.displayStatus === "Paid"), [billRows]);
   const displayedBillRows = showPaidBills ? [...activeBillRows, ...paidBillRows] : activeBillRows;
 
   const qualifyingBills = useMemo(() => {
@@ -492,25 +505,19 @@ export default function TenantPayments() {
                         <span className="font-semibold">{formatCurrency(row.amount)}</span>
                       </div>
                       <div className="mt-2 flex items-center justify-between">
-                        {row.isFutureUnpaid ? (
-                          <span className="text-xs text-gray-400">—</span>
-                        ) : (
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            row.status === "paid"
+                            row.displayStatus === "Paid"
                               ? "bg-emerald-100 text-emerald-700"
-                              : row.status === "processing"
+                              : row.displayStatus === "Processing (ACH)"
                               ? "bg-blue-100 text-blue-700"
+                              : row.displayStatus === "Overdue"
+                              ? "bg-red-100 text-red-700"
                               : "bg-orange-100 text-orange-700"
                           }`}
                         >
-                          {row.status === "paid"
-                            ? "Paid"
-                            : row.status === "processing"
-                            ? "Processing (ACH)"
-                            : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                          {row.displayStatus}
                         </span>
-                        )}
                         {row.invoiceUrl ? (
                           <a href={row.invoiceUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 text-xs">
                             Invoice PDF
@@ -545,25 +552,19 @@ export default function TenantPayments() {
                             {formatDateOnly(row.dueDate) || "-"}
                           </td>
                           <td className="py-2 px-3">
-                            {row.isFutureUnpaid ? (
-                              <span className="text-xs text-gray-400">—</span>
-                            ) : (
                             <span
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                row.status === "paid"
+                                row.displayStatus === "Paid"
                                   ? "bg-emerald-100 text-emerald-700"
-                                  : row.status === "processing"
+                                  : row.displayStatus === "Processing (ACH)"
                                   ? "bg-blue-100 text-blue-700"
+                                  : row.displayStatus === "Overdue"
+                                  ? "bg-red-100 text-red-700"
                                   : "bg-orange-100 text-orange-700"
                               }`}
                             >
-                              {row.status === "paid"
-                                ? "Paid"
-                                : row.status === "processing"
-                                ? "Processing (ACH)"
-                                : row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                              {row.displayStatus}
                             </span>
-                            )}
                           </td>
                           <td className="py-2 px-3 text-right font-semibold">
                             {formatCurrency(row.amount)}
