@@ -5,6 +5,10 @@ import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import { getDateOnlyParts } from "@/lib/date-only";
 import { calculateExpectedAnnualNet, calculateExpectedRoi } from "@/lib/financial-calculations";
 
+const toUtcDateOnlyString = (date: Date) => date.toISOString().slice(0, 10);
+const getJoinedPropertyAddress = (joined: any) =>
+  Array.isArray(joined) ? joined[0]?.address || "" : joined?.address || "";
+
 export async function GET(request: Request) {
   try {
     const { user, role } = await getAuthContext();
@@ -16,6 +20,11 @@ export async function GET(request: Request) {
     const yearParam = searchParams.get("year");
     const currentYear = yearParam ? parseInt(yearParam, 10) || new Date().getFullYear() : new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
+    const now = new Date();
+    const monthAfterNextStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1));
+    const endOfNextMonth = new Date(Date.UTC(monthAfterNextStart.getUTCFullYear(), monthAfterNextStart.getUTCMonth(), 0));
+    const endOfNextMonthDate = toUtcDateOnlyString(endOfNextMonth);
+    const monthAfterNextStartDate = toUtcDateOnlyString(monthAfterNextStart);
 
     // Fetch all properties with their latest financial data
     const { data: properties, error: propsError } = await supabaseAdmin
@@ -272,6 +281,98 @@ export async function GET(request: Request) {
       console.error("Error fetching users:", authError);
     }
 
+    const authUserList = authUsers?.users || [];
+    const userEmailMap = new Map<string, string>();
+    const userNameMap = new Map<string, string>();
+    authUserList.forEach((u) => {
+      const metadata = (u.user_metadata as Record<string, any>) || {};
+      const name =
+        (typeof metadata.full_name === "string" && metadata.full_name.trim()) ||
+        (typeof metadata.name === "string" && metadata.name.trim()) ||
+        (u.email ? u.email.split("@")[0] : "") ||
+        u.id;
+
+      userEmailMap.set(u.id, u.email || "");
+      userNameMap.set(u.id, name);
+    });
+
+    const [tenantBillingSummary, ownerBillingSummary] = await Promise.all([
+      supabaseAdmin
+        .from("tenant_bills")
+        .select(`
+          id,
+          tenant_id,
+          property_id,
+          amount,
+          description,
+          due_date,
+          status,
+          properties ( address )
+        `)
+        .neq("status", "paid")
+        .neq("status", "voided")
+        .not("due_date", "is", null)
+        .lte("due_date", endOfNextMonthDate)
+        .order("due_date", { ascending: true }),
+      supabaseAdmin
+        .from("billing_invoices")
+        .select(`
+          id,
+          owner_id,
+          property_id,
+          total_due,
+          fee_amount,
+          description,
+          due_date,
+          status,
+          properties ( address )
+        `)
+        .neq("status", "paid")
+        .neq("status", "voided")
+        .not("due_date", "is", null)
+        .lte("due_date", endOfNextMonthDate)
+        .order("due_date", { ascending: true }),
+    ]);
+
+    if (tenantBillingSummary.error) {
+      console.error("Error fetching tenant billing summary:", tenantBillingSummary.error);
+      return NextResponse.json({ error: "Failed to fetch tenant billing summary" }, { status: 500 });
+    }
+
+    if (ownerBillingSummary.error) {
+      console.error("Error fetching owner billing summary:", ownerBillingSummary.error);
+      return NextResponse.json({ error: "Failed to fetch owner billing summary" }, { status: 500 });
+    }
+
+    const billingSummaryRows = [
+      ...((tenantBillingSummary.data || []) as any[]).map((bill) => ({
+        id: bill.id,
+        billType: "tenant",
+        counterpartyId: bill.tenant_id,
+        counterpartyName: userNameMap.get(bill.tenant_id) || userEmailMap.get(bill.tenant_id) || "Tenant",
+        counterpartyEmail: userEmailMap.get(bill.tenant_id) || "",
+        propertyId: bill.property_id,
+        propertyAddress: getJoinedPropertyAddress(bill.properties),
+        dueDate: bill.due_date,
+        status: bill.status,
+        amount: Number(bill.amount || 0),
+        description: bill.description || "",
+      })),
+      ...((ownerBillingSummary.data || []) as any[]).map((bill) => ({
+        id: bill.id,
+        billType: "owner",
+        counterpartyId: bill.owner_id,
+        counterpartyName: userNameMap.get(bill.owner_id) || userEmailMap.get(bill.owner_id) || "Owner",
+        counterpartyEmail: userEmailMap.get(bill.owner_id) || "",
+        propertyId: bill.property_id,
+        propertyAddress: getJoinedPropertyAddress(bill.properties),
+        dueDate: bill.due_date,
+        status: bill.status,
+        amount: Number(bill.total_due ?? bill.fee_amount ?? 0),
+        description: bill.description || "",
+      })),
+    ].filter((bill) => bill.dueDate && bill.dueDate < monthAfterNextStartDate);
+
     // Get user-property associations
     const { data: userProperties, error: upError } = await supabaseAdmin
       .from("user_properties")
@@ -314,6 +415,7 @@ export async function GET(request: Request) {
       openMaintenanceRequests: maintenanceWithProperties,
       users,
       pendingPayments,
+      billingSummaryRows,
     });
   } catch (error) {
     console.error("Error in GET /api/admin/dashboard:", error);
