@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import ROISpeedometer from "@/app/components/ROISpeedometer";
 import { formatDateOnly, parseDateOnly } from "@/lib/date-only";
 import { getShortPropertyName } from "@/lib/property-short-name";
 
@@ -38,21 +37,9 @@ type MaintenanceRequest = {
   created_at: string;
 };
 
-type User = {
-  id: string;
-  email: string;
-  phone: string;
-  created_at: string;
-  last_sign_in: string | null;
-  roles: string;
-  properties: string;
-  status: string;
-};
-
 type DashboardData = {
   properties: PropertyMetrics[];
   openMaintenanceRequests: MaintenanceRequest[];
-  users: User[];
   pendingPayments: {
     property_id: string;
     address: string;
@@ -295,15 +282,6 @@ export default function AdminDashboard() {
     );
   };
 
-  const calculateAverageROI = () => {
-    if (!data || data.properties.length === 0) return 0;
-    const totalROI = data.properties.reduce(
-      (sum, property) => sum + parseFloat(property.roi_before_tax),
-      0
-    );
-    return totalROI / data.properties.length;
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="max-w-7xl mx-auto p-6 md:p-10 space-y-6">
@@ -343,29 +321,6 @@ export default function AdminDashboard() {
 
         {!loading && !error && data && (
           <>
-            {/* ROI Speedometer */}
-            <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Average Portfolio ROI (Pre-Tax)</h2>
-                  <p className="text-sm text-slate-500">Across all properties</p>
-                </div>
-              </div>
-              <div className="flex justify-center">
-                <ROISpeedometer
-                  value={calculateAverageROI()}
-                  max={25}
-                  zones={{
-                    red: { min: 0, max: 3.9, color: "#ef4444" },
-                    yellow: { min: 4, max: 5.9, color: "#eab308" },
-                    green: { min: 6, max: 8, color: "#22c55e" },
-                  }}
-                  title=""
-                  size="large"
-                />
-              </div>
-            </section>
-
             {/* Properties Overview */}
             <section className="bg-white border border-slate-200 rounded-xl shadow-sm">
               <div className="px-6 py-4 border-b border-slate-200">
@@ -780,70 +735,6 @@ export default function AdminDashboard() {
               )}
             </section>
 
-            {/* Users Management */}
-            <section className="bg-white border border-slate-200 rounded-xl shadow-sm">
-              <div className="px-6 py-4 border-b border-slate-200">
-                <h2 className="text-lg font-semibold text-slate-900">Users & Access Management</h2>
-                <p className="text-sm text-slate-500">Overview of users and their linked properties.</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-slate-600">
-                    <tr>
-                      <th className="py-3 px-4 text-left font-medium">Email</th>
-                      <th className="py-3 px-4 text-left font-medium">Phone</th>
-                      <th className="py-3 px-4 text-left font-medium">Role(s)</th>
-                      <th className="py-3 px-4 text-left font-medium">Properties</th>
-                      <th className="py-3 px-4 text-left font-medium">Status</th>
-                      <th className="py-3 px-4 text-left font-medium">Created</th>
-                      <th className="py-3 px-4 text-left font-medium">Last Sign In</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-800">
-                    {data.users.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="py-8 px-4 text-center text-slate-500">
-                          No users found.
-                        </td>
-                      </tr>
-                    ) : (
-                      data.users.map((user, idx) => (
-                        <tr key={user.id} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                          <td className="py-3 px-4 font-medium text-slate-900">{user.email}</td>
-                          <td className="py-3 px-4 text-slate-600">{user.phone || "-"}</td>
-                          <td className="py-3 px-4">
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
-                              {user.roles || "none"}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-slate-600 text-xs max-w-xs truncate">
-                            {user.properties || "-"}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-                              {user.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-slate-600">
-                            {formatDate(user.created_at)}
-                          </td>
-                          <td className="py-3 px-4 text-slate-600">
-                            {user.last_sign_in
-                              ? new Date(user.last_sign_in).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })
-                              : "Never"}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
           </>
         )}
       </div>
