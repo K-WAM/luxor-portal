@@ -101,6 +101,7 @@ export default function AdminDashboard() {
   const [currentMonthBillTypeFilter, setCurrentMonthBillTypeFilter] = useState("all");
   const [currentMonthStatusFilter, setCurrentMonthStatusFilter] = useState("all");
   const [nextMonthPropertyFilter, setNextMonthPropertyFilter] = useState("all");
+  const [nextMonthBillTypeFilter, setNextMonthBillTypeFilter] = useState("all");
   const [selectedBillingIds, setSelectedBillingIds] = useState<string[]>([]);
 
   const propertyFilterOptions = useMemo(() => {
@@ -178,6 +179,7 @@ export default function AdminDashboard() {
         const dueMonthKey = `${bill.dueDateObj.getUTCFullYear()}-${bill.dueDateObj.getUTCMonth() + 1}`;
         if (dueMonthKey !== nextMonthKey) return false;
         if (nextMonthPropertyFilter !== "all" && bill.propertyId !== nextMonthPropertyFilter) return false;
+        if (nextMonthBillTypeFilter !== "all" && bill.billType !== nextMonthBillTypeFilter) return false;
         return true;
       })
       .sort((a, b) => {
@@ -186,7 +188,7 @@ export default function AdminDashboard() {
         if (aTime !== bTime) return aTime - bTime;
         return a.billType.localeCompare(b.billType);
       });
-  }, [data?.billingSummaryRows, nextMonthPropertyFilter]);
+  }, [data?.billingSummaryRows, nextMonthBillTypeFilter, nextMonthPropertyFilter]);
 
   const currentMonthTenantSubtotal = currentMonthBillingRows
     .filter((bill) => bill.billType === "tenant")
@@ -663,13 +665,13 @@ export default function AdminDashboard() {
                   Forecast of expected owner and tenant billing due in {nextMonthName}.
                 </p>
               </div>
-              <div className="px-6 py-4 border-b border-slate-200">
+              <div className="px-6 py-4 border-b border-slate-200 grid gap-3 md:grid-cols-2">
                 <label className="text-sm text-slate-600">
                   <span className="block mb-1 font-medium text-slate-700">Property</span>
                   <select
                     value={nextMonthPropertyFilter}
                     onChange={(e) => setNextMonthPropertyFilter(e.target.value)}
-                    className="w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                   >
                     <option value="all">All Properties</option>
                     {propertyFilterOptions.map((option) => (
@@ -677,6 +679,18 @@ export default function AdminDashboard() {
                         {option.label}
                       </option>
                     ))}
+                  </select>
+                </label>
+                <label className="text-sm text-slate-600">
+                  <span className="block mb-1 font-medium text-slate-700">Bill Type</span>
+                  <select
+                    value={nextMonthBillTypeFilter}
+                    onChange={(e) => setNextMonthBillTypeFilter(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="all">All Bills</option>
+                    <option value="owner">Owner Bills</option>
+                    <option value="tenant">Tenant Bills</option>
                   </select>
                 </label>
               </div>
