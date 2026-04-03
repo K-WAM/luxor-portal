@@ -444,84 +444,6 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            {/* Open Maintenance Requests */}
-            <section className="bg-white border border-slate-200 rounded-xl shadow-sm">
-              <div className="px-6 py-4 border-b border-slate-200">
-                <h2 className="text-lg font-semibold text-slate-900">Open Maintenance Requests</h2>
-                <p className="text-sm text-slate-500">Manage active issues and update status.</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-slate-600">
-                    <tr>
-                      <th className="py-3 px-4 text-left font-medium">Created</th>
-                      <th className="py-3 px-4 text-left font-medium">Property</th>
-                      <th className="py-3 px-4 text-left font-medium">Tenant</th>
-                      <th className="py-3 px-4 text-left font-medium">Category</th>
-                      <th className="py-3 px-4 text-left font-medium">Description</th>
-                      <th className="py-3 px-4 text-left font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-800">
-                    {data.openMaintenanceRequests.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-8 px-4 text-center text-slate-500">
-                          No open maintenance requests.
-                        </td>
-                      </tr>
-                    ) : (
-                      data.openMaintenanceRequests.map((request, idx) => (
-                        <tr key={request.id} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                          <td className="py-3 px-4">
-                            {new Date(request.created_at).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </td>
-                          <td className="py-3 px-4" title={request.property_address}>
-                            {getShortPropertyName(request.property_address)}
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="font-medium text-slate-900">{request.tenant_name}</div>
-                            <div className="text-xs text-slate-500">{request.tenant_email}</div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-slate-100 text-slate-700">
-                              {request.category || "General"}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 max-w-xs">
-                            <div className="line-clamp-2 text-slate-700">{request.description}</div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <select
-                                className="border border-slate-300 rounded-md px-3 py-1.5 text-sm bg-white"
-                                value={request.status}
-                                onChange={(e) => updateMaintenanceStatus(request.id, e.target.value)}
-                                disabled={savingId === request.id}
-                              >
-                                {STATUS_OPTIONS.map((s) => (
-                                  <option key={s.value} value={s.value}>
-                                    {s.label}
-                                  </option>
-                                ))}
-                              </select>
-                              {savingId === request.id && (
-                                <span className="text-xs text-slate-500">Saving...</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
             <section className="bg-white border border-slate-200 rounded-xl shadow-sm">
               <div className="px-6 py-4 border-b border-slate-200">
                 <h2 className="text-lg font-semibold text-slate-900">Bills Due This Month</h2>
@@ -748,6 +670,83 @@ export default function AdminDashboard() {
                 <div className="p-4 text-sm text-slate-600">No actionable bills are forecast for next month.</div>
               )}
             </section>
+            {/* Open Maintenance Requests */}
+            <section className="bg-white border border-slate-200 rounded-xl shadow-sm">
+              <div className="px-6 py-4 border-b border-slate-200">
+                <h2 className="text-lg font-semibold text-slate-900">Open Maintenance Requests</h2>
+                <p className="text-sm text-slate-500">Manage active issues and update status.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="py-3 px-4 text-left font-medium">Created</th>
+                      <th className="py-3 px-4 text-left font-medium">Property</th>
+                      <th className="py-3 px-4 text-left font-medium">Tenant</th>
+                      <th className="py-3 px-4 text-left font-medium">Category</th>
+                      <th className="py-3 px-4 text-left font-medium">Description</th>
+                      <th className="py-3 px-4 text-left font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-800">
+                    {data.openMaintenanceRequests.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 px-4 text-center text-slate-500">
+                          No open maintenance requests.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.openMaintenanceRequests.map((request, idx) => (
+                        <tr key={request.id} className={idx % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                          <td className="py-3 px-4">
+                            {new Date(request.created_at).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </td>
+                          <td className="py-3 px-4" title={request.property_address}>
+                            {getShortPropertyName(request.property_address)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-medium text-slate-900">{request.tenant_name}</div>
+                            <div className="text-xs text-slate-500">{request.tenant_email}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-slate-100 text-slate-700">
+                              {request.category || "General"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 max-w-xs">
+                            <div className="line-clamp-2 text-slate-700">{request.description}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <select
+                                className="border border-slate-300 rounded-md px-3 py-1.5 text-sm bg-white"
+                                value={request.status}
+                                onChange={(e) => updateMaintenanceStatus(request.id, e.target.value)}
+                                disabled={savingId === request.id}
+                              >
+                                {STATUS_OPTIONS.map((s) => (
+                                  <option key={s.value} value={s.value}>
+                                    {s.label}
+                                  </option>
+                                ))}
+                              </select>
+                              {savingId === request.id && (
+                                <span className="text-xs text-slate-500">Saving...</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
           </>
         )}
@@ -755,3 +754,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
