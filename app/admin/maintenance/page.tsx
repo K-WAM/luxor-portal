@@ -98,7 +98,6 @@ export default function MaintenanceRequestsPage() {
     loadData();
   }, []);
 
-  const shortId = (id: string) => (id ? id.slice(0, 8) : "ID");
   const loadData = async () => {
     try {
       setLoading(true);
@@ -377,14 +376,12 @@ export default function MaintenanceRequestsPage() {
     return "< 1h";
   };
 
-  const formatDate = (value?: string) =>
+  const formatDateShort = (value?: string) =>
     value
       ? new Date(value).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
         })
       : "N/A";
 
@@ -577,18 +574,16 @@ export default function MaintenanceRequestsPage() {
         ) : (
           <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-fixed">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">ID</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Date Placed</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Age</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Property</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Tenant</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Category</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Description</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Opened</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[9%]">Age</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[11%]">Property</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Tenant</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[24%]">Description</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Status</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[16%]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -597,28 +592,24 @@ export default function MaintenanceRequestsPage() {
                     return (
                     <React.Fragment key={req.id}>
                       <tr className={`transition-colors ${isRed ? "bg-red-50 hover:bg-red-100" : "hover:bg-slate-50"}`}>
-                        <td className="px-4 py-3 text-sm font-mono text-slate-500">{shortId(req.id)}</td>
-                        <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">{formatDate(req.createdAt)}</td>
-                        <td className="px-4 py-3 text-sm whitespace-nowrap">
+                        <td className="px-3 py-3 align-top text-sm text-slate-700">{formatDateShort(req.createdAt)}</td>
+                        <td className="px-3 py-3 align-top text-sm">
                           <span className={isRed ? "font-semibold text-red-700" : "text-slate-600"}>
                             {getElapsedTime(req.createdAt)}
                             {isRed && <span className="ml-1 text-xs">(overdue)</span>}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-slate-900 font-medium" title={req.propertyAddress || req.propertyId || "N/A"}>
+                        <td className="px-3 py-3 align-top text-sm text-slate-900 font-medium" title={req.propertyAddress || req.propertyId || "N/A"}>
                           {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
                         </td>
-                        <td className="px-4 py-3 text-sm">
+                        <td className="px-3 py-3 align-top text-sm">
                           <div className="font-medium text-slate-900">{req.tenantName}</div>
                           <div className="text-slate-500 text-xs">{req.tenantEmail}</div>
                         </td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{req.category || "General"}</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-slate-700 max-w-xs">
-                          <p className="truncate">{req.description}</p>
+                        <td className="px-3 py-3 align-top text-sm text-slate-700">
+                          <p className="whitespace-normal break-words">{req.description}</p>
                           {req.schedulingDetails?.confirmed && (
-                            <p className="text-xs text-emerald-700 mt-0.5 truncate">
+                            <p className="text-xs text-emerald-700 mt-0.5 whitespace-normal break-words">
                               Scheduled: {req.schedulingDetails.confirmed.date} ({req.schedulingDetails.confirmed.window})
                             </p>
                           )}
@@ -628,10 +619,10 @@ export default function MaintenanceRequestsPage() {
                             </p>
                           ) : null}
                           {req.internalComments && (
-                            <p className="text-xs text-slate-500 mt-0.5 italic truncate">Note: {req.internalComments}</p>
+                            <p className="text-xs text-slate-500 mt-0.5 italic whitespace-normal break-words">Note: {req.internalComments}</p>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm">
+                        <td className="px-3 py-3 align-top text-sm">
                           <select
                             className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             value={req.status}
@@ -644,7 +635,8 @@ export default function MaintenanceRequestsPage() {
                           </select>
                           {savingId === req.id && <span className="ml-2 text-xs text-gray-500">Saving...</span>}
                         </td>
-                        <td className="px-4 py-3 text-sm space-x-2 whitespace-nowrap">
+                        <td className="px-3 py-3 align-top text-sm">
+                          <div className="flex flex-wrap gap-2">
                           <button
                             className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-60"
                             onClick={() => startEdit(req)}
@@ -675,11 +667,12 @@ export default function MaintenanceRequestsPage() {
                           >
                             Delete
                           </button>
+                          </div>
                         </td>
                       </tr>
                       {editingRequestId === req.id && (
                         <tr>
-                          <td colSpan={9} className="bg-slate-50 px-4 py-3">
+                          <td colSpan={7} className="bg-slate-50 px-4 py-3">
                             <form className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm" onSubmit={handleEditSubmit}>
                               <div className="flex flex-col gap-1">
                                 <label className="font-medium">Property</label>
@@ -755,7 +748,7 @@ export default function MaintenanceRequestsPage() {
                       )}
                       {respondingRequestId === req.id && (
                         <tr>
-                          <td colSpan={9} className="bg-slate-50 px-4 py-3">
+                          <td colSpan={7} className="bg-slate-50 px-4 py-3">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm border border-slate-200 rounded-md p-3">
                               <div className="md:col-span-3 font-medium text-sm">Scheduling response</div>
                               <div className="flex flex-col gap-1 md:col-span-3">
@@ -835,7 +828,7 @@ export default function MaintenanceRequestsPage() {
                       )}
                       {editingNotes === req.id && (
                         <tr>
-                          <td colSpan={9} className="bg-slate-50 px-4 py-3">
+                          <td colSpan={7} className="bg-slate-50 px-4 py-3">
                             <textarea
                               className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               rows={3}
@@ -880,50 +873,42 @@ export default function MaintenanceRequestsPage() {
         ) : (
           <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-fixed">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">ID</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Property</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Tenant</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Opened</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Closed</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Cost</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[11%]">Property</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[17%]">Tenant</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[27%]">Description</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[12%]">Opened</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[12%]">Closed</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[9%]">Cost</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[12%]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
             {closedRequests.map((req) => (
               <React.Fragment key={req.id}>
                 <tr className="hover:bg-slate-50 transition-colors text-sm">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-400">{shortId(req.id)}</td>
-                  <td className="px-4 py-3 text-slate-700 font-medium" title={req.propertyAddress || req.propertyId || "N/A"}>
+                  <td className="px-3 py-3 align-top text-slate-700 font-medium" title={req.propertyAddress || req.propertyId || "N/A"}>
                     {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 align-top">
                     <div className="text-slate-800">{req.tenantName}</div>
                     <div className="text-xs text-slate-400">{req.tenantEmail}</div>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                      {req.category || "General"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 max-w-xs">
-                    <p className="truncate">{req.description}</p>
+                  <td className="px-3 py-3 align-top text-slate-600">
+                    <p className="whitespace-normal break-words">{req.description}</p>
                     {req.internalComments && (
-                      <p className="text-xs text-slate-400 italic truncate mt-0.5">Note: {req.internalComments}</p>
+                      <p className="text-xs text-slate-400 italic whitespace-normal break-words mt-0.5">Note: {req.internalComments}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDate(req.createdAt)}</td>
-                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDate(req.closedAt)}</td>
-                  <td className="px-4 py-3 text-slate-700 font-medium whitespace-nowrap">
+                  <td className="px-3 py-3 align-top text-slate-500">{formatDateShort(req.createdAt)}</td>
+                  <td className="px-3 py-3 align-top text-slate-500">{formatDateShort(req.closedAt)}</td>
+                  <td className="px-3 py-3 align-top text-slate-700 font-medium whitespace-nowrap">
                     {req.cost !== undefined && req.cost !== null ? `$${Number(req.cost).toFixed(2)}` : "—"}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
+                  <td className="px-3 py-3 align-top">
+                    <div className="flex items-center gap-2 flex-wrap">
                     <button
                       className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 text-xs disabled:opacity-60"
                       onClick={() => startEdit(req)}
@@ -943,7 +928,7 @@ export default function MaintenanceRequestsPage() {
                 </tr>
                 {editingRequestId === req.id && (
                   <tr>
-                    <td colSpan={9} className="bg-slate-50 px-4 py-3">
+                    <td colSpan={7} className="bg-slate-50 px-4 py-3">
                       <form className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm" onSubmit={handleEditSubmit}>
                         <div className="flex flex-col gap-1">
                           <label className="font-medium">Property</label>

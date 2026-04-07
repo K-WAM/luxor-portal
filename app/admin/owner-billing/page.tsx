@@ -76,6 +76,13 @@ const isValidPhone = (value: string) => {
   return digits.length >= 7 && digits.length <= 15;
 };
 
+const getCompactUserLabel = (email?: string | null, fallback = "Owner") => {
+  const normalized = String(email || "").trim();
+  if (!normalized) return fallback;
+  const localPart = normalized.split("@")[0]?.trim();
+  return localPart || fallback;
+};
+
 export default function OwnerBillingDetailsPage() {
   const [bills, setBills] = useState<BillRow[]>([]);
   const [ownerBillsLoading, setOwnerBillsLoading] = useState(false);
@@ -1016,24 +1023,22 @@ export default function OwnerBillingDetailsPage() {
         </div>
         {ownerBillNotice && <div className="px-4 py-3 text-sm text-slate-700">{ownerBillNotice}</div>}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1320px] text-sm md:table-fixed">
+          <table className="w-full table-fixed text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
               <tr>
-                <th className="px-4 py-3 text-left whitespace-normal min-w-[220px]">Owner</th>
-                <th className="px-4 py-3 text-left whitespace-normal min-w-[240px]">Property</th>
-                <th className="px-4 py-3 text-left whitespace-normal min-w-[140px]">Category</th>
-                <th className="px-4 py-3 text-left whitespace-normal min-w-[260px]">Description</th>
-                <th className="px-4 py-3 text-right whitespace-normal min-w-[130px]">Amount</th>
-                <th className="px-4 py-3 text-left whitespace-normal min-w-[150px]">Due</th>
-                <th className="px-4 py-3 text-left whitespace-normal min-w-[150px]">Status</th>
-                <th className="px-4 py-3 text-left whitespace-normal min-w-[170px]">Invoice PDF</th>
-                <th className="px-4 py-3 text-left whitespace-normal min-w-[240px]">Actions</th>
+                <th className="px-3 py-3 text-left whitespace-normal w-[14%]">Owner</th>
+                <th className="px-3 py-3 text-left whitespace-normal w-[11%]">Property</th>
+                <th className="px-3 py-3 text-left whitespace-normal w-[27%]">Bill</th>
+                <th className="px-3 py-3 text-right whitespace-normal w-[12%]">Amount</th>
+                <th className="px-3 py-3 text-left whitespace-normal w-[11%]">Due</th>
+                <th className="px-3 py-3 text-left whitespace-normal w-[11%]">Status</th>
+                <th className="px-3 py-3 text-left whitespace-normal w-[14%]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {visibleOwnerBills.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-slate-500" colSpan={9}>
+                  <td className="px-3 py-4 text-slate-500" colSpan={7}>
                     No owner bills found.
                   </td>
                 </tr>
@@ -1044,9 +1049,9 @@ export default function OwnerBillingDetailsPage() {
                   const isVoided = bill.status === "voided";
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
-                      <td className="px-4 py-3 text-slate-900 break-words min-w-[220px]">
+                      <td className="px-3 py-3 align-top text-slate-900 break-words">
                         {isVoided ? (
-                          bill.ownerEmail
+                          <span title={bill.ownerEmail}>{getCompactUserLabel(bill.ownerEmail)}</span>
                         ) : (
                           <select
                             className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
@@ -1059,49 +1064,56 @@ export default function OwnerBillingDetailsPage() {
                             }
                           >
                             {getOwnersForProperty(bill.propertyId || "").map((o) => (
-                              <option key={o.userId} value={o.userId}>
-                                {o.email || o.userId}
+                              <option key={o.userId} value={o.userId} title={o.email || o.userId}>
+                                {getCompactUserLabel(o.email, o.userId)}
                               </option>
                             ))}
                           </select>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-800 break-words min-w-[240px]">
+                      <td className="px-3 py-3 align-top text-slate-800 break-words">
                         <span title={bill.propertyAddress || bill.property || bill.propertyId}>
                           {getShortPropertyName(bill.propertyAddress || bill.property) || bill.propertyId}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700 break-words min-w-[140px]">
-                        {OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || bill.category || "PM fee"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 break-words min-w-[260px]">
+                      <td className="px-3 py-3 align-top text-slate-700 break-words">
                         {isVoided ? (
-                          bill.description || "-"
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                              {OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || bill.category || "PM fee"}
+                            </div>
+                            <div className="whitespace-normal break-words">{bill.description || "—"}</div>
+                          </div>
                         ) : (
-                          <textarea
-                            rows={2}
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full min-w-[240px] resize-none"
-                            value={edits.description ?? bill.description ?? ""}
-                            onChange={(e) =>
-                              setEditAmounts((prev) => ({
-                                ...prev,
-                                [bill.id]: { ...prev[bill.id], description: e.target.value },
-                              }))
-                            }
-                          />
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                              {OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || bill.category || "PM fee"}
+                            </div>
+                            <textarea
+                              rows={2}
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full resize-none"
+                              value={edits.description ?? bill.description ?? ""}
+                              onChange={(e) =>
+                                setEditAmounts((prev) => ({
+                                  ...prev,
+                                  [bill.id]: { ...prev[bill.id], description: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-900 min-w-[130px]">
+                      <td className="px-3 py-3 align-top text-right text-slate-900">
                         <span className={isVoided ? "line-through" : ""}>
                           ${bill.amount?.toFixed(2)}
                         </span>
                         {!isVoided && (
-                          <div className="flex items-center gap-1 mt-1 justify-end text-[11px] text-slate-600">
+                          <div className="mt-1 flex justify-end text-[11px] text-slate-600">
                             <input
                               type="number"
                               step="0.01"
                               placeholder="$ override"
-                              className="w-24 border border-slate-300 rounded px-2 py-1"
+                              className="w-full max-w-[92px] border border-slate-300 rounded px-2 py-1 text-right"
                               value={edits.feeAmount ?? (bill.feeAmount ?? "")}
                               onChange={(e) =>
                                 setEditAmounts((prev) => ({
@@ -1113,13 +1125,13 @@ export default function OwnerBillingDetailsPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-700 min-w-[150px]">
+                      <td className="px-3 py-3 align-top text-slate-700">
                         {isVoided ? (
                           formatDateOnly(bill.dueDate) || "-"
                         ) : (
                           <input
                             type="date"
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full min-w-[138px]"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={edits.dueDate ?? (bill.dueDate ? bill.dueDate.split("T")[0] : "")}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
@@ -1130,7 +1142,7 @@ export default function OwnerBillingDetailsPage() {
                           />
                         )}
                       </td>
-                      <td className="px-4 py-3 min-w-[150px]">
+                      <td className="px-3 py-3 align-top">
                         {isVoided ? (
                           <div>
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass("voided")}`}>
@@ -1142,7 +1154,7 @@ export default function OwnerBillingDetailsPage() {
                           </div>
                         ) : (
                           <select
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full min-w-[210px]"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
                             value={displayStatus}
                             onChange={(e) =>
                               setEditAmounts((prev) => ({
@@ -1159,8 +1171,8 @@ export default function OwnerBillingDetailsPage() {
                           </select>
                         )}
                       </td>
-                      <td className="px-4 py-3 min-w-[170px]">
-                        <div className="flex flex-col gap-1 min-w-[150px]">
+                      <td className="px-3 py-3 align-top">
+                        <div className="flex flex-col gap-2">
                           {bill.invoiceUrl ? (
                             <a
                               href={bill.invoiceUrl}
@@ -1174,7 +1186,7 @@ export default function OwnerBillingDetailsPage() {
                             <span className="text-xs text-slate-500">Not uploaded</span>
                           )}
                           {!isVoided && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               {bill.category === "pm_fee" ? (
                                 <div className="flex flex-col gap-1">
                                   <button
@@ -1217,12 +1229,8 @@ export default function OwnerBillingDetailsPage() {
                               )}
                             </div>
                           )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 min-w-[240px]">
-                        <div className="flex gap-2 flex-wrap">
                           {!isVoided && (
-                            <>
+                            <div className="flex gap-2 flex-wrap">
                               <button
                                 onClick={() => handleVoidOwnerBill(bill.id)}
                                 disabled={ownerBillsLoading}
@@ -1241,7 +1249,7 @@ export default function OwnerBillingDetailsPage() {
                               >
                                 {ownerStripeRefreshLoading[bill.id]
                                   ? "Refreshing..."
-                                  : "Refresh ACH Status"}
+                                  : "Refresh ACH"}
                               </button>
                               <button
                                 onClick={() => handleSave(bill)}
@@ -1250,7 +1258,7 @@ export default function OwnerBillingDetailsPage() {
                               >
                                 Save
                               </button>
-                            </>
+                            </div>
                           )}
                           <button
                             onClick={() =>
