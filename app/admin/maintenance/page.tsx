@@ -62,6 +62,8 @@ export default function MaintenanceRequestsPage() {
   const [creating, setCreating] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState("all");
+  const [showClosed, setShowClosed] = useState(false);
 
   const [createForm, setCreateForm] = useState({
     propertyId: "",
@@ -386,8 +388,11 @@ export default function MaintenanceRequestsPage() {
         })
       : "N/A";
 
-  const activeRequests = requests.filter((r) => r.status !== "closed");
-  const closedRequests = requests.filter((r) => r.status === "closed");
+  const propertyFilteredRequests = requests.filter((r) =>
+    selectedPropertyId === "all" ? true : r.propertyId === selectedPropertyId
+  );
+  const activeRequests = propertyFilteredRequests.filter((r) => r.status !== "closed");
+  const closedRequests = propertyFilteredRequests.filter((r) => r.status === "closed");
 
   const isRedRequest = (createdAt?: string) => {
     if (!createdAt) return false;
@@ -541,6 +546,30 @@ export default function MaintenanceRequestsPage() {
           </form>
         </div>
       )}
+      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="w-full md:max-w-xs">
+          <label className="block text-sm font-medium mb-1 text-slate-700">Property</label>
+          <select
+            value={selectedPropertyId}
+            onChange={(e) => setSelectedPropertyId(e.target.value)}
+            className="w-full border border-slate-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Properties</option>
+            {properties.map((p) => (
+              <option key={p.id} value={p.id}>
+                {getShortPropertyName(p.address)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowClosed((prev) => !prev)}
+          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {showClosed ? "Hide Closed" : "Show Closed"}
+        </button>
+      </div>
       <div className="mb-8">
         <h2 className="text-2xl font-semibold mb-4 text-slate-800">Active Requests ({activeRequests.length})</h2>
         {activeRequests.length === 0 ? (
@@ -843,6 +872,7 @@ export default function MaintenanceRequestsPage() {
           </div>
         )}
       </div>
+      {showClosed && (
       <div>
         <h2 className="text-2xl font-semibold mb-4 text-slate-800">Closed Requests ({closedRequests.length})</h2>
         {closedRequests.length === 0 ? (
@@ -973,6 +1003,7 @@ export default function MaintenanceRequestsPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
