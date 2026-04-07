@@ -461,6 +461,25 @@ export default function OwnerBillingDetailsPage() {
     }
   };
 
+  const handleMarkOwnerBillPaid = async (billId: string) => {
+    try {
+      setOwnerBillsLoading(true);
+      setOwnerBillError(null);
+      const res = await fetch("/api/admin/billing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: billId, status: "paid" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update bill");
+      await loadBills(showVoidedOwnerBills);
+    } catch (err: any) {
+      setOwnerBillError(err.message || "Failed to update bill");
+    } finally {
+      setOwnerBillsLoading(false);
+    }
+  };
+
   const handleDeleteOwnerBill = async (billId: string) => {
     try {
       setOwnerBillsLoading(true);
@@ -1231,6 +1250,13 @@ export default function OwnerBillingDetailsPage() {
                           )}
                           {!isVoided && (
                             <div className="flex gap-2 flex-wrap">
+                              <button
+                                onClick={() => handleMarkOwnerBillPaid(bill.id)}
+                                disabled={ownerBillsLoading}
+                                className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                              >
+                                Paid
+                              </button>
                               <button
                                 onClick={() => handleVoidOwnerBill(bill.id)}
                                 disabled={ownerBillsLoading}
