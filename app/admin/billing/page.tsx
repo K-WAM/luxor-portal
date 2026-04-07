@@ -80,6 +80,7 @@ export default function AdminBilling() {
   const [tenantInvoiceUploading, setTenantInvoiceUploading] = useState<Record<string, boolean>>({});
   const [tenantStripeRefreshLoading, setTenantStripeRefreshLoading] = useState<Record<string, boolean>>({});
   const [showDesktopSite, setShowDesktopSite] = useState(false);
+  const [showCreateTenantBillMobile, setShowCreateTenantBillMobile] = useState(false);
   const [tenantEdits, setTenantEdits] = useState<Record<string, { billType?: string; amount?: string; dueDate?: string; status?: string; description?: string; tenantId?: string; propertyId?: string }>>({});
 
   // Date sort helper for tenant bills
@@ -498,15 +499,34 @@ export default function AdminBilling() {
       </div>
 
       {/* Tenant Bills Creation Section */}
+      <div className="md:hidden">
+        <button
+          type="button"
+          onClick={() => setShowDesktopSite((prev) => !prev)}
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {showDesktopSite ? "Back to Mobile View" : "View Desktop Site for More Options"}
+        </button>
+      </div>
+
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mt-8">
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Create Tenant Bill</h2>
             <p className="text-xs text-slate-500">
               Manually create charges that appear in the tenant Payments tab.
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowCreateTenantBillMobile((prev) => !prev)}
+            className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-medium text-slate-700 hover:bg-slate-50"
+            aria-label={showCreateTenantBillMobile ? "Collapse create tenant bill" : "Expand create tenant bill"}
+          >
+            {showCreateTenantBillMobile ? "−" : "+"}
+          </button>
         </div>
+        <div className={`${showCreateTenantBillMobile ? "block" : "hidden"} md:block`}>
         <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col text-sm">
             <label className="text-slate-600 mb-1">Property</label>
@@ -628,6 +648,7 @@ export default function AdminBilling() {
             {loading ? "Saving..." : "Create tenant bill"}
           </button>
         </div>
+        </div>
       </div>
 
       {/* Tenant Bills Section */}
@@ -713,15 +734,6 @@ export default function AdminBilling() {
         {tenantBillsNotice && (
           <div className="px-4 py-3 text-sm text-slate-700">{tenantBillsNotice}</div>
         )}
-        <div className="px-4 py-3 border-b border-slate-200 md:hidden">
-          <button
-            type="button"
-            onClick={() => setShowDesktopSite((prev) => !prev)}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            {showDesktopSite ? "Back to Mobile View" : "View Desktop Site for More Options"}
-          </button>
-        </div>
         <div className={showDesktopSite ? "hidden" : "md:hidden"}>
           {visibleTenantBills.length === 0 ? (
             <div className="px-4 py-4 text-sm text-slate-500">No tenant bills found.</div>

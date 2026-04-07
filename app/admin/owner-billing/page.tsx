@@ -114,6 +114,7 @@ export default function OwnerBillingDetailsPage() {
   const [invoiceGenerating, setInvoiceGenerating] = useState<Record<string, boolean>>({});
   const [ownerStripeRefreshLoading, setOwnerStripeRefreshLoading] = useState<Record<string, boolean>>({});
   const [showDesktopSite, setShowDesktopSite] = useState(false);
+  const [showCreateOwnerBillMobile, setShowCreateOwnerBillMobile] = useState(false);
   const [editAmounts, setEditAmounts] = useState<
     Record<
       string,
@@ -725,7 +726,17 @@ export default function OwnerBillingDetailsPage() {
       )}
 
       {/* Zelle settings */}
-      <section>
+      <div className="md:hidden">
+        <button
+          type="button"
+          onClick={() => setShowDesktopSite((prev) => !prev)}
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {showDesktopSite ? "Back to Mobile View" : "View Desktop Site for More Options"}
+        </button>
+      </div>
+
+      <section className="hidden md:block">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Zelle Payment Settings</h2>
@@ -880,10 +891,21 @@ export default function OwnerBillingDetailsPage() {
       </section>
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200">
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Create Owner Bill</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Create a new bill for a property owner.</p>
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Create Owner Bill</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Create a new bill for a property owner.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCreateOwnerBillMobile((prev) => !prev)}
+            className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-medium text-slate-700 hover:bg-slate-50"
+            aria-label={showCreateOwnerBillMobile ? "Collapse create owner bill" : "Expand create owner bill"}
+          >
+            {showCreateOwnerBillMobile ? "−" : "+"}
+          </button>
         </div>
+        <div className={`${showCreateOwnerBillMobile ? "block" : "hidden"} md:block`}>
         <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="flex flex-col text-sm">
             <label className="text-slate-600 mb-1">Property</label>
@@ -994,6 +1016,7 @@ export default function OwnerBillingDetailsPage() {
             {ownerBillsLoading ? "Saving..." : "Create bill"}
           </button>
         </div>
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -1060,15 +1083,6 @@ export default function OwnerBillingDetailsPage() {
           )}
         </div>
         {ownerBillNotice && <div className="px-4 py-3 text-sm text-slate-700">{ownerBillNotice}</div>}
-        <div className="px-4 py-3 border-b border-slate-200 md:hidden">
-          <button
-            type="button"
-            onClick={() => setShowDesktopSite((prev) => !prev)}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            {showDesktopSite ? "Back to Mobile View" : "View Desktop Site for More Options"}
-          </button>
-        </div>
         <div className={showDesktopSite ? "hidden" : "md:hidden"}>
           {visibleOwnerBills.length === 0 ? (
             <div className="px-4 py-4 text-sm text-slate-500">No owner bills found.</div>
