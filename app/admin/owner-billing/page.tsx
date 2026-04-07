@@ -113,6 +113,7 @@ export default function OwnerBillingDetailsPage() {
   const [invoiceUploading, setInvoiceUploading] = useState<Record<string, boolean>>({});
   const [invoiceGenerating, setInvoiceGenerating] = useState<Record<string, boolean>>({});
   const [ownerStripeRefreshLoading, setOwnerStripeRefreshLoading] = useState<Record<string, boolean>>({});
+  const [showDesktopSite, setShowDesktopSite] = useState(false);
   const [editAmounts, setEditAmounts] = useState<
     Record<
       string,
@@ -166,6 +167,24 @@ export default function OwnerBillingDetailsPage() {
     const now = new Date();
     const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
     return due.getTime() < todayUtcMs ? "overdue" : normalized;
+  };
+
+  const getStatusLabel = (status?: string | null, dueDate?: string | null) => {
+    const displayStatus = getDisplayStatus(status, dueDate);
+    switch (displayStatus) {
+      case "paid":
+        return "Paid";
+      case "processing":
+        return "Processing";
+      case "overdue":
+        return "Overdue";
+      case "voided":
+        return "Voided";
+      case "pending":
+        return "Pending";
+      default:
+        return "Due";
+    }
   };
 
   if (process.env.NODE_ENV !== "production") {
@@ -1041,6 +1060,63 @@ export default function OwnerBillingDetailsPage() {
           )}
         </div>
         {ownerBillNotice && <div className="px-4 py-3 text-sm text-slate-700">{ownerBillNotice}</div>}
+        <div className="px-4 py-3 border-b border-slate-200 md:hidden">
+          <button
+            type="button"
+            onClick={() => setShowDesktopSite((prev) => !prev)}
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            {showDesktopSite ? "Back to Mobile View" : "View Desktop Site for More Options"}
+          </button>
+        </div>
+        <div className={showDesktopSite ? "hidden" : "md:hidden"}>
+          {visibleOwnerBills.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-slate-500">No owner bills found.</div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {visibleOwnerBills.map((bill) => {
+                const isVoided = bill.status === "voided";
+                return (
+                  <div key={bill.id} className={`px-4 py-4 ${isVoided ? "bg-gray-50 opacity-70" : "bg-white"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900" title={bill.propertyAddress || bill.property || bill.propertyId}>
+                          {getShortPropertyName(bill.propertyAddress || bill.property) || bill.propertyId}
+                        </div>
+                        <div className="text-xs text-slate-500" title={bill.ownerEmail || "Owner"}>
+                          {getCompactUserLabel(bill.ownerEmail)}
+                        </div>
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900">${Number(bill.amount || 0).toFixed(2)}</div>
+                    </div>
+                    <div className="mt-2 text-sm text-slate-700 whitespace-normal break-words">
+                      {bill.description || OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || "Bill"}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                      <div className="text-slate-600">Due {formatDateOnly(bill.dueDate) || "-"}</div>
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${getStatusBadgeClass(getDisplayStatus(bill.status, bill.dueDate))}`}>
+                        {getStatusLabel(bill.status, bill.dueDate)}
+                      </span>
+                    </div>
+                    {!isVoided && bill.status !== "paid" && (
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() => handleMarkOwnerBillPaid(bill.id)}
+                          disabled={ownerBillsLoading}
+                          className="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          Mark Paid
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className={showDesktopSite ? "block" : "hidden md:block"}>
         <div className="overflow-x-auto">
           <table className="w-full table-fixed text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
@@ -1306,6 +1382,7 @@ export default function OwnerBillingDetailsPage() {
               )}
             </tbody>
           </table>
+        </div>
         </div>
       </div>
 

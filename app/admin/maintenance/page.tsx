@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { getShortPropertyName } from "@/lib/property-short-name";
 
@@ -64,6 +64,7 @@ export default function MaintenanceRequestsPage() {
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState("all");
   const [showClosed, setShowClosed] = useState(false);
+  const [showDesktopSite, setShowDesktopSite] = useState(false);
 
   const [createForm, setCreateForm] = useState({
     propertyId: "",
@@ -385,11 +386,26 @@ export default function MaintenanceRequestsPage() {
         })
       : "N/A";
 
-  const propertyFilteredRequests = requests.filter((r) =>
-    selectedPropertyId === "all" ? true : r.propertyId === selectedPropertyId
+  const getDisplayTitle = (description?: string) => {
+    const normalized = String(description || "").replace(/\s+/g, " ").trim();
+    if (!normalized) return "Maintenance request";
+    const firstSentence = normalized.split(/[.!?]/).find((part) => part.trim())?.trim() || normalized;
+    if (firstSentence.length <= 48) return firstSentence;
+    return `${firstSentence.slice(0, 45).trimEnd()}...`;
+  };
+
+  const propertyFilteredRequests = useMemo(
+    () => requests.filter((r) => (selectedPropertyId === "all" ? true : r.propertyId === selectedPropertyId)),
+    [requests, selectedPropertyId]
   );
-  const activeRequests = propertyFilteredRequests.filter((r) => r.status !== "closed");
-  const closedRequests = propertyFilteredRequests.filter((r) => r.status === "closed");
+  const activeRequests = useMemo(
+    () => propertyFilteredRequests.filter((r) => r.status !== "closed"),
+    [propertyFilteredRequests]
+  );
+  const closedRequests = useMemo(
+    () => propertyFilteredRequests.filter((r) => r.status === "closed"),
+    [propertyFilteredRequests]
+  );
 
   const isRedRequest = (createdAt?: string) => {
     if (!createdAt) return false;
@@ -567,12 +583,145 @@ export default function MaintenanceRequestsPage() {
           {showClosed ? "Hide Closed" : "Show Closed"}
         </button>
       </div>
+      <div className="mb-4 md:hidden">
+        <button
+          type="button"
+          onClick={() => setShowDesktopSite((prev) => !prev)}
+          className="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {showDesktopSite ? "Back to Mobile View" : "View Desktop Site for More Options"}
+        </button>
+      </div>
       <div className="mb-8">
         <h2 className="text-2xl font-semibold mb-4 text-slate-800">Active Requests ({activeRequests.length})</h2>
         {activeRequests.length === 0 ? (
           <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-gray-500">No active maintenance requests.</div>
         ) : (
-          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <>
+          <div className={`${showDesktopSite ? "hidden" : "md:hidden"} bg-white rounded-lg border border-slate-200 overflow-hidden`}>
+            <div className="divide-y divide-slate-100">
+              {activeRequests.map((req) => {
+                const displayTitle = getDisplayTitle(req.description);
+                return (
+                  <div key={req.id} className="px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-900" title={req.propertyAddress || req.propertyId || "N/A"}>
+                          {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
+                        </div>
+                        <div className="mt-1 text-sm text-slate-700 break-words">{displayTitle}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {req.tenantName}
+                          {req.createdAt ? ` • Opened ${formatDateShort(req.createdAt)}` : ""}
+                        </div>
+                        {req.description && req.description !== displayTitle && (
+                          <div className="mt-1 text-xs text-slate-500 break-words">{req.description}</div>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <select
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs bg-white"
+                          value={req.status}
+                          onChange={(e) => updateStatus(req.id, e.target.value)}
+                          disabled={savingId === req.id}
+                        >
+                          <option value="open">Open</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="closed">Closed</option>
+                        </select>
+                        <button
+                          className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                          onClick={() => startRespond(req)}
+                          disabled={savingId === req.id}
+                        >
+                          Respond
+                        </button>
+                      </div>
+                    </div>
+                    {respondingRequestId === req.id && (
+                      <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                        <div className="font-medium text-sm">Scheduling response</div>
+                        <div className="mt-2 flex flex-col gap-3 text-sm">
+                          <div className="flex flex-col gap-1">
+                            <label className="font-medium">Choose proposed window</label>
+                            <select
+                              name="scheduleChoice"
+                              value={respondForm.scheduleChoice}
+                              onChange={handleRespondChange}
+                              className="border border-slate-300 rounded-md px-2 py-1.5"
+                            >
+                              <option value="">Select proposed window...</option>
+                              {(req.schedulingDetails?.availability_options || []).map((opt, idx) => (
+                                <option key={`${opt.date}-${opt.window}-${idx}`} value={String(idx)}>
+                                  {opt.date} ({opt.window})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="font-medium">Or custom date</label>
+                            <input
+                              type="date"
+                              name="customScheduleDate"
+                              value={respondForm.customScheduleDate}
+                              onChange={handleRespondChange}
+                              className="border border-slate-300 rounded-md px-2 py-1.5"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="font-medium">Custom time block</label>
+                            <select
+                              name="customScheduleWindow"
+                              value={respondForm.customScheduleWindow}
+                              onChange={handleRespondChange}
+                              className="border border-slate-300 rounded-md px-2 py-1.5"
+                            >
+                              {TIME_BLOCK_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="font-medium">Scheduling note</label>
+                            <input
+                              type="text"
+                              name="schedulingNote"
+                              value={respondForm.schedulingNote}
+                              onChange={handleRespondChange}
+                              className="border border-slate-300 rounded-md px-2 py-1.5"
+                            />
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            Tenant flexible: {req.schedulingDetails?.is_flexible ? "Yes" : "No"} · Vendor may enter if tenant absent: {req.schedulingDetails?.vendor_can_enter_without_tenant ? "Yes" : "No"}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmSchedule(req)}
+                              disabled={savingId === req.id}
+                              className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:bg-emerald-300"
+                            >
+                              {savingId === req.id ? "Confirming..." : "Confirm & Email Tenant"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelRespond}
+                              className="rounded-md bg-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-300"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className={`${showDesktopSite ? "block" : "hidden md:block"} bg-white rounded-lg border border-slate-200 overflow-hidden`}>
             <div className="overflow-x-auto">
               <table className="w-full table-fixed">
                 <thead className="bg-slate-50 border-b border-slate-200">
@@ -863,6 +1012,7 @@ export default function MaintenanceRequestsPage() {
               </table>
             </div>
           </div>
+          </>
         )}
       </div>
       {showClosed && (
@@ -871,7 +1021,29 @@ export default function MaintenanceRequestsPage() {
         {closedRequests.length === 0 ? (
           <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-gray-500">No closed maintenance requests.</div>
         ) : (
-          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <>
+          <div className={`${showDesktopSite ? "hidden" : "md:hidden"} bg-white rounded-lg border border-slate-200 overflow-hidden`}>
+            <div className="divide-y divide-slate-100">
+              {closedRequests.map((req) => (
+                <div key={req.id} className="px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-900" title={req.propertyAddress || req.propertyId || "N/A"}>
+                        {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
+                      </div>
+                      <div className="mt-1 text-sm text-slate-700 break-words">{getDisplayTitle(req.description)}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {req.tenantName}
+                        {req.closedAt ? ` • Closed ${formatDateShort(req.closedAt)}` : ""}
+                      </div>
+                    </div>
+                    <div className="text-xs font-medium text-slate-500">Closed</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className={`${showDesktopSite ? "block" : "hidden md:block"} bg-white rounded-lg border border-slate-200 overflow-hidden`}>
             <div className="overflow-x-auto">
               <table className="w-full table-fixed">
                 <thead className="bg-slate-50 border-b border-slate-200">
@@ -986,6 +1158,7 @@ export default function MaintenanceRequestsPage() {
               </table>
             </div>
           </div>
+          </>
         )}
       </div>
       )}

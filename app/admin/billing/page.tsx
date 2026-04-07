@@ -79,6 +79,7 @@ export default function AdminBilling() {
   const [tenantInvoiceFile, setTenantInvoiceFile] = useState<File | null>(null);
   const [tenantInvoiceUploading, setTenantInvoiceUploading] = useState<Record<string, boolean>>({});
   const [tenantStripeRefreshLoading, setTenantStripeRefreshLoading] = useState<Record<string, boolean>>({});
+  const [showDesktopSite, setShowDesktopSite] = useState(false);
   const [tenantEdits, setTenantEdits] = useState<Record<string, { billType?: string; amount?: string; dueDate?: string; status?: string; description?: string; tenantId?: string; propertyId?: string }>>({});
 
   // Date sort helper for tenant bills
@@ -105,6 +106,24 @@ export default function AdminBilling() {
     const now = new Date();
     const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
     return due.getTime() < todayUtcMs ? "overdue" : normalized;
+  };
+
+  const getStatusLabel = (status?: string | null, dueDate?: string | null) => {
+    const displayStatus = getDisplayStatus(status, dueDate);
+    switch (displayStatus) {
+      case "paid":
+        return "Paid";
+      case "processing":
+        return "Processing";
+      case "overdue":
+        return "Overdue";
+      case "voided":
+        return "Voided";
+      case "pending":
+        return "Pending";
+      default:
+        return "Due";
+    }
   };
 
   if (process.env.NODE_ENV !== "production") {
@@ -694,6 +713,62 @@ export default function AdminBilling() {
         {tenantBillsNotice && (
           <div className="px-4 py-3 text-sm text-slate-700">{tenantBillsNotice}</div>
         )}
+        <div className="px-4 py-3 border-b border-slate-200 md:hidden">
+          <button
+            type="button"
+            onClick={() => setShowDesktopSite((prev) => !prev)}
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            {showDesktopSite ? "Back to Mobile View" : "View Desktop Site for More Options"}
+          </button>
+        </div>
+        <div className={showDesktopSite ? "hidden" : "md:hidden"}>
+          {visibleTenantBills.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-slate-500">No tenant bills found.</div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {visibleTenantBills.map((bill) => {
+                const isVoided = bill.status === "voided";
+                return (
+                  <div key={bill.id} className={`px-4 py-4 ${isVoided ? "bg-gray-50 opacity-70" : "bg-white"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900" title={bill.propertyAddress || bill.propertyId}>
+                          {getShortPropertyName(bill.propertyAddress) || bill.propertyId}
+                        </div>
+                        <div className="text-xs text-slate-500" title={bill.tenantEmail || "Tenant"}>
+                          {getCompactUserLabel(bill.tenantEmail)}
+                        </div>
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900">${Number(bill.amount || 0).toFixed(2)}</div>
+                    </div>
+                    <div className="mt-2 text-sm text-slate-700 whitespace-normal break-words">
+                      {bill.description || TENANT_BILL_TYPES.find((t) => t.value === bill.bill_type)?.label || "Bill"}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                      <div className="text-slate-600">Due {formatDateOnly(bill.due_date) || "-"}</div>
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${getStatusBadgeClass(getDisplayStatus(bill.status, bill.due_date))}`}>
+                        {getStatusLabel(bill.status, bill.due_date)}
+                      </span>
+                    </div>
+                    {!isVoided && bill.status !== "paid" && (
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() => handleMarkTenantBillPaid(bill.id)}
+                          className="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                        >
+                          Mark Paid
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className={showDesktopSite ? "block" : "hidden md:block"}>
         <div className="overflow-x-auto">
           <table className="w-full table-fixed text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
@@ -967,6 +1042,7 @@ export default function AdminBilling() {
               )}
             </tbody>
           </table>
+        </div>
         </div>
       </div>
     </div>
