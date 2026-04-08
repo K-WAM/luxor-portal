@@ -33,6 +33,7 @@ export default function ServicesBillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showPaid, setShowPaid] = useState(false);
+  const [showVoided, setShowVoided] = useState(false);
   const [showDesktopSite, setShowDesktopSite] = useState(false);
   const [showCreateMobile, setShowCreateMobile] = useState(false);
   const [form, setForm] = useState({
@@ -71,10 +72,13 @@ export default function ServicesBillingPage() {
       const bTime = new Date(`${b.dueDate}T00:00:00Z`).getTime();
       return aTime - bTime;
     });
-    return showPaid
-      ? sorted
-      : sorted.filter((row) => getServicesInvoiceDisplayStatus(row.status, row.dueDate) !== "Paid");
-  }, [rows, showPaid]);
+    return sorted.filter((row) => {
+      const displayStatus = getServicesInvoiceDisplayStatus(row.status, row.dueDate);
+      if (displayStatus === "Paid" && !showPaid) return false;
+      if (displayStatus === "Voided" && !showVoided) return false;
+      return true;
+    });
+  }, [rows, showPaid, showVoided]);
 
   const handleCreate = async () => {
     try {
@@ -156,7 +160,8 @@ export default function ServicesBillingPage() {
   };
 
   const totalDue = visibleRows.reduce((sum, row) => {
-    if (getServicesInvoiceDisplayStatus(row.status, row.dueDate) === "Paid") return sum;
+    const displayStatus = getServicesInvoiceDisplayStatus(row.status, row.dueDate);
+    if (displayStatus === "Paid" || displayStatus === "Voided") return sum;
     return sum + Number(row.total || 0);
   }, 0);
 
@@ -322,6 +327,13 @@ export default function ServicesBillingPage() {
               className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
             >
               {showPaid ? "Hide Paid" : "Show Paid"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowVoided((prev) => !prev)}
+              className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+            >
+              {showVoided ? "Hide Voided" : "Show Voided"}
             </button>
           </div>
         </div>
