@@ -7,10 +7,7 @@ import {
   SERVICES_PLATFORM_SCOPE,
 } from "@/lib/services-billing";
 import { toDateOnlyString } from "@/lib/date-only";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
 
 const STORAGE_BUCKET = "property-documents";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -75,6 +72,11 @@ const buildServicesInvoicePdf = async (params: {
   subtotal: number;
   total: number;
 }) => {
+  const [{ PDFDocument, StandardFonts, rgb }, fs, path] = await Promise.all([
+    import("pdf-lib"),
+    import("fs"),
+    import("path"),
+  ]);
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([612, 792]);
   const { height } = page.getSize();
@@ -300,18 +302,27 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    const pdfUrl = await generateInvoicePdf(data as any);
-    const { error: pdfUpdateError } = await supabaseAdmin
-      .from("services_invoices")
-      .update({ pdf_url: pdfUrl })
-      .eq("id", data.id);
-    if (pdfUpdateError) throw pdfUpdateError;
+    let pdfUrl: string | null = null;
+    let warning: string | null = null;
+
+    try {
+      pdfUrl = await generateInvoicePdf(data as any);
+      const { error: pdfUpdateError } = await supabaseAdmin
+        .from("services_invoices")
+        .update({ pdf_url: pdfUrl })
+        .eq("id", data.id);
+      if (pdfUpdateError) throw pdfUpdateError;
+    } catch (pdfError: any) {
+      console.error("Services invoice PDF generation failed:", pdfError);
+      warning = "Invoice created, but PDF generation is temporarily unavailable.";
+    }
 
     return NextResponse.json({
       id: data.id,
       invoiceNumber,
       hostedPagePath: buildServicesInvoicePath(hostedPageToken),
       pdfUrl,
+      warning,
     });
   } catch (error: any) {
     console.error("Error creating services invoice:", error);

@@ -107,7 +107,7 @@ export default function ServicesBillingPage() {
         amount: "",
         notes: "",
       });
-      setNotice(`Created ${data.invoiceNumber}`);
+      setNotice(data.warning ? `${data.invoiceNumber} created. ${data.warning}` : `Created ${data.invoiceNumber}`);
       await loadRows();
     } catch (err: any) {
       setError(err.message || "Failed to create invoice");
