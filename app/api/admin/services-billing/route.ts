@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import nodemailer from "nodemailer";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import {
@@ -11,6 +12,7 @@ import crypto from "crypto";
 
 const STORAGE_BUCKET = "property-documents";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SERVICES_PORTAL_BASE_URL = "https://portal.luxordev.com";
 
 const formatDate = (date: Date) =>
   date.toLocaleDateString("en-US", {
@@ -27,6 +29,134 @@ const formatDateOnlyString = (dateStr?: string | null) => {
 };
 
 const toCurrency = (value: number) => `$${Number(value || 0).toFixed(2)}`;
+
+const getHostedInvoiceUrl = (token: string) =>
+  `${SERVICES_PORTAL_BASE_URL}${buildServicesInvoicePath(token)}`;
+
+async function sendServicesInvoiceEmail(params: {
+  clientName: string;
+  clientEmail: string;
+  invoiceNumber: string;
+  amount: number;
+  dueDate: string;
+  description: string;
+  hostedInvoiceUrl: string;
+}) {
+  if (!params.clientEmail) return;
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; color: #1e293b;">
+      <div style="background: #0f172a; padding: 24px 32px; border-radius: 8px 8px 0 0;">
+        <h1 style="margin: 0; font-size: 18px; font-weight: 600; color: #f8fafc;">Luxor Services Invoice</h1>
+      </div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; padding: 28px 32px; border-radius: 0 0 8px 8px;">
+        <p style="margin-top: 0;">Hi ${params.clientName || "there"},</p>
+        <p>Your new Luxor services invoice is ready.</p>
+        <p><strong>Invoice number:</strong> ${params.invoiceNumber}</p>
+        <p><strong>Amount:</strong> ${toCurrency(params.amount)}</p>
+        <p><strong>Due date:</strong> ${formatDateOnlyString(params.dueDate)}</p>
+        <p><strong>Description:</strong> ${params.description}</p>
+        <p>
+          <a href="${params.hostedInvoiceUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:6px;font-weight:600;">
+            View Invoice & Payment Options
+          </a>
+        </p>
+        <p style="margin-bottom: 0;">Payment options:</p>
+        <ul style="padding-left: 18px; margin-top: 8px;">
+          <li>Zelle to <strong>connect@luxordev.com</strong> with no processing fee</li>
+          <li>ACH bank transfer via the hosted invoice page</li>
+          <li>Credit card via the hosted invoice page</li>
+        </ul>
+      </div>
+    </div>
+  `;
+
+  const apiKey = process.env.RESEND_API_KEY;
+  try {
+    if (apiKey) {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "Luxor Billing <noreply@luxordev.com>",
+          to: [params.clientEmail],
+          subject: `Invoice ${params.invoiceNumber} from Luxor Developments LLC`,
+          html,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        console.error("[services billing] Resend invoice email error:", err);
+      }
+      return;
+    }
+
+    const host = process.env.SMTP_HOST;
+    const port = Number(process.env.SMTP_PORT || 0);
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    const from = process.env.SMTP_FROM;
+    if (!host || !port || !user || !pass || !from) {
+      console.warn("[services billing] No provider configured for invoice email");
+      return;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+    });
+    await transporter.sendMail({
+      from,
+      to: params.clientEmail,
+      subject: `Invoice ${params.invoiceNumber} from Luxor Developments LLC`,
+      html,
+    });
+  } catch (err) {
+    console.error("[services billing] Failed to send invoice email:", err);
+  }
+}
+
+const voidServicesInvoice = async (params: { id: string; voidReason?: string | null }) => {
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("services_invoices")
+    .select("id, status")
+    .eq("id", params.id)
+    .eq("invoice_type", SERVICES_BILLING_SCOPE)
+    .eq("payment_account_scope", SERVICES_PLATFORM_SCOPE)
+    .single();
+
+  if (existingError) throw existingError;
+
+  const currentStatus = String(existing.status || "").toLowerCase();
+  if (currentStatus === "paid") {
+    throw new Error("Paid invoices cannot be voided");
+  }
+  if (currentStatus === "void") {
+    return existing;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("services_invoices")
+    .update({
+      status: "void",
+      voided_at: new Date().toISOString(),
+      voided_reason: params.voidReason || "Voided by admin",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", params.id)
+    .eq("invoice_type", SERVICES_BILLING_SCOPE)
+    .eq("payment_account_scope", SERVICES_PLATFORM_SCOPE)
+    .select("id, status, paid_date")
+    .single();
+
+  if (error) throw error;
+  return data;
+};
 
 const getNextInvoiceNumber = async (issueDate?: string | null) => {
   const now = issueDate ? new Date(`${issueDate}T00:00:00Z`) : new Date();
@@ -275,6 +405,7 @@ export async function POST(request: NextRequest) {
 
     const invoiceNumber = await getNextInvoiceNumber(issueDateOnly);
     const hostedPageToken = crypto.randomBytes(18).toString("hex");
+    const hostedInvoiceUrl = getHostedInvoiceUrl(hostedPageToken);
     const lineItems = [{ description, amount: Number(total.toFixed(2)) }];
 
     const { data, error } = await supabaseAdmin
@@ -317,6 +448,16 @@ export async function POST(request: NextRequest) {
       warning = "Invoice created, but PDF generation is temporarily unavailable.";
     }
 
+    sendServicesInvoiceEmail({
+      clientName,
+      clientEmail,
+      invoiceNumber,
+      amount: total,
+      dueDate: dueDateOnly,
+      description,
+      hostedInvoiceUrl,
+    }).catch(() => {});
+
     return NextResponse.json({
       id: data.id,
       invoiceNumber,
@@ -345,12 +486,8 @@ export async function PATCH(request: NextRequest) {
 
     const updates: Record<string, any> = {};
     if (action === "void") {
-      updates.status = "void";
-      updates.voided_at = new Date().toISOString();
-      updates.voided_reason = voidReason || "Voided by admin";
-      updates.processing_started_at = null;
-      updates.stripe_session_id = null;
-      updates.stripe_payment_intent_id = null;
+      const data = await voidServicesInvoice({ id, voidReason });
+      return NextResponse.json({ id: data.id, status: data.status, paidDate: null });
     } else if (status === "paid") {
       updates.status = "paid";
       updates.paid_date = new Date().toISOString().split("T")[0];

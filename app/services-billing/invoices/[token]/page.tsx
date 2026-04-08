@@ -163,7 +163,7 @@ export default function ServicesInvoicePage() {
           <button
             type="button"
             onClick={() => startCheckout("bank")}
-            disabled={checkoutLoading !== null || displayStatus === "Paid" || displayStatus === "Void"}
+            disabled={checkoutLoading !== null || displayStatus === "Paid" || displayStatus === "Voided"}
             className="rounded-lg border border-slate-300 bg-slate-100 px-4 py-4 text-left hover:bg-slate-200 disabled:opacity-60"
           >
             <div className="text-xs uppercase tracking-wide text-slate-500">ACH Bank Transfer</div>
@@ -173,7 +173,7 @@ export default function ServicesInvoicePage() {
           <button
             type="button"
             onClick={() => startCheckout("card")}
-            disabled={checkoutLoading !== null || displayStatus === "Paid" || displayStatus === "Void"}
+            disabled={checkoutLoading !== null || displayStatus === "Paid" || displayStatus === "Voided"}
             className="rounded-lg border border-slate-300 bg-slate-100 px-4 py-4 text-left hover:bg-slate-200 disabled:opacity-60"
           >
             <div className="text-xs uppercase tracking-wide text-slate-500">Credit Card</div>

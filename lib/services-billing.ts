@@ -3,6 +3,7 @@ import { parseDateOnly } from "@/lib/date-only";
 export const SERVICES_BILLING_SCOPE = "services";
 export const SERVICES_PLATFORM_SCOPE = "luxor_platform";
 export const SERVICES_PORTAL_AREA = "services_billing";
+export const SERVICES_INVOICE_PATH_PREFIX = "/invoice";
 
 export type ServicesInvoiceStatus =
   | "draft"
@@ -18,7 +19,7 @@ export const getServicesInvoiceDisplayStatus = (
   const normalized = String(status || "issued").toLowerCase();
   if (normalized === "paid") return "Paid";
   if (normalized === "processing") return "Processing";
-  if (normalized === "void") return "Void";
+  if (normalized === "void") return "Voided";
   if (normalized === "draft") return "Draft";
 
   const due = parseDateOnly(dueDate);
@@ -37,7 +38,7 @@ export const getServicesInvoiceStatusBadgeClass = (label: string) => {
       return "bg-blue-100 text-blue-700";
     case "Overdue":
       return "bg-red-100 text-red-700";
-    case "Void":
+    case "Voided":
       return "bg-slate-100 text-slate-600";
     case "Draft":
       return "bg-slate-100 text-slate-700";
@@ -47,7 +48,7 @@ export const getServicesInvoiceStatusBadgeClass = (label: string) => {
 };
 
 export const buildServicesInvoicePath = (token: string) =>
-  `/services-billing/invoices/${token}`;
+  `${SERVICES_INVOICE_PATH_PREFIX}/${token}`;
 
 export const getServicesInvoiceShortDescription = (description?: string | null) => {
   const normalized = String(description || "").replace(/\s+/g, " ").trim();

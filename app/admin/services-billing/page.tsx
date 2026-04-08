@@ -135,6 +135,26 @@ export default function ServicesBillingPage() {
     }
   };
 
+  const handleVoid = async (id: string) => {
+    const voidReason = window.prompt("Optional void reason", "") ?? "";
+    try {
+      setSaving(true);
+      setError(null);
+      const res = await fetch("/api/services-billing/void-invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, voidReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to void invoice");
+      await loadRows();
+    } catch (err: any) {
+      setError(err.message || "Failed to void invoice");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const totalDue = visibleRows.reduce((sum, row) => {
     if (getServicesInvoiceDisplayStatus(row.status, row.dueDate) === "Paid") return sum;
     return sum + Number(row.total || 0);
@@ -142,7 +162,8 @@ export default function ServicesBillingPage() {
 
   const renderRow = (row: ServicesInvoiceRow, compact = false) => {
     const displayStatus = getServicesInvoiceDisplayStatus(row.status, row.dueDate);
-    const showMarkPaid = displayStatus !== "Paid" && displayStatus !== "Void";
+    const showMarkPaid = displayStatus !== "Paid" && displayStatus !== "Voided";
+    const showVoidButton = displayStatus !== "Paid" && displayStatus !== "Voided";
 
     return (
       <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -186,6 +207,16 @@ export default function ServicesBillingPage() {
                 className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 Mark Paid
+              </button>
+            )}
+            {showVoidButton && (
+              <button
+                type="button"
+                onClick={() => handleVoid(row.id)}
+                disabled={saving}
+                className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                Void
               </button>
             )}
           </div>
