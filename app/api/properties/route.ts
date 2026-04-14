@@ -10,11 +10,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Admin can see all properties
+    // Admin can see PM-managed properties only (organization_id is null)
     if (isAdmin(role)) {
       const { data, error } = await supabaseAdmin
         .from('properties')
         .select('*')
+        .is('organization_id', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
