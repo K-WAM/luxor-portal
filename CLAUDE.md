@@ -3,7 +3,7 @@
 ---
 
 # LUXOR ENGINEERING GUARDRAILS
-**Version 2.8 — Active**
+**Version 2.9 — Active**
 
 Governs all development and AI-assisted changes to Luxor (Admin, Owner, Tenant portals). Applies to code changes, bug fixes, features, and DB schema modifications. Claude must treat this file as authoritative.
 
@@ -791,6 +791,20 @@ Update it whenever any of the following changes:
 
 If a session changes how Luxor works and the wiki is not updated, the session is incomplete.
 
+### C.31 Cross-Portal Property Isolation
+
+Both portals share one Supabase database. Properties are isolated by `organization_id`:
+- PM-managed properties → `organization_id IS NULL` (PM portal POST never sets it)
+- Subscriber properties → `organization_id IS NOT NULL` (subscribe portal POST always sets it)
+
+**Admin GET `/api/properties` filter rules:**
+- `luxor-portal`: `.is('organization_id', null)` — PM admin only sees PM properties
+- `luxor-subscribe`: `.not('organization_id', 'is', null)` — subscribe admin only sees subscriber properties
+
+**Owner/tenant isolation** is already enforced separately via `getAccessiblePropertyIds()` → `user_properties` table. No cross-portal leakage is possible at the owner/tenant level.
+
+Do NOT remove these filters. Without them, each portal's admin would see all properties from both portals.
+
 ---
 
 # =========================
@@ -799,6 +813,6 @@ If a session changes how Luxor works and the wiki is not updated, the session is
 
 | Field | Value |
 |-------|-------|
-| Version | 2.7 |
+| Version | 2.9 |
 | Status | Active |
-| Last Updated | 2026-04-12 — v2.8: Renamed the self-serve portal to `Luxor Subscribe`, changed its target domain to `subscribe.luxordev.com`, and renamed the app folder target from `luxor-app/` to `luxor-subscribe/`. v2.7: Added `docs/project-wiki.md` as the standing architecture/operations summary and made wiki updates mandatory when routes, billing, onboarding, env vars, deployment, or portal boundaries change; C.30 added. v2.6: C.29 added — dual-portal architecture (portal.luxordev.com PM portal vs app.luxordev.com self-serve), shared Supabase project, separate Vercel deployments, DNS setup, env var strategy, admin cross-portal access. v2.5: Bills page rebuilt to use tenant_bills (owner→tenant: Rent/Deposit/etc.); mandatory bill_type; Send Reminder (Luxor-branded email); Lease Renewal Notice (email) added to Tenants page; purchase_price added to properties + dashboard ROI%; Dashboard renamed from Reporting; Financial Overview section added to /owner (bills-based gross income, expenses by category, net income, ROI%); new API routes: /api/owner/tenant-bills, /api/owner/send-reminder, /api/owner/lease-renewal; C.26–C.28 added. v2.4: Owner portal nav restructured — Properties, Tenants, Bills, Maintenance promoted to standalone nav pages; Settings simplified to Account + Change Plan; /owner/billing removed, unified page at /owner/bills; PATCH added to /api/owner/billing for mark-paid and void; C.25 added. v2.3: Merged CLAUDE.md operational best practices (Core Principles, Workflow Orchestration, Task Management, Output Requirements, Definition of Done, Optimization Loop, Anti-Patterns) into unified CLAUDE.md; renamed from LUXOR_ENGINEERING_GUARDRAILS.md so Claude auto-reads it every session. v2.2: plannedYtd made period-aware; removed actual-rent override from plan; deposit added to plan gross income in lease-start month when last_month_rent_collected; D.8 rewritten. v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist. v2.0: Full variable consistency audit; D.0 Master Variable Table added; deposit model changed to inclusive; displayYtd removed → showDepositBreakdown; Projected ROI unified across all three locations. |
+| Last Updated | 2026-04-14 — v2.9: Added C.31 cross-portal property isolation — admin GET /api/properties filtered by organization_id IS NULL (PM portal) and IS NOT NULL (subscribe portal); fixed version number mismatch between header and Document Control. v2.8: Renamed the self-serve portal to `Luxor Subscribe`, changed its target domain to `subscribe.luxordev.com`, and renamed the app folder target from `luxor-app/` to `luxor-subscribe/`. v2.7: Added `docs/project-wiki.md` as the standing architecture/operations summary and made wiki updates mandatory when routes, billing, onboarding, env vars, deployment, or portal boundaries change; C.30 added. v2.6: C.29 added — dual-portal architecture (portal.luxordev.com PM portal vs app.luxordev.com self-serve), shared Supabase project, separate Vercel deployments, DNS setup, env var strategy, admin cross-portal access. v2.5: Bills page rebuilt to use tenant_bills (owner→tenant: Rent/Deposit/etc.); mandatory bill_type; Send Reminder (Luxor-branded email); Lease Renewal Notice (email) added to Tenants page; purchase_price added to properties + dashboard ROI%; Dashboard renamed from Reporting; Financial Overview section added to /owner (bills-based gross income, expenses by category, net income, ROI%); new API routes: /api/owner/tenant-bills, /api/owner/send-reminder, /api/owner/lease-renewal; C.26–C.28 added. v2.4: Owner portal nav restructured — Properties, Tenants, Bills, Maintenance promoted to standalone nav pages; Settings simplified to Account + Change Plan; /owner/billing removed, unified page at /owner/bills; PATCH added to /api/owner/billing for mark-paid and void; C.25 added. v2.3: Merged CLAUDE.md operational best practices (Core Principles, Workflow Orchestration, Task Management, Output Requirements, Definition of Done, Optimization Loop, Anti-Patterns) into unified CLAUDE.md; renamed from LUXOR_ENGINEERING_GUARDRAILS.md so Claude auto-reads it every session. v2.2: plannedYtd made period-aware; removed actual-rent override from plan; deposit added to plan gross income in lease-start month when last_month_rent_collected; D.8 rewritten. v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist. v2.0: Full variable consistency audit; D.0 Master Variable Table added; deposit model changed to inclusive; displayYtd removed → showDepositBreakdown; Projected ROI unified across all three locations. |
