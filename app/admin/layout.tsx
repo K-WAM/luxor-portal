@@ -65,6 +65,17 @@ export default function AdminLayout({
           <Link href="/contact" className="block hover:text-white">
             Contact us
           </Link>
+          <div className="flex items-center gap-3 pt-1">
+            <a href="https://www.facebook.com/people/Luxor-Developments/61576973897778/" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-white" title="Facebook">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+            </a>
+            <a href="https://www.instagram.com/luxor_dev/" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-white" title="Instagram">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+            </a>
+            <a href="https://ca.linkedin.com/company/luxordev" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-white" title="LinkedIn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+            </a>
+          </div>
           <a href="https://luxordev.com" target="_blank" rel="noreferrer" className="block hover:text-white">
             Back to luxordev.com
           </a>
