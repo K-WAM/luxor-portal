@@ -12,7 +12,7 @@ const isValidPhone = (value: string) => {
 };
 
 const isMissingColumnError = (error: any) =>
-  error?.code === "42703" || /zelle/i.test(error?.message || "");
+  error?.code === "42703" || /(zelle|stripe_connected_account_id)/i.test(error?.message || "");
 
 export async function GET() {
   try {
@@ -22,23 +22,9 @@ export async function GET() {
     }
 
     const { data, error } = await supabaseAdmin
-      .from("user_properties")
-      .select(
-        `
-        user_id,
-        property_id,
-        ownership_percentage,
-        zelle_email,
-        zelle_phone,
-        zelle_recipient,
-        properties (
-          id,
-          address,
-          owner_name
-        )
-      `
-      )
-      .eq("role", "owner");
+      .from("properties")
+      .select("id, address, owner_name, zelle_email, zelle_phone, zelle_recipient, stripe_connected_account_id")
+      .order("address", { ascending: true });
 
     let rowsData: any[] = (data as any[]) || [];
     let warning: string | null = null;
@@ -46,62 +32,23 @@ export async function GET() {
     if (error) {
       if (!isMissingColumnError(error)) throw error;
       const fallback = await supabaseAdmin
-        .from("user_properties")
-        .select(
-          `
-          user_id,
-          property_id,
-          ownership_percentage,
-          properties (
-            id,
-            address,
-            owner_name
-          )
-        `
-        )
-        .eq("role", "owner");
-
+        .from("properties")
+        .select("id, address, owner_name")
+        .order("address", { ascending: true });
       if (fallback.error) throw fallback.error;
       rowsData = (fallback.data as any[]) || [];
       warning =
-        "Zelle fields are not available yet. Run the user_properties migration to enable Zelle storage.";
+        "Property payment-detail fields are not available yet. Run the latest properties migration to enable Zelle and Stripe storage.";
     }
 
-    const { data: usersData, error: usersError } =
-      await supabaseAdmin.auth.admin.listUsers();
-    if (usersError) throw usersError;
-
-    const userEmailMap = new Map<string, string>();
-    (usersData?.users || []).forEach((u) => {
-      if (u.id) userEmailMap.set(u.id, u.email || "");
-    });
-
-    const getPropertyAddress = (properties: any) => {
-      if (!properties) return "";
-      if (Array.isArray(properties)) {
-        return properties[0]?.address || "";
-      }
-      return properties.address || "";
-    };
-
     const rows = rowsData.map((row: any) => ({
-      userId: row.user_id,
-      ownerEmail: userEmailMap.get(row.user_id) || "",
-      ownerName: row.properties?.owner_name || "",
-      propertyId: row.property_id,
-      propertyAddress: getPropertyAddress(row.properties),
-      ownershipPercentage: row.ownership_percentage ?? null,
+      propertyId: row.id,
+      propertyAddress: row.address || "",
+      recipient: row.zelle_recipient || row.owner_name || "",
       zelleEmail: row.zelle_email || null,
       zellePhone: row.zelle_phone || null,
-      zelleRecipient: row.zelle_recipient || null,
+      stripeConnectedAccountId: row.stripe_connected_account_id || "",
     }));
-
-    rows.sort((a, b) => {
-      if (a.propertyAddress !== b.propertyAddress) {
-        return a.propertyAddress.localeCompare(b.propertyAddress);
-      }
-      return a.ownerEmail.localeCompare(b.ownerEmail);
-    });
 
     return NextResponse.json({ rows, warning });
   } catch (error) {
@@ -121,13 +68,10 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { userId, propertyId, zelleType, zelleValue, zelleRecipient } = body || {};
+    const { propertyId, zelleType, zelleValue, zelleRecipient, stripeConnectedAccountId } = body || {};
 
-    if (!userId || !propertyId) {
-      return NextResponse.json(
-        { error: "userId and propertyId are required" },
-        { status: 400 }
-      );
+    if (!propertyId) {
+      return NextResponse.json({ error: "propertyId is required" }, { status: 400 });
     }
 
     if (zelleValue && zelleType !== "email" && zelleType !== "phone") {
@@ -137,52 +81,40 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const trimmed = typeof zelleValue === "string" ? zelleValue.trim() : "";
-    if (trimmed) {
-      if (zelleType === "email" && !EMAIL_REGEX.test(trimmed)) {
+    const trimmedZelle = typeof zelleValue === "string" ? zelleValue.trim() : "";
+    if (trimmedZelle) {
+      if (zelleType === "email" && !EMAIL_REGEX.test(trimmedZelle)) {
         return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
       }
-      if (zelleType === "phone" && !isValidPhone(trimmed)) {
+      if (zelleType === "phone" && !isValidPhone(trimmedZelle)) {
         return NextResponse.json({ error: "Invalid phone format" }, { status: 400 });
       }
     }
 
     const recipientTrimmed =
       typeof zelleRecipient === "string" ? zelleRecipient.trim() : "";
+    const stripeAccountTrimmed =
+      typeof stripeConnectedAccountId === "string" ? stripeConnectedAccountId.trim() : "";
 
-    const updateData: {
-      zelle_email: string | null;
-      zelle_phone: string | null;
-      zelle_recipient: string | null;
-    } = {
-      zelle_email: null,
-      zelle_phone: null,
+    if (stripeAccountTrimmed && !stripeAccountTrimmed.startsWith("acct_")) {
+      return NextResponse.json(
+        { error: 'Stripe Account ID must start with "acct_".' },
+        { status: 400 }
+      );
+    }
+
+    const updateData = {
+      zelle_email: zelleType === "email" && trimmedZelle ? trimmedZelle : null,
+      zelle_phone: zelleType === "phone" && trimmedZelle ? trimmedZelle : null,
       zelle_recipient: recipientTrimmed || null,
+      stripe_connected_account_id: stripeAccountTrimmed || null,
     };
 
-    if (trimmed) {
-      if (zelleType === "email") updateData.zelle_email = trimmed;
-      if (zelleType === "phone") updateData.zelle_phone = trimmed;
-    }
-
-    // UNIQUENESS: Clear zelle from OTHER owners of the same property
-    // This ensures only ONE owner billing detail per property
-    if (trimmed) {
-      await supabaseAdmin
-        .from("user_properties")
-        .update({ zelle_email: null, zelle_phone: null, zelle_recipient: null })
-        .eq("property_id", propertyId)
-        .eq("role", "owner")
-        .neq("user_id", userId);
-    }
-
     const { data, error } = await supabaseAdmin
-      .from("user_properties")
+      .from("properties")
       .update(updateData)
-      .eq("user_id", userId)
-      .eq("property_id", propertyId)
-      .eq("role", "owner")
-      .select()
+      .eq("id", propertyId)
+      .select("id, address, owner_name, zelle_email, zelle_phone, zelle_recipient, stripe_connected_account_id")
       .single();
 
     if (error) throw error;
@@ -197,7 +129,6 @@ export async function PATCH(request: Request) {
   }
 }
 
-// DELETE: Clear owner billing details (zelle info) for a property
 export async function DELETE(request: Request) {
   try {
     const { user, role } = await getAuthContext();
@@ -206,27 +137,28 @@ export async function DELETE(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
     const propertyId = searchParams.get("propertyId");
 
-    if (!userId || !propertyId) {
+    if (!propertyId) {
       return NextResponse.json(
-        { error: "userId and propertyId are required" },
+        { error: "propertyId is required" },
         { status: 400 }
       );
     }
 
-    // Clear zelle details for this owner-property
     const { error } = await supabaseAdmin
-      .from("user_properties")
-      .update({ zelle_email: null, zelle_phone: null, zelle_recipient: null })
-      .eq("user_id", userId)
-      .eq("property_id", propertyId)
-      .eq("role", "owner");
+      .from("properties")
+      .update({
+        zelle_email: null,
+        zelle_phone: null,
+        zelle_recipient: null,
+        stripe_connected_account_id: null,
+      })
+      .eq("id", propertyId);
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, cleared: { userId, propertyId } });
+    return NextResponse.json({ success: true, cleared: { propertyId } });
   } catch (error) {
     console.error("Error deleting owner billing details:", error);
     return NextResponse.json(

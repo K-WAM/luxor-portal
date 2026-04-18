@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from "@/lib/auth/route-helpers";
 
 const isMissingColumnError = (error: any) =>
-  error?.code === "42703" || /zelle/i.test(error?.message || "");
+  error?.code === "42703" || /(zelle|stripe_connected_account_id)/i.test(error?.message || "");
 
 export async function GET(request: Request) {
   try {
@@ -26,47 +26,43 @@ export async function GET(request: Request) {
     }
 
     const { data, error } = await supabaseAdmin
-      .from("user_properties")
-      .select("user_id, zelle_email, zelle_phone, zelle_recipient")
-      .eq("property_id", propertyId)
-      .eq("role", "owner");
-    let rowsData: any[] = (data as any[]) || [];
+      .from("properties")
+      .select("id, owner_name, zelle_email, zelle_phone, zelle_recipient")
+      .eq("id", propertyId)
+      .maybeSingle();
+
+    let rowData: any = data || null;
     let warning: string | null = null;
 
     if (error) {
       if (!isMissingColumnError(error)) throw error;
       const fallback = await supabaseAdmin
-        .from("user_properties")
-        .select("user_id")
-        .eq("property_id", propertyId)
-        .eq("role", "owner");
+        .from("properties")
+        .select("id, owner_name")
+        .eq("id", propertyId)
+        .maybeSingle();
       if (fallback.error) throw fallback.error;
-      rowsData = (fallback.data as any[]) || [];
+      rowData = fallback.data || null;
       warning =
-        "Zelle fields are not available yet. Run the user_properties migration to enable Zelle storage.";
+        "Property payment-detail fields are not available yet. Run the latest properties migration to enable Zelle storage.";
     }
 
-    if (!rowsData || rowsData.length === 0) {
+    if (!rowData) {
       return NextResponse.json({ rows: [], warning });
     }
 
-    const { data: usersData, error: usersError } =
-      await supabaseAdmin.auth.admin.listUsers();
-    if (usersError) throw usersError;
-
-    const userEmailMap = new Map<string, string>();
-    (usersData?.users || []).forEach((u) => {
-      if (u.id) userEmailMap.set(u.id, u.email || "");
+    return NextResponse.json({
+      rows: [
+        {
+          propertyId: rowData.id,
+          ownerEmail: "",
+          zelleEmail: rowData.zelle_email || null,
+          zellePhone: rowData.zelle_phone || null,
+          zelleRecipient: rowData.zelle_recipient || rowData.owner_name || null,
+        },
+      ],
+      warning,
     });
-
-    const owners = rowsData.map((row: any) => ({
-      userId: row.user_id,
-      ownerEmail: userEmailMap.get(row.user_id) || "",
-      zelleEmail: row.zelle_email || null,
-      zellePhone: row.zelle_phone || null,
-      zelleRecipient: row.zelle_recipient || null,
-    }));
-    return NextResponse.json({ rows: owners, warning });
   } catch (error) {
     console.error("Error fetching owner billing info:", error);
     return NextResponse.json(

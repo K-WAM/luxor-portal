@@ -48,23 +48,13 @@ const OWNER_BILL_CATEGORIES = [
   { value: "other", label: "Other" },
 ];
 
-type OwnerBillingRow = {
-  userId: string;
-  ownerEmail: string;
-  ownerName?: string;
+type OwnerPaymentDetailsRow = {
   propertyId: string;
   propertyAddress: string;
-  ownershipPercentage: number | null;
+  recipient: string;
   zelleEmail: string | null;
   zellePhone: string | null;
-  zelleRecipient: string | null;
-};
-
-type PropertyGroup = {
-  propertyId: string;
-  propertyAddress: string;
-  owners: OwnerBillingRow[];
-  activeOwner: OwnerBillingRow | null; // Owner with Zelle set
+  stripeConnectedAccountId: string;
 };
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -131,17 +121,19 @@ export default function OwnerBillingDetailsPage() {
   const [ownerBillPropertyFilter, setOwnerBillPropertyFilter] = useState("");
   const [ownerBillStatusFilter, setOwnerBillStatusFilter] = useState("");
   const [showPaidOwnerBills, setShowPaidOwnerBills] = useState(false);
-  const [rows, setRows] = useState<OwnerBillingRow[]>([]);
+  const [rows, setRows] = useState<OwnerPaymentDetailsRow[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
-  const [form, setForm] = useState<{ type: "email" | "phone"; value: string; recipient: string }>({
-    type: "email",
-    value: "",
-    recipient: "",
-  });
+  const [form, setForm] = useState<{ type: "email" | "phone"; value: string; recipient: string; stripeAccountId: string }>(
+    {
+      type: "email",
+      value: "",
+      recipient: "",
+      stripeAccountId: "",
+    }
+  );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -332,32 +324,13 @@ export default function OwnerBillingDetailsPage() {
     }
   }, [filteredOwners, newBill.propertyId]);
 
-  // Group rows by property - show only ONE row per property
-  const propertyGroups: PropertyGroup[] = (() => {
-    const groupMap = new Map<string, PropertyGroup>();
-
-    rows.forEach((row) => {
-      if (!groupMap.has(row.propertyId)) {
-        groupMap.set(row.propertyId, {
-          propertyId: row.propertyId,
-          propertyAddress: row.propertyAddress,
-          owners: [],
-          activeOwner: null,
-        });
-      }
-      const group = groupMap.get(row.propertyId)!;
-      group.owners.push(row);
-
-      // If this owner has Zelle set, mark as active
-      if (row.zelleEmail || row.zellePhone) {
-        group.activeOwner = row;
-      }
-    });
-
-    return Array.from(groupMap.values()).sort((a, b) =>
-      a.propertyAddress.localeCompare(b.propertyAddress)
-    );
-  })();
+  const paymentDetailsRows = useMemo(
+    () =>
+      [...rows].sort((a, b) =>
+        (a.propertyAddress || "").localeCompare(b.propertyAddress || "")
+      ),
+    [rows]
+  );
 
   const handleCreate = async () => {
     if (!newBill.propertyId) {
@@ -428,7 +401,7 @@ export default function OwnerBillingDetailsPage() {
       return;
     }
     const confirmed = window.confirm(
-      "This will re-check Stripe and update this invoiceâ€™s status if needed. Continue?"
+      "This will re-check Stripe and update this invoiceÃ¢â‚¬â„¢s status if needed. Continue?"
     );
     if (!confirmed) return;
 
@@ -579,30 +552,27 @@ export default function OwnerBillingDetailsPage() {
     }
   };
 
-  const getKey = (row: OwnerBillingRow) => `${row.userId}-${row.propertyId}`;
-
-  const startEdit = (group: PropertyGroup) => {
-    const row = group.activeOwner || group.owners[0];
+  const startEdit = (row: OwnerPaymentDetailsRow) => {
     const type = row.zelleEmail ? "email" : row.zellePhone ? "phone" : "email";
     const value = row.zelleEmail || row.zellePhone || "";
-    const recipient = row.zelleRecipient || "";
-    setEditingKey(group.propertyId);
-    setSelectedOwner(row.userId);
-    setForm({ type, value, recipient });
+    const recipient = row.recipient || "";
+    setEditingKey(row.propertyId);
+    setForm({
+      type,
+      value,
+      recipient,
+      stripeAccountId: row.stripeConnectedAccountId || "",
+    });
     setError(null);
     setSuccess(null);
   };
 
   const cancelEdit = () => {
     setEditingKey(null);
-    setSelectedOwner(null);
-    setForm({ type: "email", value: "", recipient: "" });
+    setForm({ type: "email", value: "", recipient: "", stripeAccountId: "" });
   };
 
-  const saveZelle = async (group: PropertyGroup) => {
-    const ownerUserId = selectedOwner || group.owners[0]?.userId;
-    if (!ownerUserId) return;
-
+  const savePaymentDetails = async (row: OwnerPaymentDetailsRow) => {
     const trimmed = form.value.trim();
     if (trimmed) {
       if (form.type === "email" && !EMAIL_REGEX.test(trimmed)) {
@@ -616,55 +586,52 @@ export default function OwnerBillingDetailsPage() {
     }
 
     try {
-      setSavingKey(group.propertyId);
+      setSavingKey(row.propertyId);
       setError(null);
       setSuccess(null);
       const res = await fetch("/api/admin/owner-billing", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: ownerUserId,
-          propertyId: group.propertyId,
+          propertyId: row.propertyId,
           zelleType: form.type,
           zelleValue: trimmed,
           zelleRecipient: form.recipient,
+          stripeConnectedAccountId: form.stripeAccountId,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save Zelle details");
-      setSuccess("Zelle recipient updated for this property.");
+      setSuccess("Owner payment details updated for this property.");
       setEditingKey(null);
-      setSelectedOwner(null);
-      setForm({ type: "email", value: "", recipient: "" });
+      setForm({ type: "email", value: "", recipient: "", stripeAccountId: "" });
       await loadData();
     } catch (err: any) {
-      setError(err.message || "Failed to save Zelle details");
+      setError(err.message || "Failed to save owner payment details");
     } finally {
       setSavingKey(null);
     }
   };
 
-  const deleteZelle = async (group: PropertyGroup) => {
-    if (!group.activeOwner) return;
-
-    if (!confirm(`Clear Zelle details for ${group.propertyAddress}?`)) {
+  const clearPaymentDetails = async (row: OwnerPaymentDetailsRow) => {
+    if (!confirm(`Clear payment details for ${row.propertyAddress}?`)) {
       return;
     }
 
     try {
-      setSavingKey(group.propertyId);
+      setSavingKey(row.propertyId);
       setError(null);
       setSuccess(null);
       const res = await fetch(
-        `/api/admin/owner-billing?userId=${group.activeOwner.userId}&propertyId=${group.propertyId}`,
+        `/api/admin/owner-billing?propertyId=${row.propertyId}`,
         { method: "DELETE" }
       );
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to delete Zelle details");
-      setSuccess("Zelle details cleared for this property.");
+      if (!res.ok) throw new Error(data.error || "Failed to clear payment details");
+      setSuccess("Owner payment details cleared for this property.");
       await loadData();
     } catch (err: any) {
-      setError(err.message || "Failed to delete Zelle details");
+      setError(err.message || "Failed to clear payment details");
     } finally {
       setSavingKey(null);
     }
@@ -712,7 +679,7 @@ export default function OwnerBillingDetailsPage() {
       {/* Page header */}
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Owner Billing</h1>
-        <p className="text-slate-500 text-sm mt-1">Manage Zelle payment details and owner invoices.</p>
+        <p className="text-slate-500 text-sm mt-1">Manage owner payment details and owner invoices.</p>
       </div>
 
       {error && (
@@ -739,11 +706,11 @@ export default function OwnerBillingDetailsPage() {
       <section className="hidden md:block">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Zelle Payment Settings</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Zelle info shown to tenants for each property</p>
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Owner Payment Details</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Property-level payment details shown to tenants for each property</p>
           </div>
         </div>
-        {propertyGroups.length === 0 ? (
+        {paymentDetailsRows.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-6 text-center text-slate-400 text-sm">
             No properties found.
           </div>
@@ -756,43 +723,31 @@ export default function OwnerBillingDetailsPage() {
                   <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Property</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Recipient</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Zelle Contact</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Stripe Account ID</th>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {propertyGroups.map((group) => {
-                  const isEditing = editingKey === group.propertyId;
-                  const isSaving = savingKey === group.propertyId;
-                  const activeOwner = group.activeOwner;
-
-                  const zelleLabel = activeOwner?.zelleEmail
-                    ? activeOwner.zelleEmail
-                    : activeOwner?.zellePhone
-                      ? activeOwner.zellePhone
+                {paymentDetailsRows.map((row) => {
+                  const isEditing = editingKey === row.propertyId;
+                  const isSaving = savingKey === row.propertyId;
+                  const zelleLabel = row.zelleEmail
+                    ? row.zelleEmail
+                    : row.zellePhone
+                      ? row.zellePhone
                       : null;
-                  const recipientLabel = activeOwner?.zelleRecipient || "â€”";
+                  const recipientLabel = row.recipient || "-";
 
                   return (
-                    <tr key={group.propertyId} className="hover:bg-slate-50/50 transition-colors">
+                    <tr key={row.propertyId} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-5 py-3.5 text-sm font-medium text-slate-900">
-                        <span title={group.propertyAddress || group.propertyId}>
-                          {getShortPropertyName(group.propertyAddress) || group.propertyId}
+                        <span title={row.propertyAddress || row.propertyId}>
+                          {getShortPropertyName(row.propertyAddress) || row.propertyId}
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-sm text-slate-600">
                         {isEditing ? (
                           <div className="flex flex-col gap-2 min-w-[220px]">
-                            <select
-                              value={selectedOwner || ""}
-                              onChange={(e) => setSelectedOwner(e.target.value)}
-                              className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white"
-                            >
-                              {group.owners.map((owner) => (
-                                <option key={owner.userId} value={owner.userId}>
-                                  {owner.ownerEmail || owner.userId}
-                                </option>
-                              ))}
-                            </select>
                             <input
                               type="text"
                               value={form.recipient}
@@ -804,7 +759,7 @@ export default function OwnerBillingDetailsPage() {
                             />
                           </div>
                         ) : (
-                          <span className={recipientLabel === "â€”" ? "text-slate-400" : ""}>{recipientLabel}</span>
+                          <span className={recipientLabel === "-" ? "text-slate-400" : ""}>{recipientLabel}</span>
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-sm text-slate-600">
@@ -842,11 +797,28 @@ export default function OwnerBillingDetailsPage() {
                           <span className="text-slate-400 text-xs">Not configured</span>
                         )}
                       </td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={form.stripeAccountId}
+                            onChange={(e) =>
+                              setForm((prev) => ({ ...prev, stripeAccountId: e.target.value }))
+                            }
+                            placeholder="acct_..."
+                            className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white w-full"
+                          />
+                        ) : row.stripeConnectedAccountId ? (
+                          <span className="font-mono text-xs text-slate-700">{row.stripeConnectedAccountId}</span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">Not configured</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3.5 text-sm">
                         {isEditing ? (
                           <div className="flex gap-2">
                             <button
-                              onClick={() => saveZelle(group)}
+                              onClick={() => savePaymentDetails(row)}
                               disabled={isSaving}
                               className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
                             >
@@ -863,14 +835,14 @@ export default function OwnerBillingDetailsPage() {
                         ) : (
                           <div className="flex gap-2">
                             <button
-                              onClick={() => startEdit(group)}
+                              onClick={() => startEdit(row)}
                               className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-medium hover:bg-slate-50"
                             >
-                              {activeOwner ? "Edit" : "Add"}
+                              {zelleLabel || row.stripeConnectedAccountId ? "Edit" : "Add"}
                             </button>
-                            {activeOwner && (
+                            {(zelleLabel || row.stripeConnectedAccountId) && (
                               <button
-                                onClick={() => deleteZelle(group)}
+                                onClick={() => clearPaymentDetails(row)}
                                 disabled={isSaving}
                                 className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs hover:bg-red-100 disabled:opacity-50"
                               >
@@ -902,7 +874,7 @@ export default function OwnerBillingDetailsPage() {
             className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-medium text-slate-700 hover:bg-slate-50"
             aria-label={showCreateOwnerBillMobile ? "Collapse create owner bill" : "Expand create owner bill"}
           >
-            {showCreateOwnerBillMobile ? "âˆ’" : "+"}
+            {showCreateOwnerBillMobile ? "Ã¢Ë†â€™" : "+"}
           </button>
         </div>
         <div className={`${showCreateOwnerBillMobile ? "block" : "hidden"} md:block`}>
@@ -1191,7 +1163,7 @@ export default function OwnerBillingDetailsPage() {
                             <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                               {OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || bill.category || "PM fee"}
                             </div>
-                            <div className="whitespace-normal break-words">{bill.description || "â€”"}</div>
+                            <div className="whitespace-normal break-words">{bill.description || "Ã¢â‚¬â€"}</div>
                           </div>
                         ) : (
                           <div className="space-y-1">
