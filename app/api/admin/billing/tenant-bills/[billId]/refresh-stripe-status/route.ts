@@ -3,8 +3,7 @@ import Stripe from "stripe";
 import { stripe } from "@/lib/stripe/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
-
-const CONNECTED_ACCOUNT_ID = "acct_1SsAYz1kdKAqz2V1";
+import { resolveTenantBillConnectedAccount } from "@/lib/billing/tenant-connected-account";
 
 const mapPaymentIntentStatus = (status: Stripe.PaymentIntent.Status): "paid" | "processing" | "due" => {
   if (status === "succeeded") return "paid";
@@ -29,12 +28,20 @@ export async function POST(
 
     const { data: bill, error: billError } = await supabaseAdmin
       .from("tenant_bills")
-      .select("id, status, stripe_session_id, stripe_payment_intent_id, processing_started_at")
+      .select("id, property_id, status, stripe_session_id, stripe_payment_intent_id, processing_started_at")
       .eq("id", billId)
       .single();
 
     if (billError || !bill) {
       return NextResponse.json({ error: "Bill not found" }, { status: 404 });
+    }
+
+    const routing = await resolveTenantBillConnectedAccount(bill.property_id);
+    if (!routing.paymentAvailable || !routing.connectedAccountId) {
+      return NextResponse.json({
+        ok: false,
+        message: "Online payments are not configured for this property.",
+      });
     }
 
     const stripeSessionId = bill.stripe_session_id as string | null;
@@ -54,7 +61,7 @@ export async function POST(
         const paymentIntent = await stripe.paymentIntents.retrieve(
           stripePaymentIntentId,
           {},
-          { stripeAccount: CONNECTED_ACCOUNT_ID }
+          { stripeAccount: routing.connectedAccountId }
         );
         hasStripePayment = true;
         nextStatus = mapPaymentIntentStatus(paymentIntent.status);
@@ -69,7 +76,7 @@ export async function POST(
         const session = await stripe.checkout.sessions.retrieve(
           stripeSessionId,
           { expand: ["payment_intent"] },
-          { stripeAccount: CONNECTED_ACCOUNT_ID }
+          { stripeAccount: routing.connectedAccountId }
         );
         hasStripePayment = true;
 

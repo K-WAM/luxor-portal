@@ -13,6 +13,7 @@ const adminNav = [
   { href: "/admin/maintenance", label: "Maintenance Requests" },
   { href: "/admin/billing", label: "Tenant Billing" },
   { href: "/admin/owner-billing", label: "Owner Billing" },
+  { href: "/admin/owners", label: "Owners" },
   { href: "/admin/services-billing", label: "Services Billing" },
   { href: "/admin/tenants", label: "User Invites" },
   { href: "/admin/documents", label: "Documents" },

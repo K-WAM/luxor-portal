@@ -35,7 +35,6 @@ type UserRow = {
   role: string | null;
   created_at: string | null;
   last_sign_in_at: string | null;
-  is_subscriber?: boolean;
 };
 
 type UserPropertyAccess = {
@@ -699,7 +698,7 @@ export default function TenantInvitesPage() {
 
         {usersLoading ? (
           <div className="p-6 text-center text-gray-500">Loading users...</div>
-        ) : users.filter(u => !u.is_subscriber).length === 0 ? (
+        ) : users.length === 0 ? (
           <div className="p-6 text-center text-gray-500">No users found.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -730,7 +729,7 @@ export default function TenantInvitesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {users.filter(u => !u.is_subscriber).map((user) => (
+                {users.map((user) => (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 text-sm text-slate-900 min-w-[160px]">
                       <div className="flex items-center gap-2">
@@ -909,66 +908,6 @@ export default function TenantInvitesPage() {
         )}
       </div>
 
-      {/* Luxor Subscribe Users — self-registered subscribers (managed on subscribe.luxordev.com) */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mt-8">
-        <div className="px-6 py-4 border-b border-slate-200">
-          <div>
-            <h2 className="text-xl font-semibold">Luxor Subscribe Users</h2>
-            <p className="text-sm text-slate-600">
-              Self-registered subscribers from{" "}
-              <a href="https://subscribe.luxordev.com/admin" target="_blank" rel="noreferrer" className="underline hover:text-slate-900">
-                subscribe.luxordev.com
-              </a>
-              . Manage their subscriptions there.
-            </p>
-          </div>
-        </div>
-
-        {usersLoading ? (
-          <div className="p-6 text-center text-gray-500">Loading users...</div>
-        ) : users.filter(u => u.is_subscriber).length === 0 ? (
-          <div className="p-6 text-center text-gray-500">No subscribe users found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Created</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Last Sign-in</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {users.filter(u => u.is_subscriber).map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-sm text-slate-900">{user.email || "-"}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
-                      {user.created_at ? new Date(user.created_at).toLocaleDateString() : "-"}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
-                      {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "-"}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="flex flex-col gap-2">
-                        <div className="text-xs text-slate-500">ID: {user.id.slice(0, 6)}...</div>
-                        <button
-                          onClick={() => handleDeleteUser(user.id, user.email)}
-                          className="text-xs px-3 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 w-fit"
-                          disabled={savingUserId === user.id}
-                          type="button"
-                        >
-                          Delete user
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

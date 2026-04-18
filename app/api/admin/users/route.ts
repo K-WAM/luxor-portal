@@ -12,19 +12,8 @@ export async function GET() {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const [{ data, error }, { data: orgMembers }] = await Promise.all([
-      supabaseAdmin.auth.admin.listUsers(),
-      supabaseAdmin
-        .from("organization_members")
-        .select("user_id, organizations(product_type)")
-    ]);
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers();
     if (error) throw error;
-
-    const subscriberIds = new Set(
-      (orgMembers || [])
-        .filter((m: any) => m.organizations?.product_type === "self_managed")
-        .map((m: any) => m.user_id)
-    );
 
     const users =
       data?.users?.map((u) => ({
@@ -34,7 +23,6 @@ export async function GET() {
         last_sign_in_at: u.last_sign_in_at,
         role: (u.user_metadata as any)?.role || null,
         name: (u.user_metadata as any)?.name || null,
-        is_subscriber: subscriberIds.has(u.id),
       })) ?? [];
 
     return NextResponse.json(users);
@@ -106,7 +94,6 @@ export async function DELETE(request: Request) {
 
     // Clean up related records first
     await supabaseAdmin.from("user_properties").delete().eq("user_id", userId);
-    await supabaseAdmin.from("organization_members").delete().eq("user_id", userId);
 
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
     if (deleteError) {

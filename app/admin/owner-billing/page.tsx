@@ -428,7 +428,7 @@ export default function OwnerBillingDetailsPage() {
       return;
     }
     const confirmed = window.confirm(
-      "This will re-check Stripe and update this invoice’s status if needed. Continue?"
+      "This will re-check Stripe and update this invoiceâ€™s status if needed. Continue?"
     );
     if (!confirmed) return;
 
@@ -770,7 +770,7 @@ export default function OwnerBillingDetailsPage() {
                     : activeOwner?.zellePhone
                       ? activeOwner.zellePhone
                       : null;
-                  const recipientLabel = activeOwner?.zelleRecipient || "—";
+                  const recipientLabel = activeOwner?.zelleRecipient || "â€”";
 
                   return (
                     <tr key={group.propertyId} className="hover:bg-slate-50/50 transition-colors">
@@ -799,12 +799,12 @@ export default function OwnerBillingDetailsPage() {
                               onChange={(e) =>
                                 setForm((prev) => ({ ...prev, recipient: e.target.value }))
                               }
-                              placeholder="e.g. Blue Towers LLC"
+                              placeholder="e.g. Owner name"
                               className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white"
                             />
                           </div>
                         ) : (
-                          <span className={recipientLabel === "—" ? "text-slate-400" : ""}>{recipientLabel}</span>
+                          <span className={recipientLabel === "â€”" ? "text-slate-400" : ""}>{recipientLabel}</span>
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-sm text-slate-600">
@@ -902,7 +902,7 @@ export default function OwnerBillingDetailsPage() {
             className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-medium text-slate-700 hover:bg-slate-50"
             aria-label={showCreateOwnerBillMobile ? "Collapse create owner bill" : "Expand create owner bill"}
           >
-            {showCreateOwnerBillMobile ? "−" : "+"}
+            {showCreateOwnerBillMobile ? "âˆ’" : "+"}
           </button>
         </div>
         <div className={`${showCreateOwnerBillMobile ? "block" : "hidden"} md:block`}>
@@ -1191,7 +1191,7 @@ export default function OwnerBillingDetailsPage() {
                             <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                               {OWNER_BILL_CATEGORIES.find((c) => c.value === bill.category)?.label || bill.category || "PM fee"}
                             </div>
-                            <div className="whitespace-normal break-words">{bill.description || "—"}</div>
+                            <div className="whitespace-normal break-words">{bill.description || "â€”"}</div>
                           </div>
                         ) : (
                           <div className="space-y-1">

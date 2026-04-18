@@ -3,10 +3,12 @@ import { stripe } from "@/lib/stripe/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth/route-helpers";
 import { formatDateOnly } from "@/lib/date-only";
+import { resolveTenantBillConnectedAccount } from "@/lib/billing/tenant-connected-account";
 
 type TenantBillRow = {
   id: string;
   tenant_id: string;
+  property_id: string;
   bill_type: string;
   description: string | null;
   amount: number | null;
@@ -14,7 +16,6 @@ type TenantBillRow = {
   status: string;
 };
 
-const CONNECTED_ACCOUNT_ID = "acct_1SsAYz1kdKAqz2V1";
 const ACH_FEE_NUMERATOR = 8;
 const ACH_FEE_DENOMINATOR = 1000;
 const ACH_FEE_CAP_CENTS = 500;
@@ -48,52 +49,43 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { billIds, method } = body || {};
+    const { tenant_bill_id, method } = body || {};
 
-    if (!Array.isArray(billIds) || billIds.length === 0) {
-      return NextResponse.json({ error: "billIds is required" }, { status: 400 });
+    if (!tenant_bill_id || typeof tenant_bill_id !== "string") {
+      return NextResponse.json({ error: "tenant_bill_id is required" }, { status: 400 });
     }
     if (method !== "ach" && method !== "card") {
       return NextResponse.json({ error: "method must be ach or card" }, { status: 400 });
     }
 
-    const uniqueBillIds = Array.from(
-      new Set(
-        billIds
-          .map((id: unknown) => (typeof id === "string" ? id.trim() : ""))
-          .filter(Boolean)
-      )
-    );
-    if (uniqueBillIds.length === 0) {
-      return NextResponse.json({ error: "billIds is required" }, { status: 400 });
-    }
-
     const { data, error } = await supabaseAdmin
       .from("tenant_bills")
-      .select("id, tenant_id, bill_type, description, amount, due_date, status")
-      .in("id", uniqueBillIds);
+      .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status")
+      .eq("id", tenant_bill_id)
+      .maybeSingle();
 
     if (error) throw error;
 
-    const bills = (data || []) as TenantBillRow[];
-    if (bills.length !== uniqueBillIds.length) {
-      return NextResponse.json({ error: "One or more bills not found" }, { status: 400 });
+    const bill = data as TenantBillRow | null;
+    if (!bill) {
+      return NextResponse.json({ error: "Bill not found" }, { status: 400 });
     }
 
     const isAdminRole = role === "admin";
-    const unauthorized = bills.some((bill) => !isAdminRole && bill.tenant_id !== user.id);
-    if (unauthorized) {
-      return NextResponse.json({ error: "One or more bills are not payable by this tenant" }, { status: 403 });
+    if (!isAdminRole && bill.tenant_id !== user.id) {
+      return NextResponse.json({ error: "This bill is not payable by this tenant" }, { status: 403 });
     }
 
-    const hasUnpayable = bills.some((bill) => !PAYABLE_STATUSES.has((bill.status || "").toLowerCase()));
-    if (hasUnpayable) {
-      return NextResponse.json({ error: "One or more bills are not eligible for payment" }, { status: 400 });
+    if (!PAYABLE_STATUSES.has((bill.status || "").toLowerCase())) {
+      return NextResponse.json({ error: "This bill is not eligible for payment" }, { status: 400 });
     }
 
-    const subtotalCents = bills.reduce((sum, bill) => {
-      return sum + toCents(Number(bill.amount || 0));
-    }, 0);
+    const routing = await resolveTenantBillConnectedAccount(bill.property_id);
+    if (!routing.paymentAvailable || !routing.connectedAccountId) {
+      return NextResponse.json({ payment_available: false });
+    }
+
+    const subtotalCents = toCents(Number(bill.amount || 0));
 
     if (subtotalCents <= 0) {
       return NextResponse.json({ error: "Subtotal must be greater than 0" }, { status: 400 });
@@ -111,21 +103,19 @@ export async function POST(request: NextRequest) {
         product_data: { name: string; description?: string };
       };
       quantity: number;
-    }> = bills.map((bill) => {
-      const billLabel = bill.description?.trim() || "Tenant bill";
-      const dueLabel = formatDateOnly(bill.due_date) || "N/A";
-      return {
+    }> = [
+      {
         price_data: {
           currency: "usd",
           unit_amount: toCents(Number(bill.amount || 0)),
           product_data: {
-            name: billLabel,
-            description: `Due ${dueLabel}`,
+            name: bill.description?.trim() || "Tenant bill",
+            description: `Due ${formatDateOnly(bill.due_date) || "N/A"}`,
           },
         },
         quantity: 1,
-      };
-    });
+      },
+    ];
 
     if (feeCents > 0) {
       lineItems.push({
@@ -150,14 +140,15 @@ export async function POST(request: NextRequest) {
         cancel_url: `${origin}/tenant/payments?checkout=cancel`,
         metadata: {
           tenantUserId: user.id,
-          billIds: uniqueBillIds.join(","),
+          tenant_bill_id: bill.id,
+          billIds: bill.id,
           method,
           subtotalCents: String(subtotalCents),
           feeCents: String(feeCents),
         },
       },
       {
-        stripeAccount: CONNECTED_ACCOUNT_ID,
+        stripeAccount: routing.connectedAccountId,
       }
     );
 
@@ -170,7 +161,7 @@ export async function POST(request: NextRequest) {
         stripe_payment_intent_id: createdPaymentIntentId,
         updated_at: new Date().toISOString(),
       })
-      .in("id", uniqueBillIds);
+      .eq("id", bill.id);
     if (trackError) {
       console.error("Failed to store tenant Stripe session IDs:", trackError);
     }

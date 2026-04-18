@@ -48,9 +48,10 @@ export default function TenantPayments() {
   const [loading, setLoading] = useState(true);
   const [billsLoading, setBillsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("");
   const [checkoutLoading, setCheckoutLoading] = useState<"ach" | "card" | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [onlinePaymentAvailable, setOnlinePaymentAvailable] = useState(true);
   const [showCheckoutSuccessBanner, setShowCheckoutSuccessBanner] = useState(false);
   const [showPaidBills, setShowPaidBills] = useState(false);
 
@@ -247,17 +248,17 @@ export default function TenantPayments() {
   }, [bills, windowEndMs]);
 
   useEffect(() => {
-    setSelectedInvoiceIds(qualifyingBills.map((bill) => bill.id));
+    setSelectedInvoiceId((current) =>
+      qualifyingBills.some((bill) => bill.id === current) ? current : qualifyingBills[0]?.id || ""
+    );
+    setOnlinePaymentAvailable(true);
+    setCheckoutError(null);
   }, [qualifyingBills]);
 
   const totalDue = qualifyingBills.reduce((sum, bill) => sum + (bill.amount || 0), 0);
-  const selectedSubtotal = qualifyingBills
-    .filter((bill) => selectedInvoiceIds.includes(bill.id))
-    .reduce((sum, bill) => sum + (bill.amount || 0), 0);
-  const hasProcessingSelected = qualifyingBills.some(
-    (bill) =>
-      selectedInvoiceIds.includes(bill.id) && (bill.status || "").toLowerCase() === "processing"
-  );
+  const selectedBill = qualifyingBills.find((bill) => bill.id === selectedInvoiceId) || null;
+  const selectedSubtotal = selectedBill?.amount || 0;
+  const hasProcessingSelected = (selectedBill?.status || "").toLowerCase() === "processing";
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-US", {
@@ -268,7 +269,7 @@ export default function TenantPayments() {
     }).format(value);
 
   const handleCheckout = async (method: "ach" | "card") => {
-    if (selectedInvoiceIds.length === 0) return;
+    if (!selectedInvoiceId) return;
     try {
       setCheckoutLoading(method);
       setCheckoutError(null);
@@ -276,13 +277,17 @@ export default function TenantPayments() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          billIds: selectedInvoiceIds,
+          tenant_bill_id: selectedInvoiceId,
           method,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Failed to start checkout");
+      }
+      if (data?.payment_available === false) {
+        setOnlinePaymentAvailable(false);
+        return;
       }
       if (data?.url) {
         window.location.href = data.url;
@@ -357,15 +362,14 @@ export default function TenantPayments() {
                           return (
                             <label key={bill.id} className="flex items-start gap-2 text-sm text-slate-700">
                               <input
-                                type="checkbox"
+                                type="radio"
                                 className="mt-1 h-3.5 w-3.5 text-slate-600 border-slate-300"
-                                checked={selectedInvoiceIds.includes(bill.id)}
-                                onChange={(e) => {
-                                  setSelectedInvoiceIds((prev) =>
-                                    e.target.checked
-                                      ? [...prev, bill.id]
-                                      : prev.filter((id) => id !== bill.id)
-                                  );
+                                name="selected-tenant-bill"
+                                checked={selectedInvoiceId === bill.id}
+                                onChange={() => {
+                                  setSelectedInvoiceId(bill.id);
+                                  setOnlinePaymentAvailable(true);
+                                  setCheckoutError(null);
                                 }}
                               />
                               <div className="flex-1">
@@ -426,7 +430,7 @@ export default function TenantPayments() {
                         <div>
                           <button
                             onClick={() => handleCheckout("ach")}
-                            disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0 || hasProcessingSelected}
+                            disabled={checkoutLoading !== null || !selectedInvoiceId || hasProcessingSelected || !onlinePaymentAvailable}
                             className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                           >
                             {checkoutLoading === "ach" ? "Starting..." : "Pay Balance by Bank (ACH)"}
@@ -435,13 +439,21 @@ export default function TenantPayments() {
                         <div>
                           <button
                             onClick={() => handleCheckout("card")}
-                            disabled={checkoutLoading !== null || selectedInvoiceIds.length === 0 || hasProcessingSelected}
+                            disabled={checkoutLoading !== null || !selectedInvoiceId || hasProcessingSelected || !onlinePaymentAvailable}
                             className="h-11 md:h-9 px-4 md:px-3 rounded border border-slate-400 bg-slate-100 text-slate-800 text-sm md:text-xs hover:bg-slate-200 disabled:opacity-60"
                           >
                             {checkoutLoading === "card" ? "Starting..." : "Pay Balance by Card"}
                           </button>
                         </div>
                       </div>
+                      {!onlinePaymentAvailable && (
+                        <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                          <div className="font-medium">Online payment coming soon</div>
+                          <div className="text-xs text-slate-500">
+                            ACH and card are not yet available for this property.
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
