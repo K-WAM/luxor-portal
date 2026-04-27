@@ -51,18 +51,6 @@ type UserPropertyAccess = {
 };
 
 export default function TenantInvitesPage() {
-  const normalizePhone = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return "";
-    if (trimmed.startsWith("+")) return trimmed;
-    const digits = trimmed.replace(/\D/g, "");
-    if (digits.length === 10) return `+1${digits}`;
-    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-    return trimmed;
-  };
-
-  const isValidE164 = (value: string) => /^\+[1-9]\d{1,14}$/.test(value);
-
   const [properties, setProperties] = useState<Property[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -73,7 +61,6 @@ export default function TenantInvitesPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [phoneWarning, setPhoneWarning] = useState<string | null>(null);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingAccessUserId, setSavingAccessUserId] = useState<string | null>(null);
   const [savingOwnershipKey, setSavingOwnershipKey] = useState<string | null>(null);
@@ -82,7 +69,6 @@ export default function TenantInvitesPage() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    phone: "",
     propertyId: "",
     role: "tenant",
     ownershipPercentage: "",
@@ -143,24 +129,13 @@ export default function TenantInvitesPage() {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    const normalizedPhone = normalizePhone(formData.phone);
-    const phoneE164 = normalizedPhone && isValidE164(normalizedPhone) ? normalizedPhone : "";
-    const nextFormData = { ...formData, phone: normalizedPhone };
-    setFormData(nextFormData);
-    if (normalizedPhone && !isValidE164(normalizedPhone)) {
-      setPhoneWarning(
-        "Phone number is not in E.164 format; it will be saved, but may not be used for authentication."
-      );
-    } else {
-      setPhoneWarning(null);
-    }
     setCreating(true);
 
     try {
       const res = await fetch("/api/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...nextFormData, phoneE164 }),
+        body: JSON.stringify(formData),
       });
 
       const data = await res.json();
@@ -169,8 +144,7 @@ export default function TenantInvitesPage() {
 
       setSuccess("Invite created!");
       setLatestInviteUrl(data.inviteUrl || null);
-      setFormData({ name: "", email: "", phone: "", propertyId: "", role: "tenant", ownershipPercentage: "" });
-      setPhoneWarning(null);
+      setFormData({ name: "", email: "", propertyId: "", role: "tenant", ownershipPercentage: "" });
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to create invite");
@@ -453,10 +427,10 @@ export default function TenantInvitesPage() {
       <div className="bg-white rounded-lg border border-slate-200 p-6 mb-8">
         <h2 className="text-xl font-semibold mb-4">Create New Invite</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">
-                Name
+                Name <span className="text-slate-400">(optional)</span>
               </label>
               <input
                 type="text"
@@ -483,38 +457,32 @@ export default function TenantInvitesPage() {
                 placeholder="user@example.com"
                 required
               />
+              <p className="mt-1 text-xs text-slate-500">
+                This email will be used for the user&apos;s portal login and invite acceptance.
+              </p>
             </div>
+
 
             <div>
               <label className="block text-sm font-medium mb-1">
-                Phone
+                Role <span className="text-red-500">*</span>
               </label>
-              <input
-                type="tel"
-                value={formData.phone}
+              <select
+                value={formData.role}
                 onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
+                  setFormData({ ...formData, role: e.target.value, ownershipPercentage: "" })
                 }
-                onBlur={(e) => {
-                  const normalized = normalizePhone(e.target.value);
-                  setFormData({ ...formData, phone: normalized });
-                  if (normalized && !isValidE164(normalized)) {
-                    setPhoneWarning(
-                      "Phone number is not in E.164 format; it will be saved, but may not be used for authentication."
-                    );
-                  } else {
-                    setPhoneWarning(null);
-                  }
-                }}
                 className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="+12025550123"
-              />
+                required
+              >
+                <option value="tenant">Tenant</option>
+                <option value="owner">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="viewer">Viewer</option>
+              </select>
               <p className="mt-1 text-xs text-slate-500">
-                Use E.164 format (e.g., +12025550123). If you enter a US/Canada number without +1, we’ll format it automatically.
+                Admin sees everything; Viewer is a demo role with masked data.
               </p>
-              {phoneWarning && (
-                <p className="mt-1 text-xs text-amber-700">{phoneWarning}</p>
-              )}
             </div>
 
             <div>
@@ -537,29 +505,11 @@ export default function TenantInvitesPage() {
                 ))}
               </select>
               <p className="mt-1 text-xs text-slate-500">
-                Required for all invites (schema enforced). For admins/viewers, pick any property to attach.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Role <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={formData.role}
-                onChange={(e) =>
-                  setFormData({ ...formData, role: e.target.value, ownershipPercentage: "" })
-                }
-                className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="tenant">Tenant</option>
-                <option value="owner">Owner</option>
-                <option value="admin">Admin</option>
-                <option value="viewer">Viewer</option>
-              </select>
-              <p className="mt-1 text-xs text-slate-500">
-                Admin sees everything; Viewer is a demo role with masked data.
+                {formData.role === "tenant"
+                  ? "Tenant invites must be tied to exactly one property."
+                  : formData.role === "owner"
+                    ? "Owner invites currently grant one property per invite. Add more properties after acceptance from Existing Users."
+                    : "Property is still required by the current invite schema. For admins/viewers, choose a safe placeholder property."}
               </p>
             </div>
 
