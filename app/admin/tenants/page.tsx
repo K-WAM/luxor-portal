@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { getShortPropertyName } from "@/lib/property-short-name";
+import { buildInviteUrl } from "@/lib/invite-url";
 
 type Property = {
   id: string;
@@ -20,7 +21,7 @@ type Invite = {
   status: string;
   expires_at: string;
   created_at: string;
-  accepted_at?: string;
+  accepted_at?: string | null;
   properties?: {
     id: string;
     address: string;
@@ -76,6 +77,7 @@ export default function TenantInvitesPage() {
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [savingAccessUserId, setSavingAccessUserId] = useState<string | null>(null);
   const [savingOwnershipKey, setSavingOwnershipKey] = useState<string | null>(null);
+  const [regeneratingInviteId, setRegeneratingInviteId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -349,8 +351,32 @@ export default function TenantInvitesPage() {
     }
   };
 
+  const handleRegenerateInvite = async (invite: Invite) => {
+    if ((invite.status || "").toLowerCase() === "accepted") return;
+
+    try {
+      setRegeneratingInviteId(invite.id);
+      setError(null);
+      setSuccess(null);
+      const res = await fetch("/api/invites", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: invite.id, action: "regenerate" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to regenerate invite");
+      setSuccess("Invite regenerated.");
+      setLatestInviteUrl(data.inviteUrl || null);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "Failed to regenerate invite");
+    } finally {
+      setRegeneratingInviteId(null);
+    }
+  };
+
   const copyInviteLink = (token: string) => {
-    const inviteUrl = `${window.location.origin}/invite/${token}`;
+    const inviteUrl = buildInviteUrl(token);
     navigator.clipboard.writeText(inviteUrl);
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 2000);
@@ -389,8 +415,6 @@ export default function TenantInvitesPage() {
       </div>
     );
   }
-
-  const visibleInvites = invites.filter((inv) => (inv.status || "").toLowerCase() !== "accepted");
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -611,12 +635,15 @@ export default function TenantInvitesPage() {
                     Expires
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Accepted
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {visibleInvites.map((invite) => (
+                {invites.map((invite) => (
                   <tr key={invite.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 text-sm text-slate-900">
                       {invite.name || "-"}
@@ -656,19 +683,31 @@ export default function TenantInvitesPage() {
                       {getStatusBadge(invite.status)}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
-                      {new Date(invite.created_at).toLocaleDateString()}
+                      {new Date(invite.created_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
-                      {new Date(invite.expires_at).toLocaleDateString()}
+                      {new Date(invite.expires_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      {invite.accepted_at ? new Date(invite.accepted_at).toLocaleString() : "-"}
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <div className="flex gap-2">
-                        {invite.status === "pending" && (
+                        {invite.status !== "accepted" && (
                           <button
                             onClick={() => copyInviteLink(invite.token)}
                             className="text-blue-600 hover:text-blue-700 font-medium"
                           >
                             {copiedToken === invite.token ? "Copied!" : "Copy Link"}
+                          </button>
+                        )}
+                        {invite.status !== "accepted" && (
+                          <button
+                            onClick={() => handleRegenerateInvite(invite)}
+                            disabled={regeneratingInviteId === invite.id}
+                            className="text-amber-700 hover:text-amber-800 font-medium disabled:opacity-50"
+                          >
+                            {regeneratingInviteId === invite.id ? "Regenerating..." : "Regenerate Invite"}
                           </button>
                         )}
                         <button

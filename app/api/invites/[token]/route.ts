@@ -1,6 +1,13 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
+async function markInviteExpired(inviteId: string) {
+  await supabaseAdmin
+    .from('tenant_invites')
+    .update({ status: 'expired' })
+    .eq('id', inviteId)
+}
+
 // GET - Validate and fetch invite details by token
 export async function GET(
   _req: NextRequest,
@@ -29,12 +36,7 @@ export async function GET(
 
     // Check if expired
     if (new Date(invite.expires_at) < new Date()) {
-      // Update status to expired
-      await supabaseAdmin
-        .from('tenant_invites')
-        .update({ status: 'expired' })
-        .eq('id', invite.id)
-
+      await markInviteExpired(invite.id)
       return NextResponse.json({ error: 'This invite has expired' }, { status: 400 })
     }
 
@@ -84,6 +86,7 @@ export async function POST(
 
     // Check if expired
     if (new Date(invite.expires_at) < new Date()) {
+      await markInviteExpired(invite.id)
       return NextResponse.json({ error: 'This invite has expired' }, { status: 400 })
     }
 
@@ -143,9 +146,11 @@ export async function POST(
             userPropertyData.ownership_percentage = invite.ownership_percentage
           }
 
-          await supabaseAdmin
+          const { error: userPropertyError } = await supabaseAdmin
             .from('user_properties')
-            .insert(userPropertyData)
+            .upsert(userPropertyData, { onConflict: 'user_id,property_id' })
+
+          if (userPropertyError) throw userPropertyError
 
           // Mark invite as accepted
           await supabaseAdmin
@@ -179,9 +184,11 @@ export async function POST(
       userPropertyData.ownership_percentage = invite.ownership_percentage
     }
 
-    await supabaseAdmin
+    const { error: userPropertyError } = await supabaseAdmin
       .from('user_properties')
-      .insert(userPropertyData)
+      .upsert(userPropertyData, { onConflict: 'user_id,property_id' })
+
+    if (userPropertyError) throw userPropertyError
 
     // Mark invite as accepted
     await supabaseAdmin
