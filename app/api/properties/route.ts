@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers'
 import { toDateOnlyString } from '@/lib/date-only'
+import { fetchPropertyLeaseSnapshots, getLeaseOccupancyStatus } from '@/lib/lease-agreements'
 
 export async function GET(request: Request) {
   try {
@@ -45,12 +46,30 @@ export async function GET(request: Request) {
         }
       }
 
-      const enriched = (data || []).map((prop: any) => ({
-        ...prop,
-        maintenance_open_count: countsByProperty.get(prop.id)?.open ?? 0,
-        maintenance_closed_count: countsByProperty.get(prop.id)?.closed ?? 0,
-        maintenance_red_count: countsByProperty.get(prop.id)?.red ?? 0,
-      }));
+      const propertyRows = data || [];
+      const leaseSnapshots = await fetchPropertyLeaseSnapshots(
+        propertyRows.map((prop: any) => prop.id),
+        propertyRows
+      );
+
+      const enriched = propertyRows.map((prop: any) => {
+        const snapshot = leaseSnapshots.get(prop.id);
+        const currentLease = snapshot?.currentLease;
+        return {
+          ...prop,
+          maintenance_open_count: countsByProperty.get(prop.id)?.open ?? 0,
+          maintenance_closed_count: countsByProperty.get(prop.id)?.closed ?? 0,
+          maintenance_red_count: countsByProperty.get(prop.id)?.red ?? 0,
+          current_lease: currentLease || null,
+          lease_agreements: snapshot?.agreements || [],
+          occupancy_status: getLeaseOccupancyStatus(
+            currentLease?.leaseStartDate || prop.lease_start || null,
+            currentLease?.leaseEndDate || prop.lease_end || null,
+            currentLease?.tenantIds.length || 0
+          ),
+          current_tenant_names: currentLease?.tenantNames || [],
+        };
+      });
 
       return NextResponse.json(enriched);
     }
@@ -70,7 +89,29 @@ export async function GET(request: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json(data);
+    const propertyRows = data || [];
+    const leaseSnapshots = await fetchPropertyLeaseSnapshots(
+      propertyRows.map((prop: any) => prop.id),
+      propertyRows
+    );
+
+    return NextResponse.json(
+      propertyRows.map((prop: any) => {
+        const snapshot = leaseSnapshots.get(prop.id);
+        const currentLease = snapshot?.currentLease;
+        return {
+          ...prop,
+          current_lease: currentLease || null,
+          lease_agreements: snapshot?.agreements || [],
+          occupancy_status: getLeaseOccupancyStatus(
+            currentLease?.leaseStartDate || prop.lease_start || null,
+            currentLease?.leaseEndDate || prop.lease_end || null,
+            currentLease?.tenantIds.length || 0
+          ),
+          current_tenant_names: currentLease?.tenantNames || [],
+        };
+      })
+    );
   } catch (error) {
     console.error('Error fetching properties:', error);
     return NextResponse.json({ error: 'Failed to fetch properties' }, { status: 500 });

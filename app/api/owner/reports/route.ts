@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from "@/lib/auth/route-helpers";
+import { fetchPropertyLeaseSnapshots, getLeaseOccupancyStatus } from "@/lib/lease-agreements";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { parseDateOnly } from "@/lib/date-only";
 
@@ -9,9 +10,6 @@ type AuthUserLike = {
   user_metadata?: Record<string, any> | null;
 };
 
-const EXPIRING_DAYS = 90;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const getDisplayName = (user?: AuthUserLike | null) => {
   if (!user) return "Unknown Tenant";
   const metadataName = String(user.user_metadata?.name || "").trim();
@@ -19,29 +17,6 @@ const getDisplayName = (user?: AuthUserLike | null) => {
   const email = String(user.email || "").trim();
   if (!email) return "Unknown Tenant";
   return email.split("@")[0] || email;
-};
-
-const getOverviewStatus = (leaseStart?: string | null, leaseEnd?: string | null, tenantCount = 0) => {
-  const now = new Date();
-  const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const leaseStartMs = parseDateOnly(leaseStart)?.getTime() ?? null;
-  const leaseEndMs = parseDateOnly(leaseEnd)?.getTime() ?? null;
-  const hasActiveLease =
-    leaseStartMs !== null &&
-    leaseEndMs !== null &&
-    leaseStartMs <= todayUtcMs &&
-    leaseEndMs >= todayUtcMs;
-  const hasTenantAssignment = tenantCount > 0;
-  const occupied = hasActiveLease || hasTenantAssignment;
-  const expiring =
-    occupied &&
-    leaseEndMs !== null &&
-    leaseEndMs >= todayUtcMs &&
-    leaseEndMs <= todayUtcMs + EXPIRING_DAYS * DAY_MS;
-
-  if (expiring) return "expiring";
-  if (occupied) return "occupied";
-  return "vacant";
 };
 
 const getPaymentStatus = (status?: string | null, dueDate?: string | null) => {
@@ -136,17 +111,30 @@ export async function GET() {
       propertyTenantMap.set(assignment.property_id, existing);
     }
 
+    const leaseSnapshots = await fetchPropertyLeaseSnapshots(
+      (properties || []).map((property: any) => property.id),
+      properties || []
+    );
+
     const overviewRows = (properties || []).map((property: any) => {
       const tenants = propertyTenantMap.get(property.id) || [];
+      const snapshot = leaseSnapshots.get(property.id);
+      const currentLease = snapshot?.currentLease;
+      const currentTenantNames = currentLease?.tenantNames?.length ? currentLease.tenantNames : tenants.map((tenant) => tenant.name);
+      const currentTenantEmails = currentLease?.tenantEmails?.length ? currentLease.tenantEmails : tenants.map((tenant) => tenant.email).filter(Boolean);
       return {
         propertyId: property.id,
         address: property.address || "",
-        currentRent: Number(property.target_monthly_rent || 0),
-        leaseStart: property.lease_start || null,
-        leaseEnd: property.lease_end || null,
-        status: getOverviewStatus(property.lease_start, property.lease_end, tenants.length),
-        tenantNames: tenants.map((tenant) => tenant.name),
-        tenantEmails: tenants.map((tenant) => tenant.email).filter(Boolean),
+        currentRent: Number((currentLease?.monthlyRent ?? property.target_monthly_rent) || 0),
+        leaseStart: currentLease?.leaseStartDate || property.lease_start || null,
+        leaseEnd: currentLease?.leaseEndDate || property.lease_end || null,
+        status: getLeaseOccupancyStatus(
+          currentLease?.leaseStartDate || property.lease_start || null,
+          currentLease?.leaseEndDate || property.lease_end || null,
+          currentLease?.tenantIds.length || tenants.length
+        ),
+        tenantNames: currentTenantNames,
+        tenantEmails: currentTenantEmails,
       };
     });
 

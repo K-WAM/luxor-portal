@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { calculateCanonicalMetrics, getPerformanceStatus } from '@/lib/calculations/canonical-metrics';
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers';
+import { fetchPropertyLeaseSnapshots } from '@/lib/lease-agreements';
 
 export async function GET(request: Request) {
   try {
@@ -41,6 +42,12 @@ export async function GET(request: Request) {
         { status: 404 }
       );
     }
+
+    const leaseSnapshots = await fetchPropertyLeaseSnapshots([property.id], [property]);
+    const currentLease = leaseSnapshots.get(property.id)?.currentLease;
+    const effectiveLeaseStart = currentLease?.leaseStartDate || property.lease_start;
+    const effectiveLeaseEnd = currentLease?.leaseEndDate || property.lease_end;
+    const effectiveMonthlyRent = Number((currentLease?.monthlyRent ?? property.target_monthly_rent) || 0);
 
     // Fetch ALL monthly performance data for the year
     const { data: monthlyDataRaw, error: monthlyError } = await supabaseAdmin
@@ -124,8 +131,10 @@ export async function GET(request: Request) {
       closing_costs: parseFloat(property.closing_costs || 0),
       total_cost: parseFloat(property.total_cost || 0),
       current_market_estimate: parseFloat(property.current_market_estimate || 0),
-      target_monthly_rent: parseFloat(property.target_monthly_rent || 0),
+      target_monthly_rent: effectiveMonthlyRent,
       deposit: parseFloat(property.deposit || 0),
+      lease_start: effectiveLeaseStart,
+      lease_end: effectiveLeaseEnd,
       // Infer last-month-rent if the flag is truthy OR a deposit exists (Buena Ventura case)
       last_month_rent_collected:
         property.last_month_rent_collected !== null && property.last_month_rent_collected !== undefined
@@ -173,14 +182,14 @@ export async function GET(request: Request) {
       closing_costs: parseFloat(property.closing_costs || 0),
       total_cost: parseFloat(property.total_cost || 0),
       current_market_estimate: parseFloat(property.current_market_estimate || 0),
-      target_monthly_rent: parseFloat(property.target_monthly_rent || 0),
+      target_monthly_rent: effectiveMonthlyRent,
       planned_garden_cost: parseFloat(property.planned_garden_cost || 0),
       planned_pool_cost: parseFloat(property.planned_pool_cost || 0),
       planned_hoa_cost: parseFloat(property.planned_hoa_cost || 0),
       planned_pm_fee_monthly: parseFloat(property.planned_pm_fee_monthly || 0),
       purchase_date: property.purchase_date,
-      lease_start: property.lease_start,
-      lease_end: property.lease_end,
+      lease_start: effectiveLeaseStart,
+      lease_end: effectiveLeaseEnd,
       deposit: property.deposit,
       last_month_rent_collected: property.last_month_rent_collected,
     };
