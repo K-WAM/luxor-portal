@@ -598,13 +598,30 @@ Use the provided property and document context from the server; do not guess.`;
   const renewalDate = leaseEndDate ? new Date(leaseEndDate.getTime() - 90 * 24 * 60 * 60 * 1000) : null;
   const listingDate = leaseEndDate ? new Date(leaseEndDate.getTime() - 60 * 24 * 60 * 60 * 1000) : null;
   const todayDate = new Date();
-  const timelineRangeStart = leaseStartDate || renewalDate || listingDate || leaseEndDate || todayDate;
-  const timelineRangeEnd = leaseEndDate || listingDate || renewalDate || leaseStartDate || todayDate;
+  const getMonthStart = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
+  const getMonthEnd = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const addMonths = (date: Date, months: number) => new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const formatTimelineMonth = (date: Date) =>
+    date.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
+  const formatTimelineYear = (date: Date) =>
+    date.toLocaleDateString("en-US", { year: "2-digit" });
+  const timelineRangeStartBase = leaseStartDate || renewalDate || listingDate || leaseEndDate || todayDate;
+  const timelineRangeEndBase = leaseEndDate || listingDate || renewalDate || leaseStartDate || todayDate;
+  const timelineRangeStart = getMonthStart(addMonths(timelineRangeStartBase, -1));
+  const timelineRangeEnd = getMonthEnd(addMonths(timelineRangeEndBase, 1));
   const timelineSpan = Math.max(timelineRangeEnd.getTime() - timelineRangeStart.getTime(), 1);
   const getTimelinePercent = (date: Date | null) => {
     if (!date) return 0;
     return Math.min(100, Math.max(0, ((date.getTime() - timelineRangeStart.getTime()) / timelineSpan) * 100));
   };
+  const timelineMonths: Date[] = [];
+  for (
+    let cursor = getMonthStart(timelineRangeStart);
+    cursor.getTime() <= timelineRangeEnd.getTime();
+    cursor = addMonths(cursor, 1)
+  ) {
+    timelineMonths.push(new Date(cursor));
+  }
   const activeRole = (meInfo?.role || role || "unknown") as string;
   const roleBadgeClass =
     activeRole === "admin"
@@ -733,29 +750,52 @@ Use the provided property and document context from the server; do not guess.`;
                   <div className="font-medium text-slate-900">{formatDateOnly(property.lease_end)}</div>
                 </div>
               </div>
-              <div className="relative h-28 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+              <div className="relative h-52 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden px-4 py-4">
+                <div className="absolute inset-x-4 top-3">
+                  {timelineMonths.map((month) => (
+                    <div
+                      key={`${month.getFullYear()}-${month.getMonth()}`}
+                      className="absolute -translate-x-1/2"
+                      style={{ left: `${getTimelinePercent(month)}%` }}
+                    >
+                      <div className="text-[11px] font-semibold tracking-wide text-slate-700">
+                        {formatTimelineMonth(month)}
+                      </div>
+                      <div className="text-[11px] text-slate-400">{formatTimelineYear(month)}</div>
+                      <div className="absolute left-1/2 top-8 h-32 w-px -translate-x-1/2 bg-slate-200" />
+                    </div>
+                  ))}
+                </div>
                 <div
-                  className="absolute top-6 h-8 rounded-md bg-emerald-300/80"
+                  className="absolute top-14 h-9 rounded-md bg-emerald-300/80"
                   style={{
                     left: `${getTimelinePercent(leaseStartDate)}%`,
-                    width: `${Math.max(getTimelinePercent(leaseEndDate) - getTimelinePercent(leaseStartDate), 4)}%`,
+                    width: `${Math.max(getTimelinePercent(leaseEndDate) - getTimelinePercent(leaseStartDate), 6)}%`,
+                    minWidth: "4rem",
                   }}
                 />
+                <div className="absolute left-6 top-[4.6rem] text-xs font-medium uppercase tracking-wide text-emerald-900">
+                  Lease Term
+                </div>
                 <div
-                  className="absolute top-16 h-5 rounded-md bg-slate-300/90"
+                  className="absolute top-28 flex min-h-[2.75rem] items-center justify-center rounded-md bg-slate-300/90 px-2 text-center text-[11px] font-medium leading-tight text-slate-700"
                   style={{
                     left: `${getTimelinePercent(renewalDate)}%`,
-                    width: `${Math.max(getTimelinePercent(leaseEndDate) - getTimelinePercent(renewalDate), 3)}%`,
-                  }}
-                />
-                <div
-                  className="absolute top-16 h-5 rounded-md bg-slate-800/90 text-white text-xs flex items-center px-2"
-                  style={{
-                    left: `${getTimelinePercent(listingDate)}%`,
-                    width: `${Math.max(getTimelinePercent(leaseEndDate) - getTimelinePercent(listingDate), 3)}%`,
+                    width: `${Math.max(getTimelinePercent(leaseEndDate) - getTimelinePercent(renewalDate), 6)}%`,
+                    minWidth: "4.5rem",
                   }}
                 >
-                  Listing Period
+                  <span>Renewal<br />Period</span>
+                </div>
+                <div
+                  className="absolute top-40 flex min-h-[2.75rem] items-center justify-center rounded-md bg-slate-800/90 px-2 text-center text-[11px] font-medium leading-tight text-white"
+                  style={{
+                    left: `${getTimelinePercent(listingDate)}%`,
+                    width: `${Math.max(getTimelinePercent(leaseEndDate) - getTimelinePercent(listingDate), 6)}%`,
+                    minWidth: "4.5rem",
+                  }}
+                >
+                  <span>Listing<br />Period</span>
                 </div>
                 <div
                   className="absolute top-0 bottom-0 w-px bg-slate-800"
