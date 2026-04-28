@@ -43,7 +43,33 @@ type MonthlyPerformance = {
   total_expenses: number;
   net_income: number;
   property_market_estimate?: number | null;
-  updated_at?: string;
+  updated_at?: string | null;
+  hasStoredRecord?: boolean;
+  is_future?: boolean;
+  notes?: string;
+  rent_income_override?: number | null;
+  property_tax_override?: number | null;
+  market_value_override?: number | null;
+  stored_rent_income?: number;
+  stored_pool?: number;
+  stored_garden?: number;
+  stored_hoa_payments?: number;
+  stored_pm_fee?: number;
+  stored_property_tax?: number;
+  stored_property_market_estimate?: number | null;
+  billing_rent_income?: number;
+  schedule_pool?: number | null;
+  schedule_garden?: number | null;
+  schedule_hoa_payments?: number | null;
+  schedule_pm_fee?: number | null;
+  rent_income_source?: "override" | "billing" | "schedule" | "stored" | "legacy_fallback" | "future_blank";
+  pool_source?: "override" | "billing" | "schedule" | "stored" | "legacy_fallback" | "future_blank";
+  garden_source?: "override" | "billing" | "schedule" | "stored" | "legacy_fallback" | "future_blank";
+  hoa_payments_source?: "override" | "billing" | "schedule" | "stored" | "legacy_fallback" | "future_blank";
+  pm_fee_source?: "override" | "billing" | "schedule" | "stored" | "legacy_fallback" | "future_blank";
+  property_tax_source?: "override" | "billing" | "schedule" | "stored" | "legacy_fallback" | "future_blank";
+  property_market_estimate_source?: "override" | "billing" | "schedule" | "stored" | "legacy_fallback" | "future_blank";
+  isDirty?: boolean;
 };
 
 type LeaseAgreementFinance = {
@@ -93,6 +119,30 @@ const EMPTY_RECURRING_EXPENSE_FORM: RecurringExpenseForm = {
   effectiveStartDate: "",
   effectiveEndDate: "",
   notes: "",
+};
+
+const sourceBadgeStyles: Record<
+  NonNullable<MonthlyPerformance["rent_income_source"]>,
+  string
+> = {
+  override: "bg-indigo-100 text-indigo-700",
+  billing: "bg-emerald-100 text-emerald-700",
+  schedule: "bg-blue-100 text-blue-700",
+  stored: "bg-slate-100 text-slate-700",
+  legacy_fallback: "bg-amber-100 text-amber-700",
+  future_blank: "bg-slate-100 text-slate-500",
+};
+
+const sourceBadgeLabels: Record<
+  NonNullable<MonthlyPerformance["rent_income_source"]>,
+  string
+> = {
+  override: "Override",
+  billing: "Billing",
+  schedule: "Schedule",
+  stored: "Stored",
+  legacy_fallback: "Legacy",
+  future_blank: "Future",
 };
 
 export default function FinancialsPage() {
@@ -180,6 +230,7 @@ export default function FinancialsPage() {
   const [lastMonthlyUpdate, setLastMonthlyUpdate] = useState<string | null>(null);
   const [loadingMonthly, setLoadingMonthly] = useState(false);
   const [financialsLoaded, setFinancialsLoaded] = useState(false);
+  const [selectedMonthlyEditorKey, setSelectedMonthlyEditorKey] = useState<string>("");
 
   // Sale closing costs (for ROI if sold calculation)
   const [saleClosingCosts, setSaleClosingCosts] = useState("");
@@ -395,6 +446,22 @@ export default function FinancialsPage() {
     propertyFinancials.lease_start,
     propertyFinancials.lease_end,
   ]);
+
+  useEffect(() => {
+    if (!displayMonthlyData.length) {
+      setSelectedMonthlyEditorKey("");
+      return;
+    }
+
+    const hasSelectedMonth = displayMonthlyData.some(
+      (row) => `${row.year}-${row.month}` === selectedMonthlyEditorKey
+    );
+    if (!hasSelectedMonth) {
+      setSelectedMonthlyEditorKey(
+        `${displayMonthlyData[0].year}-${displayMonthlyData[0].month}`
+      );
+    }
+  }, [displayMonthlyData, selectedMonthlyEditorKey]);
 
   const canonicalMetrics = useMemo(() => {
     const estimatedAnnualPropertyTax = parseFloat(yeTarget.property_tax) || 0;
@@ -795,58 +862,82 @@ export default function FinancialsPage() {
         }));
       }
 
-      // Load data for each month in the list
-      const promises = monthsToLoad.map(async ({ month, year, month_name }) => {
-        const res = await fetch(`/api/admin/financials/monthly?propertyId=${selectedProperty}&year=${year}&month=${month}`);
-        const data = await res.json();
-
-        if (res.ok && data && data.rent_income !== undefined) {
-          // Excel formula: total_expenses = maintenance + pool + garden + hoa + pm_fee (EXCLUDES property_tax)
-          const totalExp =
-            (data.maintenance || 0) +
-            (data.pool || 0) +
-            (data.garden || 0) +
-            (data.hoa_payments || 0) +
-            (data.pm_fee || 0);
-          // Excel formula: net_income = rent_income - total_expenses (EXCLUDES property_tax)
-          const netInc = (data.rent_income || 0) - totalExp;
-          return {
-            month,
-            year,
-            month_name,
-            rent_income: data.rent_income || 0,
-            maintenance: data.maintenance || 0,
-            pool: data.pool || 0,
-            garden: data.garden || 0,
-            hoa_payments: data.hoa_payments || 0,
-            pm_fee: data.pm_fee || 0,
-            property_tax: data.property_tax || 0,
-            total_expenses: totalExp,
-            net_income: netInc,
-            property_market_estimate: data.property_market_estimate ?? null,
-            updated_at: data.updated_at || null,
-          };
-        } else {
-          return {
-            month,
-            year,
-            month_name,
-            rent_income: 0,
-            maintenance: 0,
-            pool: 0,
-            garden: 0,
-            hoa_payments: 0,
-            pm_fee: 0,
-            property_tax: 0,
-            total_expenses: 0,
-            net_income: 0,
-            property_market_estimate: null,
-            updated_at: null,
-          };
-        }
+      const rangeStart = monthsToLoad[0];
+      const rangeEnd = monthsToLoad[monthsToLoad.length - 1];
+      const params = new URLSearchParams({
+        propertyId: selectedProperty,
+        startYear: String(rangeStart.year),
+        startMonth: String(rangeStart.month),
+        endYear: String(rangeEnd.year),
+        endMonth: String(rangeEnd.month),
       });
 
-      const results = await Promise.all(promises);
+      const res = await fetch(`/api/admin/financials/monthly?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load monthly performance");
+      }
+
+      const resultMap = new Map<string, MonthlyPerformance>();
+      for (const row of (data.rows || []) as MonthlyPerformance[]) {
+        resultMap.set(`${row.year}-${row.month}`, row);
+      }
+
+      const results = monthsToLoad.map(({ month, year, month_name }) => {
+        const row = resultMap.get(`${year}-${month}`);
+        if (row) {
+          return {
+            ...row,
+            month,
+            year,
+            month_name,
+            isDirty: false,
+          };
+        }
+        return {
+          month,
+          year,
+          month_name,
+          rent_income: 0,
+          maintenance: 0,
+          pool: 0,
+          garden: 0,
+          hoa_payments: 0,
+          pm_fee: 0,
+          property_tax: 0,
+          total_expenses: 0,
+          net_income: 0,
+          property_market_estimate: null,
+          updated_at: null,
+          hasStoredRecord: false,
+          is_future: false,
+          notes: "",
+          rent_income_override: null,
+          property_tax_override: null,
+          market_value_override: null,
+          stored_rent_income: 0,
+          stored_pool: 0,
+          stored_garden: 0,
+          stored_hoa_payments: 0,
+          stored_pm_fee: 0,
+          stored_property_tax: 0,
+          stored_property_market_estimate: null,
+          billing_rent_income: 0,
+          schedule_pool: null,
+          schedule_garden: null,
+          schedule_hoa_payments: null,
+          schedule_pm_fee: null,
+          rent_income_source: "stored",
+          pool_source: "stored",
+          garden_source: "stored",
+          hoa_payments_source: "stored",
+          pm_fee_source: "stored",
+          property_tax_source: "stored",
+          property_market_estimate_source: "stored",
+          isDirty: false,
+        } satisfies MonthlyPerformance;
+      });
+
       setAllMonthlyData(results);
 
       // Find most recent update
@@ -920,39 +1011,108 @@ export default function FinancialsPage() {
   };
 
 
-  const saveMonthlyPerformance = async (month: number, year: number, field: string, value: any) => {
-    try {
-      const currentMonth = allMonthlyData.find(m => m.month === month && m.year === year);
-      if (!currentMonth) return;
+  const recalculateMonthlyDraft = (row: MonthlyPerformance): MonthlyPerformance => {
+    const rentIncome =
+      row.rent_income_override !== null && row.rent_income_override !== undefined
+        ? row.rent_income_override
+        : row.rent_income_source === "billing"
+          ? row.billing_rent_income || 0
+          : row.stored_rent_income || 0;
 
-      const updatedData = { ...currentMonth, [field]: value };
+    const pool =
+      row.pool_source === "schedule"
+        ? row.schedule_pool || 0
+        : row.pool_source === "legacy_fallback"
+          ? row.pool
+          : row.stored_pool || row.pool || 0;
 
-      const res = await fetch("/api/admin/financials/monthly", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          propertyId: selectedProperty,
-          year: year,
-          month: month,
-          rent_income: field === 'rent_income' ? parseFloat(value) || 0 : updatedData.rent_income,
-          rent_paid: false,
-          maintenance: field === 'maintenance' ? parseFloat(value) || 0 : updatedData.maintenance,
-          pool: field === 'pool' ? parseFloat(value) || 0 : updatedData.pool,
-          garden: field === 'garden' ? parseFloat(value) || 0 : updatedData.garden,
-          hoa_payments: field === 'hoa_payments' ? parseFloat(value) || 0 : updatedData.hoa_payments,
-          pm_fee: field === 'pm_fee' ? parseFloat(value) || 0 : updatedData.pm_fee || 0,
-          property_tax: field === 'property_tax' ? parseFloat(value) || 0 : updatedData.property_tax,
-          property_market_estimate: field === 'property_market_estimate' ? parseFloat(value) || 0 : (updatedData as any).property_market_estimate || null,
-        }),
-      });
+    const garden =
+      row.garden_source === "schedule"
+        ? row.schedule_garden || 0
+        : row.garden_source === "legacy_fallback"
+          ? row.garden
+          : row.stored_garden || row.garden || 0;
 
-      if (res.ok) {
-        await loadAllMonthlyPerformance();
-      }
-    } catch (err: any) {
-      console.error("Error saving monthly performance:", err);
-    }
+    const hoa =
+      row.hoa_payments_source === "schedule"
+        ? row.schedule_hoa_payments || 0
+        : row.hoa_payments_source === "legacy_fallback"
+          ? row.hoa_payments
+          : row.stored_hoa_payments || row.hoa_payments || 0;
+
+    const pmFee =
+      row.pm_fee_source === "schedule"
+        ? row.schedule_pm_fee || 0
+        : row.pm_fee_source === "legacy_fallback"
+          ? row.pm_fee || 0
+          : row.stored_pm_fee || row.pm_fee || 0;
+
+    const propertyTax =
+      row.property_tax_override !== null && row.property_tax_override !== undefined
+        ? row.property_tax_override
+        : row.stored_property_tax || 0;
+
+    const marketValue =
+      row.market_value_override !== null && row.market_value_override !== undefined
+        ? row.market_value_override
+        : row.stored_property_market_estimate ?? null;
+
+    const totalExpenses = (row.maintenance || 0) + pool + garden + hoa + pmFee;
+    const netIncome = rentIncome - totalExpenses;
+
+    return {
+      ...row,
+      rent_income: rentIncome,
+      pool,
+      garden,
+      hoa_payments: hoa,
+      pm_fee: pmFee,
+      property_tax: propertyTax,
+      property_market_estimate: marketValue,
+      total_expenses: totalExpenses,
+      net_income: netIncome,
+      rent_income_source:
+        row.rent_income_override !== null && row.rent_income_override !== undefined
+          ? "override"
+          : row.rent_income_source === "billing"
+            ? "billing"
+            : row.rent_income_source === "future_blank"
+              ? "future_blank"
+              : "stored",
+      property_tax_source:
+        row.property_tax_override !== null && row.property_tax_override !== undefined
+          ? "override"
+          : "stored",
+      property_market_estimate_source:
+        row.market_value_override !== null && row.market_value_override !== undefined
+          ? "override"
+          : "stored",
+    };
   };
+
+  const updateMonthlyDraft = (
+    monthKey: string,
+    patch: Partial<Pick<MonthlyPerformance, "maintenance" | "rent_income_override" | "property_tax_override" | "market_value_override" | "notes">>
+  ) => {
+    setAllMonthlyData((prev) =>
+      prev.map((row) => {
+        if (`${row.year}-${row.month}` !== monthKey) return row;
+        return recalculateMonthlyDraft({
+          ...row,
+          ...patch,
+          isDirty: true,
+        });
+      })
+    );
+  };
+
+  const hasMeaningfulMonthlyEdits = (row: MonthlyPerformance) =>
+    !!row.hasStoredRecord ||
+    (row.maintenance || 0) !== 0 ||
+    row.rent_income_override !== null ||
+    row.property_tax_override !== null ||
+    row.market_value_override !== null ||
+    !!String(row.notes || "").trim();
 
   const saveAllMonthlyPerformance = async () => {
     if (displayMonthlyData.length === 0) return;
@@ -960,27 +1120,37 @@ export default function FinancialsPage() {
     setError(null);
     setSuccess(null);
     try {
-      for (const monthData of displayMonthlyData) {
-        await fetch("/api/admin/financials/monthly", {
+      const rowsToSave = displayMonthlyData.filter(
+        (monthData) => monthData.isDirty && hasMeaningfulMonthlyEdits(monthData)
+      );
+
+      if (!rowsToSave.length) {
+        setSuccess("No monthly override changes to save.");
+        return;
+      }
+
+      for (const monthData of rowsToSave) {
+        const res = await fetch("/api/admin/financials/monthly", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             propertyId: selectedProperty,
             year: monthData.year,
             month: monthData.month,
-            rent_income: monthData.rent_income || 0,
-            rent_paid: false,
             maintenance: monthData.maintenance || 0,
-            pool: monthData.pool || 0,
-            garden: monthData.garden || 0,
-            hoa_payments: monthData.hoa_payments || 0,
-            pm_fee: monthData.pm_fee || 0,
-            property_tax: monthData.property_tax || 0,
-            property_market_estimate: monthData.property_market_estimate ?? null,
+            rent_income_override: monthData.rent_income_override,
+            property_tax_override: monthData.property_tax_override,
+            market_value_override: monthData.market_value_override,
+            notes: monthData.notes || null,
           }),
         });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Failed to save ${monthData.month_name}`);
+        }
       }
-      setSuccess("Monthly performance saved successfully!");
+      setSuccess("Monthly performance overrides saved successfully.");
+      await loadAllMonthlyPerformance();
     } catch (err: any) {
       setError(err.message || "Failed to save monthly performance");
     } finally {
@@ -988,30 +1158,13 @@ export default function FinancialsPage() {
     }
   };
 
-  const addNewMonthRow = () => {
-    setAllMonthlyData(prev => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      let nextMonth = last.month;
-      let nextYear = last.year;
-      nextMonth += 1;
-      if (nextMonth > 12) {
-        nextMonth = 1;
-        nextYear += 1;
-      }
-      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-      return [
-        ...prev,
-        {
-          ...prev[prev.length - 1],
-          month: nextMonth,
-          year: nextYear,
-          month_name: `${monthNames[nextMonth - 1]} ${nextYear}`,
-          updated_at: undefined,
-        }
-      ];
-    });
-  };
+  const selectedMonthlyEditorRow = useMemo(
+    () =>
+      displayMonthlyData.find(
+        (row) => `${row.year}-${row.month}` === selectedMonthlyEditorKey
+      ) || null,
+    [displayMonthlyData, selectedMonthlyEditorKey]
+  );
 
   const formatCurrency = (num: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -1040,6 +1193,24 @@ export default function FinancialsPage() {
       default:
         return expenseType;
     }
+  };
+
+  const renderSourceBadge = (
+    source: MonthlyPerformance["rent_income_source"] | undefined
+  ) => {
+    if (!source) return null;
+    return (
+      <span
+        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${sourceBadgeStyles[source]}`}
+      >
+        {sourceBadgeLabels[source]}
+      </span>
+    );
+  };
+
+  const formatSourceReferenceValue = (value: number | null | undefined) => {
+    if (value === null || value === undefined || value === 0) return "-";
+    return formatCurrency(value);
   };
 
   const formatLeaseStatus = (status: LeaseAgreementFinance["status"]) => {
@@ -2048,7 +2219,9 @@ export default function FinancialsPage() {
               <h2 className="text-lg font-semibold text-slate-900">
                 Monthly Performance {periodType === "ytd" ? `- ${performanceYear}` : `(${periodLabelShort})`}
               </h2>
-              <p className="text-sm text-slate-500 mt-0.5">Enter actuals per month, then save.</p>
+              <p className="text-sm text-slate-500 mt-0.5">
+                Rent and recurring expenses are computed at read-time. Save only maintenance and approved overrides.
+              </p>
             </div>
             <div className="flex items-center gap-3">
               {periodType === "ytd" && (
@@ -2061,18 +2234,11 @@ export default function FinancialsPage() {
               )}
               <button
                 type="button"
-                onClick={addNewMonthRow}
-                className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800"
-              >
-                + Month
-              </button>
-              <button
-                type="button"
                 onClick={saveAllMonthlyPerformance}
                 disabled={saving}
                 className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
               >
-                {saving ? "Savingâ€¦" : "Save"}
+                {saving ? "Saving..." : "Save Overrides"}
               </button>
             </div>
           </div>
@@ -2155,6 +2321,132 @@ export default function FinancialsPage() {
             </div>
           </div>
 
+          {!loadingMonthly && selectedMonthlyEditorRow && (
+            <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                    Monthly Override Editor
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Auto values are read-only here. Save only maintenance, overrides, and notes.
+                  </p>
+                </div>
+                <label className="flex flex-col gap-1 text-sm text-slate-600">
+                  <span className="font-medium">Month</span>
+                  <select
+                    value={selectedMonthlyEditorKey}
+                    onChange={(e) => setSelectedMonthlyEditorKey(e.target.value)}
+                    className="min-w-[14rem] rounded-md border border-slate-300 px-3 py-2"
+                  >
+                    {displayMonthlyData.map((row) => (
+                      <option key={`${row.year}-${row.month}`} value={`${row.year}-${row.month}`}>
+                        {row.month_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                {[
+                  { label: "Billing Rent", value: formatSourceReferenceValue(selectedMonthlyEditorRow.billing_rent_income), source: selectedMonthlyEditorRow.rent_income_source === "billing" ? "Billing" : "Reference" },
+                  { label: "HOA Schedule", value: formatSourceReferenceValue(selectedMonthlyEditorRow.schedule_hoa_payments), source: "Schedule" },
+                  { label: "Pool Schedule", value: formatSourceReferenceValue(selectedMonthlyEditorRow.schedule_pool), source: "Schedule" },
+                  { label: "Garden Schedule", value: formatSourceReferenceValue(selectedMonthlyEditorRow.schedule_garden), source: "Schedule" },
+                  { label: "PM Fee Schedule", value: formatSourceReferenceValue(selectedMonthlyEditorRow.schedule_pm_fee), source: "Schedule" },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-md border border-slate-200 bg-white p-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{item.label}</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900">{item.value}</div>
+                    <div className="mt-1 text-xs text-slate-400">{item.source}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm text-slate-600">
+                  <span className="font-medium">Maintenance (manual actual)</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={selectedMonthlyEditorRow.maintenance || ""}
+                    onChange={(e) =>
+                      updateMonthlyDraft(selectedMonthlyEditorKey, {
+                        maintenance: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="rounded-md border border-slate-300 px-3 py-2 text-right"
+                    placeholder="0"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-sm text-slate-600">
+                  <span className="font-medium">Rent Override</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={selectedMonthlyEditorRow.rent_income_override ?? ""}
+                    onChange={(e) =>
+                      updateMonthlyDraft(selectedMonthlyEditorKey, {
+                        rent_income_override: e.target.value === "" ? null : parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="rounded-md border border-slate-300 px-3 py-2 text-right"
+                    placeholder="Leave blank to use billing or stored value"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-sm text-slate-600">
+                  <span className="font-medium">Property Tax Override</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={selectedMonthlyEditorRow.property_tax_override ?? ""}
+                    onChange={(e) =>
+                      updateMonthlyDraft(selectedMonthlyEditorKey, {
+                        property_tax_override: e.target.value === "" ? null : parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="rounded-md border border-slate-300 px-3 py-2 text-right"
+                    placeholder="Leave blank to use stored value"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-sm text-slate-600">
+                  <span className="font-medium">Market Value Override</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={selectedMonthlyEditorRow.market_value_override ?? ""}
+                    onChange={(e) =>
+                      updateMonthlyDraft(selectedMonthlyEditorKey, {
+                        market_value_override: e.target.value === "" ? null : parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="rounded-md border border-slate-300 px-3 py-2 text-right"
+                    placeholder="Leave blank to use stored value"
+                  />
+                </label>
+              </div>
+
+              <label className="mt-4 flex flex-col gap-1 text-sm text-slate-600">
+                <span className="font-medium">Notes</span>
+                <textarea
+                  value={selectedMonthlyEditorRow.notes || ""}
+                  onChange={(e) =>
+                    updateMonthlyDraft(selectedMonthlyEditorKey, {
+                      notes: e.target.value,
+                    })
+                  }
+                  rows={3}
+                  className="rounded-md border border-slate-300 px-3 py-2"
+                  placeholder="Optional notes for this month"
+                />
+              </label>
+            </div>
+          )}
+
           {/* YTD Summary Cards */}
           {!loadingMonthly && calculatedTotalCost > 0 && (
             <div className="mb-6">
@@ -2236,200 +2528,74 @@ export default function FinancialsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayMonthlyData.map((monthData) => (
-                  <tr key={`${monthData.year}-${monthData.month}`} className={monthData.rent_income > 0 ? "bg-white" : "bg-gray-50"}>
-                    <td className="border border-slate-300 px-3 py-2 font-medium sticky left-0 bg-white">
-                      {monthData.month_name}
-                    </td>
-                    <td className="border border-slate-300 px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={monthData.rent_income || ""}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m) => {
-                            if (m.year === monthData.year && m.month === monthData.month) {
-                              // Excel: total_expenses EXCLUDES property_tax
-                              const totalExp =
-                                (m.maintenance || 0) +
-                                (m.pool || 0) +
-                                (m.garden || 0) +
-                                (m.hoa_payments || 0) +
-                                (m.pm_fee || 0);
-                              return { ...m, rent_income: value, total_expenses: totalExp, net_income: value - totalExp };
-                            }
-                            return m;
-                          }));
-                        }}
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-right"
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={monthData.maintenance || ""}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m) => {
-                            if (m.year === monthData.year && m.month === monthData.month) {
-                              const totalExp =
-                                value +
-                                (m.pool || 0) +
-                                (m.garden || 0) +
-                                (m.hoa_payments || 0) +
-                                (m.pm_fee || 0);
-                              return { ...m, maintenance: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
-                            }
-                            return m;
-                          }));
-                        }}
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-right"
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={monthData.pool || ""}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m) => {
-                            if (m.year === monthData.year && m.month === monthData.month) {
-                              const totalExp =
-                                (m.maintenance || 0) +
-                                value +
-                                (m.garden || 0) +
-                                (m.hoa_payments || 0) +
-                                (m.pm_fee || 0);
-                              return { ...m, pool: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
-                            }
-                            return m;
-                          }));
-                        }}
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-right"
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={monthData.garden || ""}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m) => {
-                            if (m.year === monthData.year && m.month === monthData.month) {
-                              const totalExp =
-                                (m.maintenance || 0) +
-                                (m.pool || 0) +
-                                value +
-                                (m.hoa_payments || 0) +
-                                (m.pm_fee || 0);
-                              return { ...m, garden: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
-                            }
-                            return m;
-                          }));
-                        }}
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-right"
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={monthData.hoa_payments || ""}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m) => {
-                            if (m.year === monthData.year && m.month === monthData.month) {
-                              const totalExp =
-                                (m.maintenance || 0) +
-                                (m.pool || 0) +
-                                (m.garden || 0) +
-                                value +
-                                (m.pm_fee || 0);
-                              return { ...m, hoa_payments: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
-                            }
-                            return m;
-                          }));
-                        }}
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-right"
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={monthData.pm_fee || ""}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m) => {
-                            if (m.year === monthData.year && m.month === monthData.month) {
-                              const totalExp =
-                                (m.maintenance || 0) +
-                                (m.pool || 0) +
-                                (m.garden || 0) +
-                                (m.hoa_payments || 0) +
-                                value;
-                              return { ...m, pm_fee: value, total_expenses: totalExp, net_income: (m.rent_income || 0) - totalExp };
-                            }
-                            return m;
-                          }));
-                        }}
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-right"
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={monthData.property_tax || ""}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m) => {
-                            if (m.year === monthData.year && m.month === monthData.month) {
-                              // Property tax does NOT affect total_expenses or net_income in Excel formula
-                              return { ...m, property_tax: value };
-                            }
-                            return m;
-                          }));
-                        }}
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-right"
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={monthData.property_market_estimate ?? ""}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value) || 0;
-                          setAllMonthlyData(prev => prev.map((m) =>
-                            m.year === monthData.year && m.month === monthData.month
-                              ? { ...m, property_market_estimate: value }
-                              : m
-                          ));
-                        }}
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-right"
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-3 py-2 text-right bg-blue-50 font-semibold">
-                      {formatCurrency(monthData.total_expenses)}
-                    </td>
-                    <td className={`border border-slate-300 px-3 py-2 text-right font-semibold ${monthData.net_income >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                      {formatCurrency(monthData.net_income)}
-                    </td>
-                  </tr>
-                ))}
+                  {displayMonthlyData.map((monthData) => {
+                    const monthKey = `${monthData.year}-${monthData.month}`;
+                    const isSelected = selectedMonthlyEditorKey === monthKey;
+                    return (
+                      <tr
+                        key={monthKey}
+                        className={isSelected ? "bg-blue-50" : monthData.rent_income > 0 ? "bg-white" : "bg-gray-50"}
+                      >
+                        <td className={`border border-slate-300 px-3 py-2 font-medium sticky left-0 ${isSelected ? "bg-blue-50" : "bg-white"}`}>
+                          <div>{monthData.month_name}</div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {monthData.isDirty && (
+                              <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                Unsaved
+                              </span>
+                            )}
+                            {monthData.is_future && (
+                              <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                Future
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right">
+                          <div className="font-medium text-slate-900">{formatCurrency(monthData.rent_income)}</div>
+                          <div className="mt-1 flex justify-end">{renderSourceBadge(monthData.rent_income_source)}</div>
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right">
+                          <div className="font-medium text-slate-900">{formatCurrency(monthData.maintenance || 0)}</div>
+                          <div className="mt-1 text-[11px] text-slate-500">Manual actual</div>
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right">
+                          <div className="font-medium text-slate-900">{formatCurrency(monthData.pool || 0)}</div>
+                          <div className="mt-1 flex justify-end">{renderSourceBadge(monthData.pool_source)}</div>
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right">
+                          <div className="font-medium text-slate-900">{formatCurrency(monthData.garden || 0)}</div>
+                          <div className="mt-1 flex justify-end">{renderSourceBadge(monthData.garden_source)}</div>
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right">
+                          <div className="font-medium text-slate-900">{formatCurrency(monthData.hoa_payments || 0)}</div>
+                          <div className="mt-1 flex justify-end">{renderSourceBadge(monthData.hoa_payments_source)}</div>
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right">
+                          <div className="font-medium text-slate-900">{formatCurrency(monthData.pm_fee || 0)}</div>
+                          <div className="mt-1 flex justify-end">{renderSourceBadge(monthData.pm_fee_source)}</div>
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right">
+                          <div className="font-medium text-slate-900">{formatCurrency(monthData.property_tax || 0)}</div>
+                          <div className="mt-1 flex justify-end">{renderSourceBadge(monthData.property_tax_source)}</div>
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right">
+                          <div className="font-medium text-slate-900">
+                            {monthData.property_market_estimate !== null && monthData.property_market_estimate !== undefined
+                              ? formatCurrency(monthData.property_market_estimate)
+                              : "-"}
+                          </div>
+                          <div className="mt-1 flex justify-end">{renderSourceBadge(monthData.property_market_estimate_source)}</div>
+                        </td>
+                        <td className="border border-slate-300 px-3 py-2 text-right bg-blue-50 font-semibold">
+                          {formatCurrency(monthData.total_expenses)}
+                        </td>
+                        <td className={`border border-slate-300 px-3 py-2 text-right font-semibold ${monthData.net_income >= 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                          {formatCurrency(monthData.net_income)}
+                        </td>
+                      </tr>
+                    );
+                  })}
 
                 {/* Totals Row */}
                 <tr className="bg-slate-200 font-bold border-t-2 border-slate-400">
@@ -2841,6 +3007,4 @@ export default function FinancialsPage() {
     </div>
   );
 }
-
-
 
