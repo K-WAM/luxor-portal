@@ -4,6 +4,9 @@ import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/ro
 import { isTenantSensitiveDocumentType } from '@/lib/document-scope'
 import { fetchActiveLeaseIdsForUser } from '@/lib/lease-agreements'
 
+const isTenantVisibleVisibility = (visibility: string) =>
+  visibility === 'tenant' || visibility === 'all'
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -88,8 +91,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Property ID is required' }, { status: 400 })
     }
 
-    if (isTenantSensitiveDocumentType(document_type) && !lease_agreement_id) {
-      return NextResponse.json({ error: 'Lease agreement is required for this document type' }, { status: 400 })
+    if (isTenantSensitiveDocumentType(document_type) && !lease_agreement_id && isTenantVisibleVisibility(visibility)) {
+      return NextResponse.json({ error: 'Tenant-visible lease-related documents must be assigned to a lease' }, { status: 400 })
     }
 
     if (lease_agreement_id) {

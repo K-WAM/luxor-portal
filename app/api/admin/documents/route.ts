@@ -4,6 +4,9 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import { isTenantSensitiveDocumentType } from "@/lib/document-scope";
 
+const isTenantVisibleVisibility = (visibility: string) =>
+  visibility === "tenant" || visibility === "all";
+
 // GET /api/admin/documents - Admin sees ALL documents
 export async function GET() {
   try {
@@ -104,9 +107,9 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Property-wide documents cannot keep a lease association" }, { status: 400 });
     }
 
-    if (isTenantSensitiveDocumentType(documentType) && scope !== "lease") {
+    if (isTenantSensitiveDocumentType(documentType) && scope !== "lease" && isTenantVisibleVisibility(visibility)) {
       return NextResponse.json(
-        { error: "Tenant-sensitive document types must be lease-specific" },
+        { error: "Tenant-visible lease-related documents must be assigned to a lease" },
         { status: 400 }
       );
     }

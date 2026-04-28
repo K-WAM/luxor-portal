@@ -5,6 +5,7 @@ export const TENANT_SENSITIVE_DOCUMENT_TYPES = [
   "Tenant Insurance Confirmation",
   "Tenant Notices",
   "Tenant Correspondence",
+  "Welcome Package",
 ] as const;
 
 export const PROPERTY_WIDE_DOCUMENT_TYPES = [
@@ -13,7 +14,6 @@ export const PROPERTY_WIDE_DOCUMENT_TYPES = [
   "Appliance Manuals",
   "General Property Notices",
   "Reports",
-  "Welcome Package",
   "Other",
 ] as const;
 
@@ -28,6 +28,9 @@ export const isTenantSensitiveDocumentType = (value?: string | null) =>
   TENANT_SENSITIVE_DOCUMENT_TYPES.includes(
     String(value || "") as (typeof TENANT_SENSITIVE_DOCUMENT_TYPES)[number]
   );
+
+export const getDefaultDocumentScope = (value?: string | null): "property" | "lease" =>
+  isTenantSensitiveDocumentType(value) ? "lease" : "property";
 
 export const getDocumentScopeLabel = (leaseAgreementId?: string | null) =>
   leaseAgreementId ? "Lease-specific" : "Property-wide";

@@ -2,7 +2,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { DOCUMENT_TYPES, getDocumentScopeLabel, isTenantSensitiveDocumentType } from "@/lib/document-scope";
+import { DOCUMENT_TYPES, getDefaultDocumentScope, getDocumentScopeLabel, isTenantSensitiveDocumentType } from "@/lib/document-scope";
 
 type Property = {
   id: string;
@@ -61,12 +61,19 @@ const getVisibilityLabel = (visibility: DocumentVisibility) => {
   }
 };
 
+const requiresLeaseForTenantVisibility = (doc: Pick<DocumentRecord, "document_type" | "title" | "lease_agreement_id">) =>
+  isTenantSensitiveDocumentType(doc.document_type || doc.title || "Other") && !doc.lease_agreement_id;
+
+const isTenantVisibleVisibility = (visibility: DocumentVisibility) =>
+  visibility === "tenant" || visibility === "all";
+
 export default function AdminDocumentsPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [leaseOptionsByProperty, setLeaseOptionsByProperty] = useState<Record<string, LeaseAgreementOption[]>>({});
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [selectedLeaseAgreementId, setSelectedLeaseAgreementId] = useState<string>("");
   const [documentType, setDocumentType] = useState<string>("Lease Agreement");
+  const [selectedScope, setSelectedScope] = useState<"property" | "lease">(getDefaultDocumentScope("Lease Agreement"));
   const [customTitle, setCustomTitle] = useState("");
   const [visibilitySelection, setVisibilitySelection] = useState({
     owner: true,
@@ -118,7 +125,7 @@ export default function AdminDocumentsPage() {
 
   useEffect(() => {
     const loadLeaseOptions = async () => {
-      if (!selectedPropertyId || !isTenantSensitiveDocumentType(documentType)) {
+      if (!selectedPropertyId || selectedScope !== "lease") {
         setSelectedLeaseAgreementId("");
         return;
       }
@@ -132,7 +139,7 @@ export default function AdminDocumentsPage() {
     };
 
     loadLeaseOptions();
-  }, [selectedPropertyId, documentType]);
+  }, [selectedPropertyId, documentType, selectedScope]);
 
   const loadDocuments = async () => {
     try {
@@ -170,8 +177,8 @@ export default function AdminDocumentsPage() {
       return;
     }
 
-    if (isTenantSensitiveDocumentType(documentType) && !selectedLeaseAgreementId) {
-      setError("Please select a lease agreement for this document type.");
+    if (selectedScope === "lease" && !selectedLeaseAgreementId) {
+      setError("Please select a lease agreement for a lease-specific document.");
       return;
     }
 
@@ -191,6 +198,11 @@ export default function AdminDocumentsPage() {
       return;
     }
 
+    if (selectedScope === "property" && isTenantSensitiveDocumentType(documentType) && isTenantVisibleVisibility(visibilityValue)) {
+      setError("Tenant-visible lease-related documents must be assigned to a lease.");
+      return;
+    }
+
     setIsUploading(true);
     try {
       const formData = new FormData();
@@ -199,7 +211,7 @@ export default function AdminDocumentsPage() {
       formData.append("property_id", selectedPropertyId);
       formData.append("document_type", documentType);
       formData.append("visibility", visibilityValue);
-      if (selectedLeaseAgreementId) {
+      if (selectedScope === "lease" && selectedLeaseAgreementId) {
         formData.append("lease_agreement_id", selectedLeaseAgreementId);
       }
 
@@ -215,6 +227,7 @@ export default function AdminDocumentsPage() {
       }
 
       setDocumentType("Lease Agreement");
+      setSelectedScope(getDefaultDocumentScope("Lease Agreement"));
       setCustomTitle("");
       setFile(null);
       setSelectedPropertyId("");
@@ -277,6 +290,14 @@ export default function AdminDocumentsPage() {
       return;
     }
 
+    if (
+      requiresLeaseForTenantVisibility(documentRecord) &&
+      (nextVisibility === "tenant" || nextVisibility === "all")
+    ) {
+      setError("This document must be assigned to a lease in Edit before it can be visible to tenants.");
+      return;
+    }
+
     try {
       setSavingVisibilityId(documentId);
       setError(null);
@@ -304,9 +325,9 @@ export default function AdminDocumentsPage() {
       const updated = await res.json();
       setDocuments((prev) => prev.map((doc) => (doc.id === documentId ? { ...doc, ...updated } : doc)));
       setVisibilityDrafts((prev) => ({ ...prev, [documentId]: updated.visibility }));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Failed to update visibility. Check console for details.");
+      setError(err?.message || "Failed to update visibility. Check console for details.");
     } finally {
       setSavingVisibilityId(null);
     }
@@ -378,10 +399,12 @@ export default function AdminDocumentsPage() {
     const draft = editDrafts[docId];
     if (!draft) return;
 
-    const updates: Partial<DocumentEditDraft> = { document_type: value };
-    if (isTenantSensitiveDocumentType(value)) {
+    const defaultScope = getDefaultDocumentScope(value);
+    const updates: Partial<DocumentEditDraft> = { document_type: value, scope: defaultScope };
+    if (defaultScope === "lease") {
       await ensureLeaseOptionsLoaded(draft.property_id);
-      updates.scope = "lease";
+    } else {
+      updates.lease_agreement_id = "";
     }
 
     updateEditDraft(docId, updates);
@@ -427,8 +450,12 @@ export default function AdminDocumentsPage() {
       return;
     }
 
-    if (isTenantSensitiveDocumentType(draft.document_type) && draft.scope !== "lease") {
-      setError("Tenant-sensitive document types must be lease-specific.");
+    if (
+      draft.scope === "property" &&
+      isTenantSensitiveDocumentType(draft.document_type) &&
+      isTenantVisibleVisibility(draft.visibility)
+    ) {
+      setError("Tenant-visible lease-related documents must be assigned to a lease.");
       return;
     }
 
@@ -559,8 +586,13 @@ export default function AdminDocumentsPage() {
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               value={documentType}
               onChange={(e) => {
-                setDocumentType(e.target.value);
-                setSelectedLeaseAgreementId("");
+                const nextType = e.target.value;
+                const nextScope = getDefaultDocumentScope(nextType);
+                setDocumentType(nextType);
+                setSelectedScope(nextScope);
+                if (nextScope !== "lease") {
+                  setSelectedLeaseAgreementId("");
+                }
               }}
               required
             >
@@ -572,7 +604,37 @@ export default function AdminDocumentsPage() {
             </select>
           </div>
 
-          {isTenantSensitiveDocumentType(documentType) && (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Scope</label>
+            <select
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              value={selectedScope}
+              onChange={async (e) => {
+                const nextScope = e.target.value as "property" | "lease";
+                setSelectedScope(nextScope);
+                if (nextScope === "lease" && selectedPropertyId) {
+                  try {
+                    await ensureLeaseOptionsLoaded(selectedPropertyId);
+                  } catch (err) {
+                    console.error(err);
+                    setError("Could not load lease agreements.");
+                  }
+                } else {
+                  setSelectedLeaseAgreementId("");
+                }
+              }}
+            >
+              <option value="property">Property-wide</option>
+              <option value="lease">Lease-specific</option>
+            </select>
+            <p className="text-xs text-slate-500">
+              {isTenantSensitiveDocumentType(documentType)
+                ? "Defaults to lease-specific for this document type, but you can override it when appropriate."
+                : "Defaults to property-wide for this document type."}
+            </p>
+          </div>
+
+          {selectedScope === "lease" && (
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Select Lease</label>
               <select
@@ -589,7 +651,7 @@ export default function AdminDocumentsPage() {
                 ))}
               </select>
               <p className="text-xs text-slate-500">
-                Tenant-sensitive documents are scoped to a specific lease so future tenants do not inherit prior lease files.
+                Lease-specific documents are scoped to a specific lease so future tenants do not inherit prior lease files.
               </p>
             </div>
           )}
@@ -689,6 +751,7 @@ export default function AdminDocumentsPage() {
                   const currentVisibility = visibilityDrafts[doc.id] ?? doc.visibility;
                   const ownerVisible = isVisibleToOwner(doc.visibility);
                   const tenantVisible = isVisibleToTenant(doc.visibility);
+                  const tenantVisibilityBlocked = requiresLeaseForTenantVisibility(doc);
                   const draft = editDrafts[doc.id];
                   const leaseOptions = draft ? leaseOptionsByProperty[draft.property_id] || [] : [];
 
@@ -735,8 +798,8 @@ export default function AdminDocumentsPage() {
                               >
                                 <option value="admin">Admin only (hidden from owner/tenant)</option>
                                 <option value="owner">Owner only</option>
-                                <option value="tenant">Tenant only</option>
-                                <option value="all">Owner & Tenant</option>
+                                <option value="tenant" disabled={tenantVisibilityBlocked}>Tenant only</option>
+                                <option value="all" disabled={tenantVisibilityBlocked}>Owner & Tenant</option>
                               </select>
                               <button
                                 onClick={() => handleUpdateVisibility(doc.id)}
@@ -746,6 +809,11 @@ export default function AdminDocumentsPage() {
                                 {savingVisibilityId === doc.id ? "Saving..." : "Update"}
                               </button>
                             </div>
+                            {tenantVisibilityBlocked ? (
+                              <p className="text-xs text-amber-700">
+                                Lease-specific assignment required before tenant visibility. Use `Edit` to select the lease.
+                              </p>
+                            ) : null}
                           </div>
                         </td>
                         <td className="py-2 pr-4 text-slate-500">{new Date(doc.created_at).toLocaleDateString()}</td>
@@ -808,7 +876,7 @@ export default function AdminDocumentsPage() {
                                 </select>
                                 {isTenantSensitiveDocumentType(draft.document_type) ? (
                                   <p className="text-xs text-amber-700">
-                                    Tenant-sensitive document types must stay lease-specific.
+                                    Lease-related documents default to lease-specific. Keep them property-wide only when you intentionally do not want tenant lease scoping.
                                   </p>
                                 ) : null}
                               </div>
@@ -838,8 +906,7 @@ export default function AdminDocumentsPage() {
                                 <select
                                   value={draft.scope}
                                   onChange={(e) => handleEditScopeChange(doc.id, e.target.value as "property" | "lease")}
-                                  disabled={isTenantSensitiveDocumentType(draft.document_type)}
-                                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                                 >
                                   <option value="property">Property-wide</option>
                                   <option value="lease">Lease-specific</option>
