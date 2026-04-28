@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from "@/lib/auth/route-helpers";
-// NOTE: Auto-backfill disabled - billing is now fully manual (admin-controlled)
-// import { backfillRentBillsForProperty } from "@/lib/billing/tenant-bills";
+import { fetchVisibleLeaseIdsForUser } from "@/lib/lease-agreements";
+
+const hasMissingTenantBillScopeColumns = (error: any) =>
+  String(error?.message || "").includes("bill_scope") ||
+  String(error?.message || "").includes("lease_agreement_id");
 
 export async function GET(request: Request) {
   try {
@@ -28,18 +31,48 @@ export async function GET(request: Request) {
     // The backfillRentBillsForProperty function is preserved but no longer called
     // Admin creates all bills manually via Admin Billing page
 
+    const selectWithScope =
+      "id, tenant_id, property_id, lease_agreement_id, bill_scope, bill_type, description, amount, due_date, status, month, year, invoice_url, payment_link_url";
+    const fallbackSelect =
+      "id, tenant_id, property_id, bill_type, description, amount, due_date, status, month, year, invoice_url, payment_link_url";
+
     let query = supabaseAdmin
       .from("tenant_bills")
-      .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status, month, year, invoice_url, payment_link_url")
+      .select(selectWithScope)
       .eq("property_id", propertyId)
-      // CRITICAL: Exclude voided bills from tenant view
       .neq("status", "voided");
 
     if (!isAdmin(role)) {
-      query = query.eq("tenant_id", user.id);
+      const visibleLeaseIds = await fetchVisibleLeaseIdsForUser(user.id, [propertyId]);
+      if (visibleLeaseIds.length > 0) {
+        query = query.or(
+          `and(bill_scope.eq.tenant,tenant_id.eq.${user.id}),and(bill_scope.eq.lease,lease_agreement_id.in.(${visibleLeaseIds.join(",")}))`
+        );
+      } else {
+        query = query.eq("bill_scope", "tenant").eq("tenant_id", user.id);
+      }
     }
 
-    const { data, error } = await query.order("year", { ascending: true }).order("month", { ascending: true });
+    const initialResult = await query.order("year", { ascending: true }).order("month", { ascending: true });
+    let data: any[] | null = (initialResult.data as any[] | null) ?? null;
+    let error = initialResult.error;
+
+    if (error && hasMissingTenantBillScopeColumns(error)) {
+      let fallbackQuery = supabaseAdmin
+        .from("tenant_bills")
+        .select(fallbackSelect)
+        .eq("property_id", propertyId)
+        .neq("status", "voided");
+
+      if (!isAdmin(role)) {
+        fallbackQuery = fallbackQuery.eq("tenant_id", user.id);
+      }
+
+      const fallback = await fallbackQuery.order("year", { ascending: true }).order("month", { ascending: true });
+      data = (fallback.data as any[] | null) ?? null;
+      error = fallback.error;
+    }
+
     if (error) throw error;
 
     return NextResponse.json({ rows: data || [] });

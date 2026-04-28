@@ -4,11 +4,14 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/auth/route-helpers";
 import { formatDateOnly } from "@/lib/date-only";
 import { resolveTenantBillConnectedAccount } from "@/lib/billing/tenant-connected-account";
+import { fetchVisibleLeaseIdsForUser } from "@/lib/lease-agreements";
 
 type TenantBillRow = {
   id: string;
-  tenant_id: string;
+  tenant_id: string | null;
   property_id: string;
+  lease_agreement_id?: string | null;
+  bill_scope?: string | null;
   bill_type: string;
   description: string | null;
   amount: number | null;
@@ -60,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("tenant_bills")
-      .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status")
+      .select("id, tenant_id, property_id, lease_agreement_id, bill_scope, bill_type, description, amount, due_date, status")
       .eq("id", tenant_bill_id)
       .maybeSingle();
 
@@ -72,8 +75,16 @@ export async function POST(request: NextRequest) {
     }
 
     const isAdminRole = role === "admin";
-    if (!isAdminRole && bill.tenant_id !== user.id) {
-      return NextResponse.json({ error: "This bill is not payable by this tenant" }, { status: 403 });
+    const billScope = String(bill.bill_scope || "tenant").trim().toLowerCase();
+    if (!isAdminRole) {
+      if (billScope === "lease") {
+        const visibleLeaseIds = await fetchVisibleLeaseIdsForUser(user.id, [bill.property_id]);
+        if (!bill.lease_agreement_id || !visibleLeaseIds.includes(bill.lease_agreement_id)) {
+          return NextResponse.json({ error: "This lease bill is not payable by this tenant" }, { status: 403 });
+        }
+      } else if (bill.tenant_id !== user.id) {
+        return NextResponse.json({ error: "This bill is not payable by this tenant" }, { status: 403 });
+      }
     }
 
     if (!PAYABLE_STATUSES.has((bill.status || "").toLowerCase())) {
@@ -142,6 +153,8 @@ export async function POST(request: NextRequest) {
           tenantUserId: user.id,
           tenant_bill_id: bill.id,
           billIds: bill.id,
+          bill_scope: billScope,
+          lease_agreement_id: bill.lease_agreement_id || "",
           method,
           subtotalCents: String(subtotalCents),
           feeCents: String(feeCents),

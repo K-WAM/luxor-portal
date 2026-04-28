@@ -122,6 +122,45 @@ export async function fetchActiveLeaseIdsForUser(userId: string, propertyIds?: s
   }
 }
 
+export async function fetchVisibleLeaseIdsForUser(userId: string, propertyIds?: string[]) {
+  if (!userId) return [];
+
+  try {
+    const { data: tenantLinks, error: tenantLinksError } = await supabaseAdmin
+      .from("lease_agreement_tenants")
+      .select("lease_agreement_id")
+      .eq("user_id", userId);
+    if (tenantLinksError) throw tenantLinksError;
+
+    const leaseIds = (tenantLinks || []).map((row: any) => row.lease_agreement_id).filter(Boolean);
+    if (!leaseIds.length) return [];
+
+    let query = supabaseAdmin
+      .from("lease_agreements")
+      .select("id, property_id, lease_start_date, lease_end_date, status")
+      .in("id", leaseIds);
+
+    if (propertyIds?.length) {
+      query = query.in("property_id", propertyIds);
+    }
+
+    const { data: agreements, error: agreementsError } = await query;
+    if (agreementsError) throw agreementsError;
+
+    return (agreements || [])
+      .filter((agreement: any) => {
+        const status = deriveLeaseAgreementStatus(agreement.lease_start_date, agreement.lease_end_date, agreement.status);
+        return status === "active" || status === "upcoming";
+      })
+      .map((agreement: any) => agreement.id);
+  } catch (error: any) {
+    if (isMissingLeaseTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
 const getDisplayName = (user?: AuthUserLike | null) => {
   if (!user) return "Unknown Tenant";
   const metadataName = String(user.user_metadata?.name || "").trim();

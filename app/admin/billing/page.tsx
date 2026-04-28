@@ -4,6 +4,7 @@ import React, { useMemo, useEffect, useState } from "react";
 import { formatDateOnly, parseDateOnly } from "@/lib/date-only";
 import { getStatusBadgeClass } from "@/app/admin/billing/utils";
 import { getShortPropertyName } from "@/lib/property-short-name";
+import { buildLeaseBillDrafts, buildLeaseBillIdentityKey } from "@/lib/billing/lease-bill-generation";
 
 type TenantOption = {
   userId: string;
@@ -12,12 +13,29 @@ type TenantOption = {
   propertyAddress: string;
 };
 
+type LeaseAgreementOption = {
+  id: string;
+  leaseStartDate: string;
+  leaseEndDate: string;
+  monthlyRent: number;
+  status: string;
+  tenantIds: string[];
+  tenantNames: string[];
+};
+
 type TenantBillRow = {
   id: string;
-  tenantId: string;
+  tenantId: string | null;
   tenantEmail: string;
+  tenantName?: string;
   propertyId: string;
   propertyAddress: string;
+  leaseAgreementId?: string | null;
+  leaseStartDate?: string | null;
+  leaseEndDate?: string | null;
+  leaseTenantNames?: string[];
+  leaseTenantEmails?: string[];
+  billScope: "tenant" | "lease";
   bill_type: string;
   description: string | null;
   amount: number;
@@ -51,11 +69,18 @@ const getCompactUserLabel = (email?: string | null, fallback = "Tenant") => {
   return localPart || fallback;
 };
 
+const getLeaseTenantLabel = (names?: string[], emails?: string[]) => {
+  if (names && names.length > 0) return names.join(", ");
+  if (emails && emails.length > 0) return emails.map((email) => getCompactUserLabel(email)).join(", ");
+  return "Lease tenants";
+};
+
 export default function AdminBilling() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
   const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([]);
+  const [leaseOptionsByProperty, setLeaseOptionsByProperty] = useState<Record<string, LeaseAgreementOption[]>>({});
   const [tenantBillError, setTenantBillError] = useState<string | null>(null);
   const [tenantBillSuccess, setTenantBillSuccess] = useState<string | null>(null);
   const [tenantBills, setTenantBills] = useState<TenantBillRow[]>([]);
@@ -68,20 +93,31 @@ export default function AdminBilling() {
   const [tenantBillStatusFilter, setTenantBillStatusFilter] = useState("");
   const [showPaidTenantBills, setShowPaidTenantBills] = useState(false);
   const [tenantBill, setTenantBill] = useState({
+    billScope: "tenant" as "tenant" | "lease",
     propertyId: "",
     tenantId: "",
+    leaseAgreementId: "",
     amount: "",
     dueDate: "",
     billType: "rent",
     description: "",
     notifyTenant: true,
   });
+  const [leaseBillGenerator, setLeaseBillGenerator] = useState({
+    propertyId: "",
+    leaseAgreementId: "",
+    securityDepositAmount: "",
+  });
+  const [leaseBillGenerationLoading, setLeaseBillGenerationLoading] = useState(false);
+  const [leaseBillGenerationError, setLeaseBillGenerationError] = useState<string | null>(null);
+  const [leaseBillGenerationSuccess, setLeaseBillGenerationSuccess] = useState<string | null>(null);
   const [tenantInvoiceFile, setTenantInvoiceFile] = useState<File | null>(null);
   const [tenantInvoiceUploading, setTenantInvoiceUploading] = useState<Record<string, boolean>>({});
   const [tenantStripeRefreshLoading, setTenantStripeRefreshLoading] = useState<Record<string, boolean>>({});
   const [showDesktopSite, setShowDesktopSite] = useState(false);
+  const [showGenerateLeaseBillsMobile, setShowGenerateLeaseBillsMobile] = useState(false);
   const [showCreateTenantBillMobile, setShowCreateTenantBillMobile] = useState(false);
-  const [tenantEdits, setTenantEdits] = useState<Record<string, { billType?: string; amount?: string; dueDate?: string; status?: string; description?: string; tenantId?: string; propertyId?: string }>>({});
+  const [tenantEdits, setTenantEdits] = useState<Record<string, { billType?: string; amount?: string; dueDate?: string; status?: string; description?: string; tenantId?: string; propertyId?: string; billScope?: "tenant" | "lease"; leaseAgreementId?: string }>>({});
 
   // Date sort helper for tenant bills
   const getDueDateTimestamp = (dateStr?: string | null) => {
@@ -217,6 +253,60 @@ export default function AdminBilling() {
     return tenantOptions.filter((t) => t.propertyId === tenantBill.propertyId);
   }, [tenantOptions, tenantBill.propertyId]);
 
+  const singleBillLeaseOptions = useMemo(
+    () => leaseOptionsByProperty[tenantBill.propertyId] || [],
+    [leaseOptionsByProperty, tenantBill.propertyId]
+  );
+
+  const generatorLeaseOptions = useMemo(
+    () => leaseOptionsByProperty[leaseBillGenerator.propertyId] || [],
+    [leaseOptionsByProperty, leaseBillGenerator.propertyId]
+  );
+
+  const selectedGeneratorLease = useMemo(
+    () =>
+      generatorLeaseOptions.find((lease) => lease.id === leaseBillGenerator.leaseAgreementId) || null,
+    [generatorLeaseOptions, leaseBillGenerator.leaseAgreementId]
+  );
+
+  const leasePreviewDrafts = useMemo(() => {
+    if (!selectedGeneratorLease) return [];
+    return buildLeaseBillDrafts({
+      leaseStartDate: selectedGeneratorLease.leaseStartDate,
+      leaseEndDate: selectedGeneratorLease.leaseEndDate,
+      monthlyRent: Number(selectedGeneratorLease.monthlyRent || 0),
+      securityDepositAmount: parseFloat(leaseBillGenerator.securityDepositAmount || "0"),
+    });
+  }, [selectedGeneratorLease, leaseBillGenerator.securityDepositAmount]);
+
+  const existingLeaseObligationKeys = useMemo(() => {
+    if (!selectedGeneratorLease) return new Set<string>();
+    const leaseTenantIds = new Set(selectedGeneratorLease.tenantIds || []);
+    const keys = new Set<string>();
+    tenantBills.forEach((bill) => {
+      if (bill.propertyId !== leaseBillGenerator.propertyId) return;
+      if (bill.status === "voided") return;
+      if (bill.bill_type !== "rent" && bill.bill_type !== "security_deposit") return;
+      if (bill.billScope === "lease" && bill.leaseAgreementId === selectedGeneratorLease.id) {
+        keys.add(buildLeaseBillIdentityKey(bill.bill_type, bill.due_date));
+        return;
+      }
+      if (bill.billScope === "tenant" && bill.tenantId && leaseTenantIds.has(bill.tenantId)) {
+        keys.add(buildLeaseBillIdentityKey(bill.bill_type, bill.due_date));
+      }
+    });
+    return keys;
+  }, [selectedGeneratorLease, leaseBillGenerator.propertyId, tenantBills]);
+
+  const leasePreviewRows = useMemo(
+    () =>
+      leasePreviewDrafts.map((draft) => ({
+        ...draft,
+        isDuplicate: existingLeaseObligationKeys.has(draft.key),
+      })),
+    [leasePreviewDrafts, existingLeaseObligationKeys]
+  );
+
   // Show ALL bills (including paid) so admin can void/delete any bill
   // Apply property and status filters
   const displayedTenantBills = useMemo(() => {
@@ -252,9 +342,51 @@ export default function AdminBilling() {
     }
   }, [filteredTenants, tenantBill.propertyId, tenantBill.tenantId]);
 
+  useEffect(() => {
+    const loadSingleBillLeases = async () => {
+      if (tenantBill.billScope !== "lease" || !tenantBill.propertyId) {
+        return;
+      }
+      try {
+        await ensureLeaseOptionsLoaded(tenantBill.propertyId);
+      } catch (err: any) {
+        setTenantBillError(err.message || "Failed to load lease agreements");
+      }
+    };
+    loadSingleBillLeases();
+  }, [tenantBill.billScope, tenantBill.propertyId]);
+
+  useEffect(() => {
+    if (tenantBill.billScope !== "lease" || !tenantBill.propertyId) return;
+    const leaseOptions = leaseOptionsByProperty[tenantBill.propertyId] || [];
+    if (!leaseOptions.some((lease) => lease.id === tenantBill.leaseAgreementId) && tenantBill.leaseAgreementId) {
+      setTenantBill((prev) => ({ ...prev, leaseAgreementId: "" }));
+    }
+  }, [tenantBill.billScope, tenantBill.propertyId, tenantBill.leaseAgreementId, leaseOptionsByProperty]);
+
+  useEffect(() => {
+    const loadGeneratorLeases = async () => {
+      if (!leaseBillGenerator.propertyId) return;
+      try {
+        await ensureLeaseOptionsLoaded(leaseBillGenerator.propertyId);
+      } catch (err: any) {
+        setLeaseBillGenerationError(err.message || "Failed to load lease agreements");
+      }
+    };
+    loadGeneratorLeases();
+  }, [leaseBillGenerator.propertyId]);
+
   const handleCreateTenantBill = async () => {
-    if (!tenantBill.propertyId || !tenantBill.tenantId) {
-      setTenantBillError("Select a property and tenant.");
+    if (!tenantBill.propertyId) {
+      setTenantBillError("Select a property.");
+      return;
+    }
+    if (tenantBill.billScope === "tenant" && !tenantBill.tenantId) {
+      setTenantBillError("Select a tenant.");
+      return;
+    }
+    if (tenantBill.billScope === "lease" && !tenantBill.leaseAgreementId) {
+      setTenantBillError("Select a lease agreement.");
       return;
     }
     if (!tenantBill.amount || !tenantBill.dueDate) {
@@ -270,8 +402,10 @@ export default function AdminBilling() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          billScope: tenantBill.billScope,
           propertyId: tenantBill.propertyId,
           tenantId: tenantBill.tenantId,
+          leaseAgreementId: tenantBill.leaseAgreementId,
           billType: tenantBill.billType,
           amount: tenantBill.amount,
           dueDate: tenantBill.dueDate,
@@ -288,6 +422,8 @@ export default function AdminBilling() {
       setTenantBillSuccess("Tenant bill created.");
       setTenantBill((prev) => ({
         ...prev,
+        tenantId: prev.billScope === "tenant" ? prev.tenantId : "",
+        leaseAgreementId: prev.billScope === "lease" ? prev.leaseAgreementId : "",
         amount: "",
         description: "",
       }));
@@ -351,6 +487,53 @@ export default function AdminBilling() {
     }
   };
 
+  const handleGenerateLeaseBills = async () => {
+    if (!leaseBillGenerator.propertyId || !leaseBillGenerator.leaseAgreementId) {
+      setLeaseBillGenerationError("Select a property and lease agreement.");
+      return;
+    }
+    try {
+      setLeaseBillGenerationLoading(true);
+      setLeaseBillGenerationError(null);
+      setLeaseBillGenerationSuccess(null);
+      const res = await fetch("/api/admin/tenant-billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generateLeaseBills",
+          propertyId: leaseBillGenerator.propertyId,
+          leaseAgreementId: leaseBillGenerator.leaseAgreementId,
+          securityDepositAmount: leaseBillGenerator.securityDepositAmount || 0,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate lease bills");
+      setLeaseBillGenerationSuccess(
+        `${data.rentBillsCreated || 0} rent bill(s) created, ` +
+          `${data.securityDepositCreated ? "security deposit created" : "security deposit skipped"}, ` +
+          `${data.skipped || 0} duplicate/conflicting bill(s) skipped.`
+      );
+      await loadTenantBills(showVoidedTenantBills);
+    } catch (err: any) {
+      setLeaseBillGenerationError(err.message || "Failed to generate lease bills");
+    } finally {
+      setLeaseBillGenerationLoading(false);
+    }
+  };
+
+  const ensureLeaseOptionsLoaded = async (propertyId: string) => {
+    if (!propertyId || leaseOptionsByProperty[propertyId]) return;
+    const res = await fetch(`/api/admin/lease-agreements?propertyId=${encodeURIComponent(propertyId)}`, {
+      cache: "no-store",
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load lease agreements");
+    setLeaseOptionsByProperty((prev) => ({
+      ...prev,
+      [propertyId]: data.agreements || [],
+    }));
+  };
+
   const handleSaveTenantBill = async (bill: TenantBillRow) => {
     const edits = tenantEdits[bill.id] || {};
     const billType = edits.billType ?? bill.bill_type;
@@ -360,6 +543,8 @@ export default function AdminBilling() {
     const description = edits.description ?? (bill.description || "");
     const tenantId = edits.tenantId ?? bill.tenantId;
     const propertyId = edits.propertyId ?? bill.propertyId;
+    const billScope = edits.billScope ?? bill.billScope;
+    const leaseAgreementId = edits.leaseAgreementId ?? bill.leaseAgreementId ?? "";
     try {
       setTenantBillsError(null);
       setTenantBillsNotice(null);
@@ -375,6 +560,8 @@ export default function AdminBilling() {
           description,
           tenantId,
           propertyId,
+          billScope,
+          leaseAgreementId,
         }),
       });
       const data = await res.json();
@@ -456,6 +643,47 @@ export default function AdminBilling() {
     }
   };
 
+  const handleBillEditPropertyChange = async (
+    billId: string,
+    propertyId: string,
+    currentBillScope: "tenant" | "lease"
+  ) => {
+    try {
+      await ensureLeaseOptionsLoaded(propertyId);
+    } catch (err: any) {
+      setTenantBillsError(err.message || "Failed to load lease agreements");
+    }
+    setTenantEdits((prev) => ({
+      ...prev,
+      [billId]: {
+        ...prev[billId],
+        propertyId,
+        billScope: prev[billId]?.billScope ?? currentBillScope,
+        tenantId: (prev[billId]?.billScope ?? currentBillScope) === "tenant" ? prev[billId]?.tenantId || "" : "",
+        leaseAgreementId: "",
+      },
+    }));
+  };
+
+  const handleBillEditScopeChange = async (billId: string, billScope: "tenant" | "lease", propertyId: string) => {
+    if (billScope === "lease" && propertyId) {
+      try {
+        await ensureLeaseOptionsLoaded(propertyId);
+      } catch (err: any) {
+        setTenantBillsError(err.message || "Failed to load lease agreements");
+      }
+    }
+    setTenantEdits((prev) => ({
+      ...prev,
+      [billId]: {
+        ...prev[billId],
+        billScope,
+        tenantId: billScope === "tenant" ? prev[billId]?.tenantId : "",
+        leaseAgreementId: billScope === "lease" ? prev[billId]?.leaseAgreementId || "" : "",
+      },
+    }));
+  };
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       {/* Confirmation Modal */}
@@ -512,6 +740,160 @@ export default function AdminBilling() {
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mt-8">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
           <div>
+            <h2 className="text-lg font-semibold text-slate-900">Generate Lease Bills</h2>
+            <p className="text-xs text-slate-500">
+              Create monthly rent bills and security deposit bill from lease agreement details.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowGenerateLeaseBillsMobile((prev) => !prev)}
+            className="md:hidden inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-medium text-slate-700 hover:bg-slate-50"
+            aria-label={showGenerateLeaseBillsMobile ? "Collapse generate lease bills" : "Expand generate lease bills"}
+          >
+            {showGenerateLeaseBillsMobile ? "−" : "+"}
+          </button>
+        </div>
+        <div className={`${showGenerateLeaseBillsMobile ? "block" : "hidden"} md:block`}>
+          <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Property</label>
+              <select
+                className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+                value={leaseBillGenerator.propertyId}
+                onChange={(e) =>
+                  setLeaseBillGenerator((prev) => ({
+                    ...prev,
+                    propertyId: e.target.value,
+                    leaseAgreementId: "",
+                  }))
+                }
+              >
+                <option value="">Select property...</option>
+                {properties.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {getShortPropertyName(p.address)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Lease Agreement</label>
+              <select
+                className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+                value={leaseBillGenerator.leaseAgreementId}
+                onChange={(e) =>
+                  setLeaseBillGenerator((prev) => ({ ...prev, leaseAgreementId: e.target.value }))
+                }
+                disabled={!leaseBillGenerator.propertyId}
+              >
+                <option value="">Select lease...</option>
+                {generatorLeaseOptions.map((lease) => (
+                  <option key={lease.id} value={lease.id}>
+                    {formatDateOnly(lease.leaseStartDate)} - {formatDateOnly(lease.leaseEndDate)} | {lease.tenantNames.join(", ") || "No tenants"}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Lease Start</label>
+              <input
+                type="text"
+                readOnly
+                className="border border-slate-200 rounded px-3 py-2 text-sm bg-slate-50 text-slate-700"
+                value={selectedGeneratorLease ? formatDateOnly(selectedGeneratorLease.leaseStartDate) || "" : ""}
+              />
+            </div>
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Lease End</label>
+              <input
+                type="text"
+                readOnly
+                className="border border-slate-200 rounded px-3 py-2 text-sm bg-slate-50 text-slate-700"
+                value={selectedGeneratorLease ? formatDateOnly(selectedGeneratorLease.leaseEndDate) || "" : ""}
+              />
+            </div>
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Monthly Rent</label>
+              <input
+                type="text"
+                readOnly
+                className="border border-slate-200 rounded px-3 py-2 text-sm bg-slate-50 text-slate-700"
+                value={selectedGeneratorLease ? `$${Number(selectedGeneratorLease.monthlyRent || 0).toFixed(2)}` : ""}
+              />
+            </div>
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Security Deposit Amount</label>
+              <input
+                type="number"
+                step="0.01"
+                className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+                value={leaseBillGenerator.securityDepositAmount}
+                onChange={(e) =>
+                  setLeaseBillGenerator((prev) => ({ ...prev, securityDepositAmount: e.target.value }))
+                }
+                placeholder="Leave blank to skip deposit bill"
+              />
+            </div>
+            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+              <div className="font-medium text-slate-900">Preview</div>
+              {selectedGeneratorLease ? (
+                <>
+                  <div className="mt-2 text-slate-600">
+                    Tenants: {selectedGeneratorLease.tenantNames.join(", ") || "No tenants linked"}
+                  </div>
+                  <div className="mt-2 text-slate-600">
+                    {leasePreviewRows.filter((row) => row.billType === "rent").length} rent bill(s), total rent{" "}
+                    ${leasePreviewRows
+                      .filter((row) => row.billType === "rent")
+                      .reduce((sum, row) => sum + row.amount, 0)
+                      .toFixed(2)}
+                    {parseFloat(leaseBillGenerator.securityDepositAmount || "0") > 0
+                      ? `, security deposit $${parseFloat(leaseBillGenerator.securityDepositAmount || "0").toFixed(2)}`
+                      : ", security deposit skipped"}
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {leasePreviewRows.map((row) => (
+                      <div key={row.key} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 bg-white px-3 py-2 text-xs">
+                        <div className="text-slate-700">
+                          {row.description} - due {formatDateOnly(row.dueDate) || row.dueDate}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium text-slate-900">${row.amount.toFixed(2)}</span>
+                          <span className={row.isDuplicate ? "text-amber-700" : "text-emerald-700"}>
+                            {row.isDuplicate ? "Skip existing/conflicting" : "Create"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-2 text-slate-500">Select a property and lease agreement to preview bills.</div>
+              )}
+            </div>
+          </div>
+          {leaseBillGenerationError && (
+            <div className="px-4 pb-3 text-sm text-red-600">{leaseBillGenerationError}</div>
+          )}
+          {leaseBillGenerationSuccess && (
+            <div className="px-4 pb-3 text-sm text-emerald-700">{leaseBillGenerationSuccess}</div>
+          )}
+          <div className="px-4 pb-4">
+            <button
+              onClick={handleGenerateLeaseBills}
+              disabled={leaseBillGenerationLoading || !selectedGeneratorLease}
+              className="h-10 px-4 rounded bg-slate-900 text-white text-sm hover:bg-slate-800 disabled:opacity-60"
+            >
+              {leaseBillGenerationLoading ? "Generating..." : "Generate bills"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mt-8">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
+          <div>
             <h2 className="text-lg font-semibold text-slate-900">Create Tenant Bill</h2>
             <p className="text-xs text-slate-500">
               Manually create charges that appear in the tenant Payments tab.
@@ -529,12 +911,36 @@ export default function AdminBilling() {
         <div className={`${showCreateTenantBillMobile ? "block" : "hidden"} md:block`}>
         <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Bill Scope</label>
+            <select
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={tenantBill.billScope}
+              onChange={(e) =>
+                setTenantBill((prev) => ({
+                  ...prev,
+                  billScope: e.target.value as "tenant" | "lease",
+                  tenantId: e.target.value === "tenant" ? prev.tenantId : "",
+                  leaseAgreementId: e.target.value === "lease" ? prev.leaseAgreementId : "",
+                  notifyTenant: e.target.value === "tenant" ? prev.notifyTenant : false,
+                }))
+              }
+            >
+              <option value="tenant">Tenant-specific bill</option>
+              <option value="lease">Lease-level bill</option>
+            </select>
+          </div>
+          <div className="flex flex-col text-sm">
             <label className="text-slate-600 mb-1">Property</label>
             <select
               className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
               value={tenantBill.propertyId}
               onChange={(e) =>
-                setTenantBill((prev) => ({ ...prev, propertyId: e.target.value }))
+                setTenantBill((prev) => ({
+                  ...prev,
+                  propertyId: e.target.value,
+                  tenantId: prev.billScope === "tenant" ? prev.tenantId : "",
+                  leaseAgreementId: "",
+                }))
               }
             >
               <option value="">Select property...</option>
@@ -543,25 +949,46 @@ export default function AdminBilling() {
                   {getShortPropertyName(p.address)}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="flex flex-col text-sm">
-            <label className="text-slate-600 mb-1">Tenant</label>
-            <select
-              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
-              value={tenantBill.tenantId}
-              onChange={(e) =>
-                setTenantBill((prev) => ({ ...prev, tenantId: e.target.value }))
-              }
-            >
-              <option value="">Select tenant...</option>
-              {filteredTenants.map((t) => (
-                <option key={`${t.userId}-${t.propertyId}`} value={t.userId}>
-                  {t.email || "Tenant"} {t.propertyAddress ? `- ${t.propertyAddress}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
+              </select>
+            </div>
+          {tenantBill.billScope === "tenant" ? (
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Tenant</label>
+              <select
+                className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+                value={tenantBill.tenantId}
+                onChange={(e) =>
+                  setTenantBill((prev) => ({ ...prev, tenantId: e.target.value }))
+                }
+              >
+                <option value="">Select tenant...</option>
+                {filteredTenants.map((t) => (
+                  <option key={`${t.userId}-${t.propertyId}`} value={t.userId}>
+                    {t.email || "Tenant"} {t.propertyAddress ? `- ${t.propertyAddress}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Lease Agreement</label>
+              <select
+                className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+                value={tenantBill.leaseAgreementId}
+                onChange={(e) =>
+                  setTenantBill((prev) => ({ ...prev, leaseAgreementId: e.target.value }))
+                }
+                disabled={!tenantBill.propertyId}
+              >
+                <option value="">Select lease...</option>
+                {singleBillLeaseOptions.map((lease) => (
+                  <option key={lease.id} value={lease.id}>
+                    {formatDateOnly(lease.leaseStartDate)} - {formatDateOnly(lease.leaseEndDate)} | {lease.tenantNames.join(", ") || "No tenants"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex flex-col text-sm">
             <label className="text-slate-600 mb-1">Amount</label>
             <input
@@ -622,16 +1049,22 @@ export default function AdminBilling() {
               <span className="text-xs text-slate-500 mt-1">{tenantInvoiceFile.name}</span>
             )}
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={tenantBill.notifyTenant}
-              onChange={(e) =>
-                setTenantBill((prev) => ({ ...prev, notifyTenant: e.target.checked }))
-              }
-            />
-            Notify tenant by email
-          </label>
+          {tenantBill.billScope === "tenant" ? (
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={tenantBill.notifyTenant}
+                onChange={(e) =>
+                  setTenantBill((prev) => ({ ...prev, notifyTenant: e.target.checked }))
+                }
+              />
+              Notify tenant by email
+            </label>
+          ) : (
+            <div className="text-xs text-slate-500 md:col-span-2">
+              Lease-level bills are shared across lease tenants. No email notifications are sent from this flow.
+            </div>
+          )}
         </div>
         {tenantBillError && (
           <div className="px-4 pb-3 text-sm text-red-600">{tenantBillError}</div>
@@ -741,6 +1174,7 @@ export default function AdminBilling() {
             <div className="divide-y divide-slate-100">
               {visibleTenantBills.map((bill) => {
                 const isVoided = bill.status === "voided";
+                const currentBillScope = tenantEdits[bill.id]?.billScope ?? bill.billScope;
                 return (
                   <div key={bill.id} className={`px-4 py-4 ${isVoided ? "bg-gray-50 opacity-70" : "bg-white"}`}>
                     <div className="flex items-start justify-between gap-3">
@@ -748,8 +1182,10 @@ export default function AdminBilling() {
                         <div className="text-sm font-semibold text-slate-900" title={bill.propertyAddress || bill.propertyId}>
                           {getShortPropertyName(bill.propertyAddress) || bill.propertyId}
                         </div>
-                        <div className="text-xs text-slate-500" title={bill.tenantEmail || "Tenant"}>
-                          {getCompactUserLabel(bill.tenantEmail)}
+                        <div className="text-xs text-slate-500" title={currentBillScope === "lease" ? getLeaseTenantLabel(bill.leaseTenantNames, bill.leaseTenantEmails) : bill.tenantEmail || "Tenant"}>
+                          {currentBillScope === "lease"
+                            ? `Lease bill - ${getLeaseTenantLabel(bill.leaseTenantNames, bill.leaseTenantEmails)}`
+                            : getCompactUserLabel(bill.tenantEmail)}
                         </div>
                       </div>
                       <div className="text-sm font-semibold text-slate-900">${Number(bill.amount || 0).toFixed(2)}</div>
@@ -805,28 +1241,81 @@ export default function AdminBilling() {
                 visibleTenantBills.map((bill) => {
                   const isVoided = bill.status === "voided";
                   const displayStatus = tenantEdits[bill.id]?.status ?? getDisplayStatus(bill.status, bill.due_date);
+                  const currentBillScope = tenantEdits[bill.id]?.billScope ?? bill.billScope;
+                  const currentPropertyId = tenantEdits[bill.id]?.propertyId ?? bill.propertyId;
+                  const currentLeaseAgreementId = tenantEdits[bill.id]?.leaseAgreementId ?? bill.leaseAgreementId ?? "";
+                  const rowLeaseOptions = leaseOptionsByProperty[currentPropertyId] || [];
                   return (
                     <tr key={bill.id} className={`hover:bg-slate-50 ${isVoided ? "bg-gray-50 opacity-60" : ""}`}>
                       <td className="px-3 py-3 align-top text-slate-900 break-words">
                         {isVoided ? (
-                          <span title={bill.tenantEmail || "Tenant"}>{getCompactUserLabel(bill.tenantEmail)}</span>
+                          <div className="space-y-1">
+                            <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                              {bill.billScope === "lease" ? "Lease-level" : "Tenant-specific"}
+                            </div>
+                            <span title={bill.billScope === "lease" ? getLeaseTenantLabel(bill.leaseTenantNames, bill.leaseTenantEmails) : bill.tenantEmail || "Tenant"}>
+                              {bill.billScope === "lease"
+                                ? getLeaseTenantLabel(bill.leaseTenantNames, bill.leaseTenantEmails)
+                                : getCompactUserLabel(bill.tenantEmail)}
+                            </span>
+                          </div>
                         ) : (
-                          <select
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
-                            value={tenantEdits[bill.id]?.tenantId ?? bill.tenantId}
-                            onChange={(e) =>
-                              setTenantEdits((prev) => ({
-                                ...prev,
-                                [bill.id]: { ...prev[bill.id], tenantId: e.target.value },
-                              }))
-                            }
-                          >
-                            {tenantOptions.map((t) => (
-                              <option key={`${t.userId}-${t.propertyId}`} value={t.userId} title={t.email || "Tenant"}>
-                                {getCompactUserLabel(t.email)}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex flex-col gap-1">
+                            <select
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                              value={currentBillScope}
+                              onChange={(e) =>
+                                handleBillEditScopeChange(
+                                  bill.id,
+                                  e.target.value as "tenant" | "lease",
+                                  currentPropertyId
+                                )
+                              }
+                            >
+                              <option value="tenant">Tenant-specific</option>
+                              <option value="lease">Lease-level</option>
+                            </select>
+                            {currentBillScope === "tenant" ? (
+                              <select
+                                className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                                value={tenantEdits[bill.id]?.tenantId ?? bill.tenantId ?? ""}
+                                onChange={(e) =>
+                                  setTenantEdits((prev) => ({
+                                    ...prev,
+                                    [bill.id]: { ...prev[bill.id], tenantId: e.target.value },
+                                  }))
+                                }
+                              >
+                                <option value="">Select tenant</option>
+                                {tenantOptions
+                                  .filter((t) => t.propertyId === currentPropertyId)
+                                  .map((t) => (
+                                    <option key={`${t.userId}-${t.propertyId}`} value={t.userId} title={t.email || "Tenant"}>
+                                      {getCompactUserLabel(t.email)}
+                                    </option>
+                                  ))}
+                              </select>
+                            ) : (
+                              <select
+                                className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                                value={currentLeaseAgreementId}
+                                onFocus={() => ensureLeaseOptionsLoaded(currentPropertyId).catch(() => undefined)}
+                                onChange={(e) =>
+                                  setTenantEdits((prev) => ({
+                                    ...prev,
+                                    [bill.id]: { ...prev[bill.id], leaseAgreementId: e.target.value },
+                                  }))
+                                }
+                              >
+                                <option value="">Select lease</option>
+                                {rowLeaseOptions.map((lease) => (
+                                  <option key={lease.id} value={lease.id}>
+                                    {formatDateOnly(lease.leaseStartDate)} - {formatDateOnly(lease.leaseEndDate)}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-3 py-3 align-top text-slate-700 break-words">
@@ -837,13 +1326,8 @@ export default function AdminBilling() {
                         ) : (
                           <select
                             className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
-                            value={tenantEdits[bill.id]?.propertyId ?? bill.propertyId}
-                            onChange={(e) =>
-                              setTenantEdits((prev) => ({
-                                ...prev,
-                                [bill.id]: { ...prev[bill.id], propertyId: e.target.value },
-                              }))
-                            }
+                            value={currentPropertyId}
+                            onChange={(e) => handleBillEditPropertyChange(bill.id, e.target.value, currentBillScope)}
                           >
                             {properties.map((p) => (
                               <option key={p.id} value={p.id}>
@@ -1039,7 +1523,7 @@ export default function AdminBilling() {
                             onClick={() =>
                               setConfirmDelete({
                                 id: bill.id,
-                                description: `${bill.tenantEmail || "Tenant"} - ${bill.propertyAddress} - $${Number(bill.amount || 0).toFixed(2)}`,
+                                description: `${bill.billScope === "lease" ? getLeaseTenantLabel(bill.leaseTenantNames, bill.leaseTenantEmails) : bill.tenantEmail || "Tenant"} - ${bill.propertyAddress} - $${Number(bill.amount || 0).toFixed(2)}`,
                               })
                             }
                             className="text-xs px-2 py-1 rounded bg-red-50 border border-red-200 text-red-700 hover:bg-red-100"
