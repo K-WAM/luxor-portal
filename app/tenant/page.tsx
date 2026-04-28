@@ -3,13 +3,17 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { formatDateOnly, parseDateOnly } from "@/lib/date-only";
+import { getShortPropertyName } from "@/lib/property-short-name";
 
 type Property = {
   id: string;
+  address?: string | null;
+  name?: string | null;
 };
 
 type TenantBill = {
   id: string;
+  property_id: string;
   amount: number;
   due_date: string;
   status: string;
@@ -18,6 +22,11 @@ type TenantBill = {
 type MaintenanceRequest = {
   id: string;
   status: string;
+};
+
+type PaymentStatusLine = {
+  text: string;
+  className: string;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -31,6 +40,7 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 export default function TenantPortal() {
+  const [properties, setProperties] = useState<Property[]>([]);
   const [bills, setBills] = useState<TenantBill[]>([]);
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
   const [dashboardReady, setDashboardReady] = useState(false);
@@ -61,9 +71,11 @@ export default function TenantPortal() {
         if (!maintenanceRes.ok) throw new Error("Failed to load maintenance requests");
         const maintenanceRows = (await maintenanceRes.json()) as MaintenanceRequest[];
 
+        setProperties(propertyRows || []);
         setBills(billingResponses.flat());
         setMaintenanceRequests(maintenanceRows || []);
       } catch {
+        setProperties([]);
         setBills([]);
         setMaintenanceRequests([]);
       } finally {
@@ -74,36 +86,23 @@ export default function TenantPortal() {
     loadDashboardData();
   }, []);
 
-  const paymentStatus = useMemo(() => {
-    if (!dashboardReady) return null;
+  const paymentStatusLines = useMemo<PaymentStatusLine[]>(() => {
+    if (!dashboardReady) return [];
 
     const today = new Date();
     const todayUtcMs = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
     const next30DaysUtcMs = todayUtcMs + 30 * DAY_MS;
+    const propertyLabelById = new Map(
+      properties.map((property) => [
+        property.id,
+        getShortPropertyName(property.address || property.name || "Property"),
+      ])
+    );
 
     const collectibleBills = bills.filter((bill) => {
       const normalizedStatus = String(bill.status || "").toLowerCase();
       return normalizedStatus !== "paid" && normalizedStatus !== "processing" && normalizedStatus !== "voided";
     });
-
-    const overdueBills = collectibleBills
-      .map((bill) => {
-        const dueDate = parseDateOnly(bill.due_date);
-        return dueDate ? { bill, dueUtcMs: dueDate.getTime() } : null;
-      })
-      .filter((row): row is { bill: TenantBill; dueUtcMs: number } => !!row && row.dueUtcMs < todayUtcMs)
-      .sort((a, b) => a.dueUtcMs - b.dueUtcMs);
-
-    if (overdueBills.length > 0) {
-      const selected = overdueBills[0].bill;
-      return {
-        text: `⚠️ Payment overdue: ${formatCurrency(selected.amount || 0)} (${formatDateOnly(selected.due_date, {
-          month: "short",
-          day: "numeric",
-        })})`,
-        className: "text-red-700",
-      };
-    }
 
     const upcomingBills = collectibleBills
       .map((bill) => {
@@ -116,22 +115,23 @@ export default function TenantPortal() {
       )
       .sort((a, b) => a.dueUtcMs - b.dueUtcMs);
 
-    if (upcomingBills.length > 0) {
-      const selected = upcomingBills[0].bill;
-      return {
-        text: `⏳ Next payment: ${formatCurrency(selected.amount || 0)} due ${formatDateOnly(selected.due_date, {
-          month: "short",
-          day: "numeric",
-        })}`,
-        className: "text-amber-700",
-      };
+    if (upcomingBills.length === 0) {
+      return [{
+        text: "No payments due",
+        className: "text-emerald-700",
+      }];
     }
 
-    return {
-      text: "✅ No payments due",
-      className: "text-emerald-700",
-    };
-  }, [bills, dashboardReady]);
+    return upcomingBills.map(({ bill }) => ({
+      text: `${propertyLabelById.get(bill.property_id) || "Property"}: ${formatCurrency(
+        bill.amount || 0
+      )} due ${formatDateOnly(bill.due_date, {
+        month: "short",
+        day: "numeric",
+      })}`,
+      className: "text-amber-700",
+    }));
+  }, [bills, dashboardReady, properties]);
 
   const maintenanceStatus = useMemo(() => {
     if (!dashboardReady) return null;
@@ -178,11 +178,13 @@ export default function TenantPortal() {
           <p className="text-gray-600 text-sm">
             Review your payments and upcoming dues.
           </p>
-          {paymentStatus && (
-            <p className={`mt-2 truncate text-sm font-medium ${paymentStatus.className}`}>
-              {paymentStatus.text}
-            </p>
-          )}
+          <div className="mt-2 space-y-1">
+            {paymentStatusLines.map((line, index) => (
+              <p key={`${line.text}-${index}`} className={`truncate text-sm font-medium ${line.className}`}>
+                {line.text}
+              </p>
+            ))}
+          </div>
         </Link>
 
         <Link

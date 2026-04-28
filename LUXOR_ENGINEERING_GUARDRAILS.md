@@ -286,6 +286,11 @@ Pattern mirrors `planned_pool_cost` / `planned_garden_cost`. API route GET selec
 - Payment urgency on the tenant dashboard follows this order: overdue unpaid bill first, otherwise nearest unpaid bill due within 30 days, otherwise "No payments due". Exclude `paid`, `processing`, and `voided` from due-status summaries.
 - Maintenance "active" counts should include all non-terminal statuses and exclude `closed`, `completed`, and `cancelled`.
 
+### C.28 Tenant Dashboard Upcoming Payments Scope
+- When the tenant dashboard is asked to show upcoming payments, it may render all collectible bills due within the next 30 days for the viewer's accessible scope, not just the nearest one.
+- This is a display-layer change only. Do not change tenant bill visibility rules or tenant billing routing when expanding the dashboard summary.
+- Use compact property identifiers in multi-line payment summaries so admins viewing the tenant portal can distinguish properties without widening the card.
+
 ---
 
 ## Appendix D: Calculation â†’ Output Map
@@ -586,6 +591,6 @@ Before marking a formula task done:
 
 | Field | Value |
 |-------|-------|
-| Version | 2.5 |
+| Version | 2.6 |
 | Status | Active |
-| Last Updated | 2026-04-27 - v2.5: added C.27 to lock tenant dashboard status-line sourcing and priority rules. v2.4: added C.26 to lock invite form minimum fields and single-property owner invite guidance. v2.3: added C.25 to lock the manual invite workflow and canonical invite URL generation. v2.2: plannedYtd made period-aware (YTD/Lease/Alltime); removed actual-rent override from plan; deposit added to plan gross income in lease-start month when last_month_rent_collected; D.8 rewritten; D.0 Plan Gross Income updated; formula accordion updated. v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist; v2.0: Full variable consistency audit: D.0 Master Variable Table added (Actual/Plan/YE Target for all 10 variables); deposit model changed to inclusive (last-month deposit counted in gross income for the month received); displayYtd removed -> showDepositBreakdown; calculatedYeTarget dead useMemo removed; YE Target monthly table row now includes PM fee; formula accordion updated to deposit-inclusive model; Projected ROI unified to single calculateExpectedRoi() with PM fee across all three locations (admin dashboard, admin financials, owner page) |
+| Last Updated | 2026-04-28 - v2.6: added C.28 to lock tenant dashboard multi-line upcoming-payment summaries to the viewer's existing access scope without changing billing visibility rules. v2.5: added C.27 to lock tenant dashboard status-line sourcing and priority rules. v2.4: added C.26 to lock invite form minimum fields and single-property owner invite guidance. v2.3: added C.25 to lock the manual invite workflow and canonical invite URL generation. v2.2: plannedYtd made period-aware (YTD/Lease/Alltime); removed actual-rent override from plan; deposit added to plan gross income in lease-start month when last_month_rent_collected; D.8 rewritten; D.0 Plan Gross Income updated; formula accordion updated. v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist; v2.0: Full variable consistency audit: D.0 Master Variable Table added (Actual/Plan/YE Target for all 10 variables); deposit model changed to inclusive (last-month deposit counted in gross income for the month received); displayYtd removed -> showDepositBreakdown; calculatedYeTarget dead useMemo removed; YE Target monthly table row now includes PM fee; formula accordion updated to deposit-inclusive model; Projected ROI unified to single calculateExpectedRoi() with PM fee across all three locations (admin dashboard, admin financials, owner page) |
