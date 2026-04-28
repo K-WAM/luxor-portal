@@ -70,6 +70,20 @@ export type PropertyLeaseSnapshot = {
 const EXPIRING_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const isMissingLeaseTableError = (error: any) => {
+  const code = String(error?.code || "").toUpperCase();
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    code === "PGRST204" ||
+    message.includes("lease_agreements") ||
+    message.includes("lease_agreement_tenants") ||
+    message.includes("could not find the table") ||
+    message.includes("relation") && (message.includes("does not exist") || message.includes("not found"))
+  );
+};
+
 const getDisplayName = (user?: AuthUserLike | null) => {
   if (!user) return "Unknown Tenant";
   const metadataName = String(user.user_metadata?.name || "").trim();
@@ -164,7 +178,7 @@ export async function fetchPropertyLeaseSnapshots(
       agreementTenantsData = (tenantLinks || []) as LeaseAgreementTenantDbRow[];
     }
   } catch (error: any) {
-    if (error?.code !== "42P01") {
+    if (!isMissingLeaseTableError(error)) {
       throw error;
     }
   }
