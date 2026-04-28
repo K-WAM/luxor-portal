@@ -787,8 +787,8 @@ export default function AdminBilling() {
               <tr>
                 <th className="px-3 py-3 text-left whitespace-normal w-[13%]">Tenant</th>
                 <th className="px-3 py-3 text-left whitespace-normal w-[12%]">Property</th>
-                <th className="px-3 py-3 text-left whitespace-normal w-[11%]">Due</th>
-                <th className="px-3 py-3 text-left whitespace-normal w-[24%]">Bill</th>
+                <th className="px-3 py-3 text-left whitespace-normal w-[14%]">Due</th>
+                <th className="px-3 py-3 text-left whitespace-normal w-[21%]">Bill</th>
                 <th className="px-3 py-3 text-right whitespace-normal w-[10%]">Amount</th>
                 <th className="px-3 py-3 text-left whitespace-normal w-[11%]">Status</th>
                 <th className="px-3 py-3 text-left whitespace-normal w-[19%]">Actions</th>
@@ -859,7 +859,7 @@ export default function AdminBilling() {
                         ) : (
                           <input
                             type="date"
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full min-w-[10rem]"
                             value={tenantEdits[bill.id]?.dueDate ?? (bill.due_date ? bill.due_date.split("T")[0] : "")}
                             onChange={(e) =>
                               setTenantEdits((prev) => ({
