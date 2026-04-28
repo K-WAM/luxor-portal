@@ -51,7 +51,9 @@ const syncPropertyCurrentLease = async (propertyId: string) => {
     .update({
       lease_start: currentLease?.leaseStartDate || null,
       lease_end: currentLease?.leaseEndDate || null,
-      target_monthly_rent: currentLease?.monthlyRent || null,
+      target_monthly_rent: currentLease ? currentLease.monthlyRent : null,
+      deposit: currentLease ? currentLease.deposit : null,
+      last_month_rent_collected: currentLease ? currentLease.lastMonthRentCollected : false,
     })
     .eq("id", propertyId);
 };
@@ -93,6 +95,11 @@ export async function POST(request: Request) {
     const leaseStartDate = toDateOnlyString(body.leaseStartDate);
     const leaseEndDate = toDateOnlyString(body.leaseEndDate);
     const monthlyRent = Number(body.monthlyRent || 0);
+    const deposit = body.deposit === undefined || body.deposit === null || body.deposit === "" ? null : Number(body.deposit || 0);
+    const lastMonthRentCollected =
+      body.lastMonthRentCollected === undefined || body.lastMonthRentCollected === null
+        ? null
+        : !!body.lastMonthRentCollected;
     const rawTenantIds = Array.isArray(body.tenantIds) ? body.tenantIds.filter(Boolean) : [];
     const notes = String(body.notes || "").trim() || null;
     const priorLeaseId = body.priorLeaseId ? String(body.priorLeaseId) : null;
@@ -123,6 +130,8 @@ export async function POST(request: Request) {
         lease_start_date: leaseStartDate,
         lease_end_date: leaseEndDate,
         monthly_rent: monthlyRent,
+        deposit,
+        last_month_rent_collected: lastMonthRentCollected,
         status,
         prior_lease_id: priorLeaseId,
         notes,
@@ -168,6 +177,11 @@ export async function PATCH(request: Request) {
     const leaseStartDate = toDateOnlyString(body.leaseStartDate);
     const leaseEndDate = toDateOnlyString(body.leaseEndDate);
     const monthlyRent = Number(body.monthlyRent || 0);
+    const deposit = body.deposit === undefined || body.deposit === null || body.deposit === "" ? null : Number(body.deposit || 0);
+    const lastMonthRentCollected =
+      body.lastMonthRentCollected === undefined || body.lastMonthRentCollected === null
+        ? null
+        : !!body.lastMonthRentCollected;
     const rawTenantIds = Array.isArray(body.tenantIds) ? body.tenantIds.filter(Boolean) : [];
     const notes = String(body.notes || "").trim() || null;
 
@@ -239,6 +253,8 @@ export async function PATCH(request: Request) {
         lease_start_date: leaseStartDate,
         lease_end_date: leaseEndDate,
         monthly_rent: monthlyRent,
+        deposit,
+        last_month_rent_collected: lastMonthRentCollected,
         status,
         notes,
       })

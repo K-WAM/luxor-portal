@@ -46,6 +46,55 @@ type MonthlyPerformance = {
   updated_at?: string;
 };
 
+type LeaseAgreementFinance = {
+  id: string | null;
+  leaseStartDate: string | null;
+  leaseEndDate: string | null;
+  monthlyRent: number;
+  deposit: number;
+  lastMonthRentCollected: boolean;
+  status: "upcoming" | "active" | "expired" | "terminated";
+  tenantIds: string[];
+  tenantNames: string[];
+  tenantEmails: string[];
+  source: "lease_agreements" | "legacy_property";
+  priorLeaseId?: string | null;
+  notes?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+type RecurringExpenseSchedule = {
+  id: string;
+  property_id: string;
+  expense_type: "hoa" | "pool" | "garden" | "pm_fee";
+  amount: number | string;
+  frequency: "monthly" | "annual";
+  effective_start_date: string;
+  effective_end_date: string | null;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type RecurringExpenseForm = {
+  expenseType: "hoa" | "pool" | "garden" | "pm_fee";
+  amount: string;
+  frequency: "monthly" | "annual";
+  effectiveStartDate: string;
+  effectiveEndDate: string;
+  notes: string;
+};
+
+const EMPTY_RECURRING_EXPENSE_FORM: RecurringExpenseForm = {
+  expenseType: "hoa",
+  amount: "",
+  frequency: "monthly",
+  effectiveStartDate: "",
+  effectiveEndDate: "",
+  notes: "",
+};
+
 export default function FinancialsPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<string>("");
@@ -76,6 +125,20 @@ export default function FinancialsPage() {
     deposit: "",
     last_month_rent_collected: false,
   });
+  const [leaseAgreements, setLeaseAgreements] = useState<LeaseAgreementFinance[]>([]);
+  const [currentLease, setCurrentLease] = useState<LeaseAgreementFinance | null>(null);
+  const [loadingLeases, setLoadingLeases] = useState(false);
+  const [editingLeaseId, setEditingLeaseId] = useState<string | null>(null);
+  const [leaseMetadataDraft, setLeaseMetadataDraft] = useState({
+    deposit: "",
+    last_month_rent_collected: false,
+  });
+  const [recurringSchedules, setRecurringSchedules] = useState<RecurringExpenseSchedule[]>([]);
+  const [loadingSchedules, setLoadingSchedules] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [newSchedule, setNewSchedule] = useState<RecurringExpenseForm>({ ...EMPTY_RECURRING_EXPENSE_FORM });
+  const [scheduleDrafts, setScheduleDrafts] = useState<Record<string, RecurringExpenseForm>>({});
 
   // Auto-calculated total cost (home + repair + closing)
   const calculatedTotalCost = useMemo(() => {
@@ -234,7 +297,7 @@ export default function FinancialsPage() {
 
     if (planMonths.length === 0) return zeroPlan;
 
-    // Pure plan rent: target_monthly_rent × months, prorated for lease-start month.
+    // Pure plan rent: target_monthly_rent Ã— months, prorated for lease-start month.
     // Deposit (last month's rent collected upfront) added to lease-start month when checked.
     let rent_income = 0;
     for (const { year, month } of planMonths) {
@@ -404,7 +467,7 @@ export default function FinancialsPage() {
     return performanceYear === leaseStartYear;
   }, [lastMonthRentBonus, periodType, performanceYear, leaseStartYear]);
 
-  // YTD appreciation: earliest → latest market value entered in performanceYear
+  // YTD appreciation: earliest â†’ latest market value entered in performanceYear
   const ytdAppreciation = useMemo(() => {
     const yearData = allMonthlyData.filter(
       (m: any) => m.year === performanceYear && m.property_market_estimate && m.property_market_estimate > 0
@@ -503,6 +566,15 @@ export default function FinancialsPage() {
       loadAnnualTargets();
     }
   }, [selectedProperty, targetYear, performanceYear]);
+
+  useEffect(() => {
+    if (selectedProperty) {
+      loadLeaseFinancials();
+      loadRecurringSchedules();
+      setEditingLeaseId(null);
+      setEditingScheduleId(null);
+    }
+  }, [selectedProperty]);
 
   useEffect(() => {
     if (selectedProperty && financialsLoaded) {
@@ -612,6 +684,51 @@ export default function FinancialsPage() {
       }
     } catch (err: any) {
       console.error("Error loading annual targets:", err);
+    }
+  };
+
+  const loadLeaseFinancials = async () => {
+    try {
+      setLoadingLeases(true);
+      const res = await fetch(`/api/admin/lease-agreements?propertyId=${selectedProperty}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load lease agreements");
+
+      const agreements = (data.agreements || []) as LeaseAgreementFinance[];
+      const nextCurrentLease = (data.currentLease || null) as LeaseAgreementFinance | null;
+      setLeaseAgreements(agreements);
+      setCurrentLease(nextCurrentLease);
+
+      if (nextCurrentLease) {
+        setPropertyFinancials((prev) => ({
+          ...prev,
+          lease_start: toDateOnlyString(nextCurrentLease.leaseStartDate) || "",
+          lease_end: toDateOnlyString(nextCurrentLease.leaseEndDate) || "",
+          target_monthly_rent: nextCurrentLease.monthlyRent ? String(nextCurrentLease.monthlyRent) : "",
+          deposit: nextCurrentLease.deposit ? String(nextCurrentLease.deposit) : "",
+          last_month_rent_collected: !!nextCurrentLease.lastMonthRentCollected,
+        }));
+      }
+    } catch (err) {
+      console.error("Error loading lease financials:", err);
+      setError((err as Error).message || "Failed to load lease agreements");
+    } finally {
+      setLoadingLeases(false);
+    }
+  };
+
+  const loadRecurringSchedules = async () => {
+    try {
+      setLoadingSchedules(true);
+      const res = await fetch(`/api/admin/financials/recurring-expenses?propertyId=${selectedProperty}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load recurring expense schedules");
+      setRecurringSchedules(data || []);
+    } catch (err) {
+      console.error("Error loading recurring expense schedules:", err);
+      setError((err as Error).message || "Failed to load recurring expense schedules");
+    } finally {
+      setLoadingSchedules(false);
     }
   };
 
@@ -759,9 +876,11 @@ export default function FinancialsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         propertyId: selectedProperty,
-        ...propertyFinancials,
-        last_month_rent_collected: propertyFinancials.last_month_rent_collected,
-        deposit: propertyFinancials.deposit,
+        home_cost: propertyFinancials.home_cost,
+        home_repair_cost: propertyFinancials.home_repair_cost,
+        closing_costs: propertyFinancials.closing_costs,
+        current_market_estimate: propertyFinancials.current_market_estimate,
+        purchase_date: propertyFinancials.purchase_date,
       }),
     });
 
@@ -908,6 +1027,155 @@ export default function FinancialsPage() {
     return new Date(dateStr).toLocaleString();
   };
 
+  const formatExpenseType = (expenseType: string) => {
+    switch (expenseType) {
+      case "hoa":
+        return "HOA";
+      case "pool":
+        return "Pool";
+      case "garden":
+        return "Garden";
+      case "pm_fee":
+        return "PM Fee";
+      default:
+        return expenseType;
+    }
+  };
+
+  const formatLeaseStatus = (status: LeaseAgreementFinance["status"]) => {
+    return status.replace("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const toScheduleForm = (schedule: RecurringExpenseSchedule): RecurringExpenseForm => ({
+    expenseType: schedule.expense_type,
+    amount: String(schedule.amount ?? ""),
+    frequency: schedule.frequency,
+    effectiveStartDate: toDateOnlyString(schedule.effective_start_date) || "",
+    effectiveEndDate: toDateOnlyString(schedule.effective_end_date) || "",
+    notes: schedule.notes || "",
+  });
+
+  const beginLeaseMetadataEdit = (lease: LeaseAgreementFinance) => {
+    if (!lease.id || lease.source !== "lease_agreements") return;
+    setEditingLeaseId(lease.id);
+    setLeaseMetadataDraft({
+      deposit: lease.deposit ? String(lease.deposit) : "",
+      last_month_rent_collected: !!lease.lastMonthRentCollected,
+    });
+  };
+
+  const saveLeaseMetadata = async (lease: LeaseAgreementFinance) => {
+    if (!lease.id) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      const res = await fetch("/api/admin/lease-agreements", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: lease.id,
+          leaseStartDate: lease.leaseStartDate,
+          leaseEndDate: lease.leaseEndDate,
+          monthlyRent: lease.monthlyRent,
+          tenantIds: lease.tenantIds,
+          notes: lease.notes || "",
+          deposit: leaseMetadataDraft.deposit === "" ? null : parseFloat(leaseMetadataDraft.deposit) || 0,
+          lastMonthRentCollected: leaseMetadataDraft.last_month_rent_collected,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update lease metadata");
+      }
+
+      setSuccess("Lease financial metadata updated successfully.");
+      setEditingLeaseId(null);
+      await loadLeaseFinancials();
+      await loadPropertyFinancials();
+    } catch (err) {
+      setError((err as Error).message || "Failed to update lease metadata");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEditingSchedule = (schedule: RecurringExpenseSchedule) => {
+    setEditingScheduleId(schedule.id);
+    setScheduleDrafts((prev) => ({
+      ...prev,
+      [schedule.id]: toScheduleForm(schedule),
+    }));
+  };
+
+  const saveExistingSchedule = async (scheduleId: string) => {
+    const draft = scheduleDrafts[scheduleId];
+    if (!draft) return;
+
+    try {
+      setSavingSchedule(true);
+      setError(null);
+      const res = await fetch("/api/admin/financials/recurring-expenses", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: scheduleId,
+          propertyId: selectedProperty,
+          expenseType: draft.expenseType,
+          amount: draft.amount,
+          frequency: draft.frequency,
+          effectiveStartDate: draft.effectiveStartDate,
+          effectiveEndDate: draft.effectiveEndDate || null,
+          notes: draft.notes,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update recurring expense schedule");
+
+      setEditingScheduleId(null);
+      setSuccess("Recurring expense schedule updated successfully.");
+      await loadRecurringSchedules();
+    } catch (err) {
+      setError((err as Error).message || "Failed to update recurring expense schedule");
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const createRecurringSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingSchedule(true);
+      setError(null);
+      const res = await fetch("/api/admin/financials/recurring-expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: selectedProperty,
+          expenseType: newSchedule.expenseType,
+          amount: newSchedule.amount,
+          frequency: newSchedule.frequency,
+          effectiveStartDate: newSchedule.effectiveStartDate,
+          effectiveEndDate: newSchedule.effectiveEndDate || null,
+          notes: newSchedule.notes,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create recurring expense schedule");
+
+      setNewSchedule({ ...EMPTY_RECURRING_EXPENSE_FORM });
+      setSuccess("Recurring expense schedule added successfully.");
+      await loadRecurringSchedules();
+    } catch (err) {
+      setError((err as Error).message || "Failed to create recurring expense schedule");
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
   // Copy previous row's values to current row
   const copyPreviousRow = (_currentIndex: number) => {};
 
@@ -930,6 +1198,50 @@ export default function FinancialsPage() {
   }
 
   const selectedProp = properties.find(p => p.id === selectedProperty);
+  const legacyRecurringFallbackRows = [
+    {
+      key: "target_rent",
+      label: "Target Monthly Rent",
+      amount: parseFloat(propertyFinancials.target_monthly_rent) || 0,
+      frequency: "monthly",
+      note: "Legacy fallback still used by current Monthly Performance calculations.",
+    },
+    {
+      key: "garden",
+      label: "Garden",
+      amount: parseFloat(propertyFinancials.planned_garden_cost) || 0,
+      frequency: "monthly",
+      note: "Legacy fallback until recurring schedules are wired into calculations.",
+    },
+    {
+      key: "pool",
+      label: "Pool",
+      amount: parseFloat(propertyFinancials.planned_pool_cost) || 0,
+      frequency: "monthly",
+      note: "Legacy fallback until recurring schedules are wired into calculations.",
+    },
+    {
+      key: "hoa_1",
+      label: "HOA #1",
+      amount: parseFloat(propertyFinancials.planned_hoa_cost) || 0,
+      frequency: propertyFinancials.hoa_frequency,
+      note: "Legacy fallback until recurring schedules are wired into calculations.",
+    },
+    {
+      key: "hoa_2",
+      label: "HOA #2",
+      amount: parseFloat(propertyFinancials.planned_hoa_cost_2) || 0,
+      frequency: propertyFinancials.hoa_frequency_2,
+      note: "Legacy fallback until recurring schedules are wired into calculations.",
+    },
+    {
+      key: "pm_fee",
+      label: "PM Fee",
+      amount: parseFloat(propertyFinancials.planned_pm_fee_monthly) || 0,
+      frequency: "monthly",
+      note: "Legacy fallback until recurring schedules are wired into calculations.",
+    },
+  ];
 
   return (
     <div className="p-8 max-w-[1400px] mx-auto">
@@ -1003,9 +1315,9 @@ export default function FinancialsPage() {
       {/* Property Financials Tab */}
       {activeTab === "property" && (
         <div className="bg-white rounded-lg border border-slate-200 p-6">
-          <h2 className="text-xl font-semibold mb-4">Property Financial Data</h2>
+          <h2 className="text-xl font-semibold mb-4">Property-wide Financial Data</h2>
           <p className="text-sm text-gray-600 mb-6">
-            Enter one-time property financial information. Total Cost is auto-calculated.
+            Edit acquisition and valuation inputs here. Lease-linked values and recurring expense schedules are managed in separate sections below.
           </p>
           <form onSubmit={savePropertyFinancials} className="space-y-6">
             {/* Financial Data Table */}
@@ -1099,57 +1411,6 @@ export default function FinancialsPage() {
                     </td>
                     <td className="border border-slate-300 px-4 py-2 text-sm text-gray-600">Date of acquisition</td>
                   </tr>
-                  <tr>
-                    <td className="border border-slate-300 px-4 py-2 font-medium">Lease Start Date</td>
-                    <td className="border border-slate-300 px-4 py-2">
-                      <input
-                        type="date"
-                        value={propertyFinancials.lease_start}
-                        onChange={(e) => setPropertyFinancials({ ...propertyFinancials, lease_start: e.target.value })}
-                        className="w-full border border-slate-300 rounded px-2 py-1"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-4 py-2 text-sm text-gray-600">When lease begins</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-slate-300 px-4 py-2 font-medium">Lease End Date</td>
-                    <td className="border border-slate-300 px-4 py-2">
-                      <input
-                        type="date"
-                        value={propertyFinancials.lease_end}
-                        onChange={(e) => setPropertyFinancials({ ...propertyFinancials, lease_end: e.target.value })}
-                        className="w-full border border-slate-300 rounded px-2 py-1"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-4 py-2 text-sm text-gray-600">When lease expires</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-slate-300 px-4 py-2 font-medium">Deposit</td>
-                    <td className="border border-slate-300 px-4 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={propertyFinancials.deposit}
-                        onChange={(e) => setPropertyFinancials({ ...propertyFinancials, deposit: e.target.value })}
-                        className="w-full border border-slate-300 rounded px-2 py-1"
-                        placeholder="0"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-4 py-2 text-sm text-gray-600">Security / last-month deposit</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-slate-300 px-4 py-2 font-medium">Last month rent collected</td>
-                    <td className="border border-slate-300 px-4 py-2">
-                      <input
-                        id="last-month-rent-collected"
-                        type="checkbox"
-                        checked={propertyFinancials.last_month_rent_collected}
-                        onChange={(e) => setPropertyFinancials({ ...propertyFinancials, last_month_rent_collected: e.target.checked })}
-                        className="h-4 w-4 text-blue-600 border-slate-300 rounded"
-                      />
-                    </td>
-                    <td className="border border-slate-300 px-4 py-2 text-sm text-gray-600">Check if last month’s rent was received upfront</td>
-                  </tr>
                   <tr className="bg-amber-50">
                     <td className="border border-slate-300 px-4 py-2 font-medium">Expected Annual Property Tax</td>
                     <td className="border border-slate-300 px-4 py-2">
@@ -1167,148 +1428,6 @@ export default function FinancialsPage() {
                 </tbody>
               </table>
             </div>
-
-            {/* Planned Monthly Costs Table */}
-            <div className="mt-6">
-              <h3 className="font-semibold mb-3 text-lg">Planned Monthly Costs</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-slate-300">
-                  <thead>
-                    <tr className="bg-slate-100">
-                      <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">Expense Type</th>
-                      <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">Monthly Amount ($)</th>
-                      <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">Annual Amount ($)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="border border-slate-300 px-4 py-2 font-medium">Target Monthly Rent</td>
-                      <td className="border border-slate-300 px-4 py-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={propertyFinancials.target_monthly_rent}
-                          onChange={(e) => setPropertyFinancials({ ...propertyFinancials, target_monthly_rent: e.target.value })}
-                          className="w-full border border-slate-300 rounded px-2 py-1"
-                          placeholder="5750"
-                        />
-                      </td>
-                      <td className="border border-slate-300 px-4 py-2 text-sm">
-                        {formatCurrency((parseFloat(propertyFinancials.target_monthly_rent) || 0) * 12)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-300 px-4 py-2 font-medium">Planned Garden Cost</td>
-                      <td className="border border-slate-300 px-4 py-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={propertyFinancials.planned_garden_cost}
-                          onChange={(e) => setPropertyFinancials({ ...propertyFinancials, planned_garden_cost: e.target.value })}
-                          className="w-full border border-slate-300 rounded px-2 py-1"
-                          placeholder="150"
-                        />
-                      </td>
-                      <td className="border border-slate-300 px-4 py-2 text-sm">
-                        {formatCurrency((parseFloat(propertyFinancials.planned_garden_cost) || 0) * 12)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-300 px-4 py-2 font-medium">Planned Pool Cost</td>
-                      <td className="border border-slate-300 px-4 py-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={propertyFinancials.planned_pool_cost}
-                          onChange={(e) => setPropertyFinancials({ ...propertyFinancials, planned_pool_cost: e.target.value })}
-                          className="w-full border border-slate-300 rounded px-2 py-1"
-                          placeholder="200"
-                        />
-                      </td>
-                      <td className="border border-slate-300 px-4 py-2 text-sm">
-                        {formatCurrency((parseFloat(propertyFinancials.planned_pool_cost) || 0) * 12)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-300 px-4 py-2 font-medium">Planned HOA Cost #1</td>
-                      <td className="border border-slate-300 px-4 py-2">
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={propertyFinancials.planned_hoa_cost}
-                            onChange={(e) => setPropertyFinancials({ ...propertyFinancials, planned_hoa_cost: e.target.value })}
-                            className="flex-1 border border-slate-300 rounded px-2 py-1"
-                            placeholder="200"
-                          />
-                          <select
-                            value={propertyFinancials.hoa_frequency}
-                            onChange={(e) => setPropertyFinancials({ ...propertyFinancials, hoa_frequency: e.target.value as "monthly" | "quarterly" })}
-                            className="border border-slate-300 rounded px-2 py-1"
-                          >
-                            <option value="monthly">Monthly</option>
-                            <option value="quarterly">Quarterly</option>
-                          </select>
-                        </div>
-                      </td>
-                      <td className="border border-slate-300 px-4 py-2 text-sm">
-                        {formatCurrency((parseFloat(propertyFinancials.planned_hoa_cost) || 0) * (propertyFinancials.hoa_frequency === "monthly" ? 12 : 4))}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-300 px-4 py-2 font-medium">Planned HOA Cost #2</td>
-                      <td className="border border-slate-300 px-4 py-2">
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={propertyFinancials.planned_hoa_cost_2}
-                            onChange={(e) => setPropertyFinancials({ ...propertyFinancials, planned_hoa_cost_2: e.target.value })}
-                            className="flex-1 border border-slate-300 rounded px-2 py-1"
-                            placeholder="0"
-                          />
-                          <select
-                            value={propertyFinancials.hoa_frequency_2}
-                            onChange={(e) => setPropertyFinancials({ ...propertyFinancials, hoa_frequency_2: e.target.value as "monthly" | "quarterly" })}
-                            className="border border-slate-300 rounded px-2 py-1"
-                          >
-                            <option value="monthly">Monthly</option>
-                            <option value="quarterly">Quarterly</option>
-                          </select>
-                        </div>
-                      </td>
-                      <td className="border border-slate-300 px-4 py-2 text-sm">
-                        {formatCurrency((parseFloat(propertyFinancials.planned_hoa_cost_2) || 0) * (propertyFinancials.hoa_frequency_2 === "monthly" ? 12 : 4))}
-                      </td>
-                    </tr>
-                    <tr className="bg-slate-50">
-                      <td className="border border-slate-300 px-4 py-2 font-semibold">Total Annual HOA</td>
-                      <td className="border border-slate-300 px-4 py-2"></td>
-                      <td className="border border-slate-300 px-4 py-2 text-sm font-semibold">
-                        {formatCurrency(calculatedAnnualHoa)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-300 px-4 py-2 font-medium">Planned PM Fee (monthly)</td>
-                      <td className="border border-slate-300 px-4 py-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={propertyFinancials.planned_pm_fee_monthly}
-                          onChange={(e) => setPropertyFinancials({ ...propertyFinancials, planned_pm_fee_monthly: e.target.value })}
-                          className="w-full border border-slate-300 rounded px-2 py-1"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="border border-slate-300 px-4 py-2 text-sm">
-                        {formatCurrency((parseFloat(propertyFinancials.planned_pm_fee_monthly) || 0) * 12)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
             <button
               type="submit"
               disabled={saving}
@@ -1317,6 +1436,459 @@ export default function FinancialsPage() {
               {saving ? "Saving..." : "Save Property Financials"}
             </button>
           </form>
+
+          <div className="mt-8 space-y-8">
+            <section className="border border-slate-200 rounded-lg p-5">
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Lease-Linked Financial Data</h3>
+                  <p className="text-sm text-slate-600">
+                    Linked from lease records when available. Legacy property lease fields are shown only as fallback when no lease record exists.
+                  </p>
+                </div>
+                <a
+                  href="/admin/properties"
+                  className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                >
+                  Open Properties
+                </a>
+              </div>
+
+              {loadingLeases ? (
+                <p className="text-sm text-slate-500">Loading lease records...</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse border border-slate-300 text-sm">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Source</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Status</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Lease Start</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Lease End</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Monthly Rent</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Deposit</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Last Month Rent</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Tenants</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(leaseAgreements.length > 0 ? leaseAgreements : currentLease ? [currentLease] : []).map((lease) => {
+                        const isEditing = !!lease.id && editingLeaseId === lease.id;
+                        const isLinkedLease = lease.source === "lease_agreements" && !!lease.id;
+                        return (
+                          <tr key={lease.id || "legacy-fallback"} className={lease.source === "legacy_property" ? "bg-amber-50/40" : ""}>
+                            <td className="border border-slate-300 px-3 py-2">
+                              <div className="font-medium text-slate-900">
+                                {lease.source === "lease_agreements" ? "Linked from lease" : "Legacy fallback"}
+                              </div>
+                              {lease.priorLeaseId ? (
+                                <div className="text-xs text-slate-500">Renewal linked</div>
+                              ) : null}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2">{formatLeaseStatus(lease.status)}</td>
+                            <td className="border border-slate-300 px-3 py-2">{formatDateOnly(lease.leaseStartDate) || "-"}</td>
+                            <td className="border border-slate-300 px-3 py-2">{formatDateOnly(lease.leaseEndDate) || "-"}</td>
+                            <td className="border border-slate-300 px-3 py-2">{formatCurrency(lease.monthlyRent || 0)}</td>
+                            <td className="border border-slate-300 px-3 py-2">
+                              {isEditing ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={leaseMetadataDraft.deposit}
+                                  onChange={(e) => setLeaseMetadataDraft((prev) => ({ ...prev, deposit: e.target.value }))}
+                                  className="w-28 border border-slate-300 rounded px-2 py-1"
+                                  placeholder="0"
+                                />
+                              ) : (
+                                formatCurrency(lease.deposit || 0)
+                              )}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2">
+                              {isEditing ? (
+                                <label className="inline-flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={leaseMetadataDraft.last_month_rent_collected}
+                                    onChange={(e) =>
+                                      setLeaseMetadataDraft((prev) => ({
+                                        ...prev,
+                                        last_month_rent_collected: e.target.checked,
+                                      }))
+                                    }
+                                    className="h-4 w-4 rounded border-slate-300"
+                                  />
+                                  <span>{leaseMetadataDraft.last_month_rent_collected ? "Collected" : "Not collected"}</span>
+                                </label>
+                              ) : lease.lastMonthRentCollected ? (
+                                "Collected upfront"
+                              ) : (
+                                "Not collected"
+                              )}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2">
+                              {lease.tenantNames.length > 0 ? lease.tenantNames.join(", ") : "No tenants linked"}
+                            </td>
+                            <td className="border border-slate-300 px-3 py-2">
+                              {isLinkedLease ? (
+                                isEditing ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => saveLeaseMetadata(lease)}
+                                      disabled={saving}
+                                      className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingLeaseId(null)}
+                                      className="px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => beginLeaseMetadataEdit(lease)}
+                                    className="px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Edit deposit / last month
+                                  </button>
+                                )
+                              ) : (
+                                <span className="text-xs text-slate-500">Add or edit a lease in Properties first.</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {leaseAgreements.length === 0 && !currentLease && (
+                        <tr>
+                          <td colSpan={9} className="border border-slate-300 px-3 py-4 text-center text-slate-500">
+                            No lease data found for this property yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section className="border border-slate-200 rounded-lg p-5">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-900">Recurring Expense Schedules</h3>
+                <p className="text-sm text-slate-600">
+                  Manage date-effective HOA, pool, garden, and PM fee schedules here. Existing planned property fields remain legacy fallback until automation is switched later.
+                </p>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                <div className="space-y-4">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border border-slate-300 text-sm">
+                      <thead>
+                        <tr className="bg-slate-100">
+                          <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Type</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Amount</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Frequency</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Start</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left font-semibold">End</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Notes</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {loadingSchedules ? (
+                          <tr>
+                            <td colSpan={7} className="border border-slate-300 px-3 py-4 text-center text-slate-500">
+                              Loading recurring expense schedules...
+                            </td>
+                          </tr>
+                        ) : recurringSchedules.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="border border-slate-300 px-3 py-4 text-center text-slate-500">
+                              No recurring expense schedules saved yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          recurringSchedules.map((schedule) => {
+                            const isEditing = editingScheduleId === schedule.id;
+                            const draft = scheduleDrafts[schedule.id] || toScheduleForm(schedule);
+                            return (
+                              <tr key={schedule.id}>
+                                <td className="border border-slate-300 px-3 py-2">
+                                  {isEditing ? (
+                                    <select
+                                      value={draft.expenseType}
+                                      onChange={(e) =>
+                                        setScheduleDrafts((prev) => ({
+                                          ...prev,
+                                          [schedule.id]: {
+                                            ...draft,
+                                            expenseType: e.target.value as RecurringExpenseForm["expenseType"],
+                                          },
+                                        }))
+                                      }
+                                      className="w-full border border-slate-300 rounded px-2 py-1"
+                                    >
+                                      <option value="hoa">HOA</option>
+                                      <option value="pool">Pool</option>
+                                      <option value="garden">Garden</option>
+                                      <option value="pm_fee">PM Fee</option>
+                                    </select>
+                                  ) : (
+                                    formatExpenseType(schedule.expense_type)
+                                  )}
+                                </td>
+                                <td className="border border-slate-300 px-3 py-2">
+                                  {isEditing ? (
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={draft.amount}
+                                      onChange={(e) =>
+                                        setScheduleDrafts((prev) => ({
+                                          ...prev,
+                                          [schedule.id]: { ...draft, amount: e.target.value },
+                                        }))
+                                      }
+                                      className="w-28 border border-slate-300 rounded px-2 py-1"
+                                    />
+                                  ) : (
+                                    formatCurrency(parseFloat(String(schedule.amount || 0)) || 0)
+                                  )}
+                                </td>
+                                <td className="border border-slate-300 px-3 py-2">
+                                  {isEditing ? (
+                                    <select
+                                      value={draft.frequency}
+                                      onChange={(e) =>
+                                        setScheduleDrafts((prev) => ({
+                                          ...prev,
+                                          [schedule.id]: {
+                                            ...draft,
+                                            frequency: e.target.value as RecurringExpenseForm["frequency"],
+                                          },
+                                        }))
+                                      }
+                                      className="w-full border border-slate-300 rounded px-2 py-1"
+                                    >
+                                      <option value="monthly">Monthly</option>
+                                      <option value="annual">Annual</option>
+                                    </select>
+                                  ) : (
+                                    schedule.frequency
+                                  )}
+                                </td>
+                                <td className="border border-slate-300 px-3 py-2">
+                                  {isEditing ? (
+                                    <input
+                                      type="date"
+                                      value={draft.effectiveStartDate}
+                                      onChange={(e) =>
+                                        setScheduleDrafts((prev) => ({
+                                          ...prev,
+                                          [schedule.id]: { ...draft, effectiveStartDate: e.target.value },
+                                        }))
+                                      }
+                                      className="w-full border border-slate-300 rounded px-2 py-1"
+                                    />
+                                  ) : (
+                                    formatDateOnly(schedule.effective_start_date) || "-"
+                                  )}
+                                </td>
+                                <td className="border border-slate-300 px-3 py-2">
+                                  {isEditing ? (
+                                    <input
+                                      type="date"
+                                      value={draft.effectiveEndDate}
+                                      onChange={(e) =>
+                                        setScheduleDrafts((prev) => ({
+                                          ...prev,
+                                          [schedule.id]: { ...draft, effectiveEndDate: e.target.value },
+                                        }))
+                                      }
+                                      className="w-full border border-slate-300 rounded px-2 py-1"
+                                    />
+                                  ) : (
+                                    formatDateOnly(schedule.effective_end_date) || "Open-ended"
+                                  )}
+                                </td>
+                                <td className="border border-slate-300 px-3 py-2">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={draft.notes}
+                                      onChange={(e) =>
+                                        setScheduleDrafts((prev) => ({
+                                          ...prev,
+                                          [schedule.id]: { ...draft, notes: e.target.value },
+                                        }))
+                                      }
+                                      className="w-full border border-slate-300 rounded px-2 py-1"
+                                      placeholder="Optional notes"
+                                    />
+                                  ) : (
+                                    schedule.notes || "-"
+                                  )}
+                                </td>
+                                <td className="border border-slate-300 px-3 py-2">
+                                  {isEditing ? (
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => saveExistingSchedule(schedule.id)}
+                                        disabled={savingSchedule}
+                                        className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300"
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingScheduleId(null)}
+                                        className="px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => startEditingSchedule(schedule)}
+                                      className="px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                                    >
+                                      Edit
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <h4 className="font-semibold text-amber-900 mb-2">Legacy fallback values still in use</h4>
+                    <p className="text-sm text-amber-800 mb-3">
+                      Current Monthly Performance calculations still read these property-level fields until a later logic migration switches to schedules.
+                    </p>
+                    <div className="space-y-2">
+                      {legacyRecurringFallbackRows.map((row) => (
+                        <div key={row.key} className="flex items-start justify-between gap-4 rounded border border-amber-100 bg-white px-3 py-2">
+                          <div>
+                            <div className="font-medium text-slate-900">{row.label}</div>
+                            <div className="text-xs text-slate-500">{row.note}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-medium text-slate-900">{formatCurrency(row.amount)}</div>
+                            <div className="text-xs uppercase tracking-wide text-slate-500">{row.frequency}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={createRecurringSchedule} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4">
+                  <div>
+                    <h4 className="font-semibold text-slate-900">Add recurring schedule</h4>
+                    <p className="text-sm text-slate-600">Create a new effective-dated recurring cost without overwriting historical rows.</p>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm">
+                      <span className="mb-1 block font-medium text-slate-700">Expense type</span>
+                      <select
+                        value={newSchedule.expenseType}
+                        onChange={(e) =>
+                          setNewSchedule((prev) => ({
+                            ...prev,
+                            expenseType: e.target.value as RecurringExpenseForm["expenseType"],
+                          }))
+                        }
+                        className="w-full rounded border border-slate-300 px-3 py-2"
+                      >
+                        <option value="hoa">HOA</option>
+                        <option value="pool">Pool</option>
+                        <option value="garden">Garden</option>
+                        <option value="pm_fee">PM Fee</option>
+                      </select>
+                    </label>
+                    <label className="text-sm">
+                      <span className="mb-1 block font-medium text-slate-700">Amount</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={newSchedule.amount}
+                        onChange={(e) => setNewSchedule((prev) => ({ ...prev, amount: e.target.value }))}
+                        className="w-full rounded border border-slate-300 px-3 py-2"
+                        placeholder="0.00"
+                      />
+                    </label>
+                    <label className="text-sm">
+                      <span className="mb-1 block font-medium text-slate-700">Frequency</span>
+                      <select
+                        value={newSchedule.frequency}
+                        onChange={(e) =>
+                          setNewSchedule((prev) => ({
+                            ...prev,
+                            frequency: e.target.value as RecurringExpenseForm["frequency"],
+                          }))
+                        }
+                        className="w-full rounded border border-slate-300 px-3 py-2"
+                      >
+                        <option value="monthly">Monthly</option>
+                        <option value="annual">Annual</option>
+                      </select>
+                    </label>
+                    <label className="text-sm">
+                      <span className="mb-1 block font-medium text-slate-700">Effective start</span>
+                      <input
+                        type="date"
+                        value={newSchedule.effectiveStartDate}
+                        onChange={(e) => setNewSchedule((prev) => ({ ...prev, effectiveStartDate: e.target.value }))}
+                        className="w-full rounded border border-slate-300 px-3 py-2"
+                      />
+                    </label>
+                    <label className="text-sm">
+                      <span className="mb-1 block font-medium text-slate-700">Effective end</span>
+                      <input
+                        type="date"
+                        value={newSchedule.effectiveEndDate}
+                        onChange={(e) => setNewSchedule((prev) => ({ ...prev, effectiveEndDate: e.target.value }))}
+                        className="w-full rounded border border-slate-300 px-3 py-2"
+                      />
+                    </label>
+                    <label className="text-sm sm:col-span-2">
+                      <span className="mb-1 block font-medium text-slate-700">Notes</span>
+                      <input
+                        type="text"
+                        value={newSchedule.notes}
+                        onChange={(e) => setNewSchedule((prev) => ({ ...prev, notes: e.target.value }))}
+                        className="w-full rounded border border-slate-300 px-3 py-2"
+                        placeholder="Optional notes"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Overlapping schedules for the same property and expense type are blocked to preserve clean historical ranges.
+                  </p>
+                  <button
+                    type="submit"
+                    disabled={savingSchedule}
+                    className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300"
+                  >
+                    {savingSchedule ? "Saving..." : "Add Schedule"}
+                  </button>
+                </form>
+              </div>
+            </section>
+          </div>
 
           {/* Last Updated Indicator */}
           {selectedProp && (
@@ -1330,7 +1902,7 @@ export default function FinancialsPage() {
             </div>
           )}
 
-          {/* Projected Income Summary — shown when financials are loaded */}
+          {/* Projected Income Summary - shown when financials are loaded */}
           {financialsLoaded && calculatedTotalCost > 0 && (
             <div className="mt-6 border border-slate-200 rounded-lg overflow-hidden">
               <div className="bg-slate-800 px-5 py-3">
@@ -1349,27 +1921,27 @@ export default function FinancialsPage() {
                   <tr className="bg-green-50">
                     <td className="border border-slate-200 px-4 py-2 font-semibold text-green-800">Projected Gross Income</td>
                     <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-green-800">{formatCurrency(annualPlan.rent)}</td>
-                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-500">{formatCurrency(parseFloat(propertyFinancials.target_monthly_rent) || 0)}/mo × 12</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-500">{formatCurrency(parseFloat(propertyFinancials.target_monthly_rent) || 0)}/mo Ã— 12</td>
                   </tr>
                   <tr>
-                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ Maintenance (5% of rent)</td>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ Maintenance (5% of rent)</td>
                     <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.maintenance)}</td>
                     <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">5% of gross rent</td>
                   </tr>
                   <tr>
-                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ HOA</td>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ HOA</td>
                     <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.hoa)}</td>
                     <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">Annual total (all HOAs)</td>
                   </tr>
                   <tr>
-                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ Garden</td>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ Garden</td>
                     <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.garden)}</td>
-                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_garden_cost) || 0)}/mo × 12</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_garden_cost) || 0)}/mo Ã— 12</td>
                   </tr>
                   <tr>
-                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ Pool</td>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ Pool</td>
                     <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.pool)}</td>
-                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_pool_cost) || 0)}/mo × 12</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_pool_cost) || 0)}/mo Ã— 12</td>
                   </tr>
                   <tr className="bg-red-50">
                     <td className="border border-slate-200 px-4 py-2 font-semibold text-red-800">Projected Total Expenses</td>
@@ -1384,7 +1956,7 @@ export default function FinancialsPage() {
                   {annualPlan.propertyTax > 0 && (
                     <>
                       <tr>
-                        <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">↳ Property Tax (est.)</td>
+                        <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ Property Tax (est.)</td>
                         <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.propertyTax)}</td>
                         <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">From YE target input above</td>
                       </tr>
@@ -1400,7 +1972,7 @@ export default function FinancialsPage() {
                     <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-slate-800">
                       {`${(annualPlan.netIncome / calculatedTotalCost * 100).toFixed(2)}%`}
                     </td>
-                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">Net income ÷ cost basis ({formatCurrency(calculatedTotalCost)})</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">Net income Ã· cost basis ({formatCurrency(calculatedTotalCost)})</td>
                   </tr>
                   {annualPlan.propertyTax > 0 && (
                     <tr className="bg-slate-100">
@@ -1408,7 +1980,7 @@ export default function FinancialsPage() {
                       <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-slate-800">
                         {`${((annualPlan.netIncome - annualPlan.propertyTax) / calculatedTotalCost * 100).toFixed(2)}%`}
                       </td>
-                      <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">After property tax ÷ cost basis</td>
+                      <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">After property tax Ã· cost basis</td>
                     </tr>
                   )}
                 </tbody>
@@ -1421,7 +1993,7 @@ export default function FinancialsPage() {
             <div className="mt-6 border border-blue-200 rounded-lg overflow-hidden">
               <div className="bg-blue-600 px-5 py-3">
                 <h3 className="text-white font-semibold text-sm uppercase tracking-wide">Expected Annual Summary</h3>
-                <p className="text-blue-100 text-xs mt-0.5">Based on current planned costs — full year projection</p>
+                <p className="text-blue-100 text-xs mt-0.5">Based on current planned costs - full year projection</p>
               </div>
               <div className="bg-white p-5">
                 {/* Primary metrics */}
@@ -1474,7 +2046,7 @@ export default function FinancialsPage() {
           <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">
-                Monthly Performance {periodType === "ytd" ? `— ${performanceYear}` : `(${periodLabelShort})`}
+                Monthly Performance {periodType === "ytd" ? `- ${performanceYear}` : `(${periodLabelShort})`}
               </h2>
               <p className="text-sm text-slate-500 mt-0.5">Enter actuals per month, then save.</p>
             </div>
@@ -1500,7 +2072,7 @@ export default function FinancialsPage() {
                 disabled={saving}
                 className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
               >
-                {saving ? "Saving…" : "Save"}
+                {saving ? "Savingâ€¦" : "Save"}
               </button>
             </div>
           </div>
@@ -1587,21 +2159,21 @@ export default function FinancialsPage() {
           {!loadingMonthly && calculatedTotalCost > 0 && (
             <div className="mb-6">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-                YTD Performance — {performanceYear}
+                YTD Performance - {performanceYear}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
                   {
                     label: "YTD Income ROI",
                     value: `${(actualYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
-                    sub: `Net ${formatCurrency(actualYtd.net_income)} ÷ cost basis`,
+                    sub: `Net ${formatCurrency(actualYtd.net_income)} Ã· cost basis`,
                     color: actualYtd.net_income >= 0 ? "text-emerald-700" : "text-red-600",
                   },
                   {
                     label: `YTD Home Appreciation (${performanceYear})`,
                     value: ytdAppreciation.hasData
                       ? `${ytdAppreciation.pct >= 0 ? "+" : ""}${ytdAppreciation.pct.toFixed(2)}%`
-                      : "—",
+                      : "-",
                     sub: ytdAppreciation.hasData
                       ? formatCurrency(ytdAppreciation.value)
                       : "No market data this year",
@@ -1619,8 +2191,8 @@ export default function FinancialsPage() {
                       ? `${((actualYtd.net_income + ytdAppreciation.value) / calculatedTotalCost * 100).toFixed(2)}%`
                       : `${(actualYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
                     sub: ytdAppreciation.hasData
-                      ? `Net income + YTD appreciation ÷ cost basis`
-                      : "Net income only — no market data this year",
+                      ? `Net income + YTD appreciation Ã· cost basis`
+                      : "Net income only - no market data this year",
                     color: (actualYtd.net_income + (ytdAppreciation.hasData ? ytdAppreciation.value : 0)) >= 0
                       ? "text-emerald-700" : "text-red-600",
                   },
@@ -1634,7 +2206,7 @@ export default function FinancialsPage() {
               </div>
               {showDepositBreakdown && (
                 <div className="mt-2 text-xs text-slate-400">
-                  Gross income includes last-month deposit ({formatCurrency(lastMonthRentBonus)}) — collected at lease start, covers {leaseEndMonthLabel ?? "last month of lease"}.
+                  Gross income includes last-month deposit ({formatCurrency(lastMonthRentBonus)}) - collected at lease start, covers {leaseEndMonthLabel ?? "last month of lease"}.
                 </div>
               )}
             </div>
@@ -1896,7 +2468,7 @@ export default function FinancialsPage() {
                   </td>
                 </tr>
 
-                {/* Plan Row — pure plan for the selected period, prorated lease-start month, deposit included */}
+                {/* Plan Row - pure plan for the selected period, prorated lease-start month, deposit included */}
                 <tr className="bg-purple-50 font-semibold border-t border-slate-300">
                   <td className="border border-slate-300 px-3 py-2 sticky left-0 bg-purple-50">
                     Plan ({plannedYtd.monthsElapsed} mo)
@@ -1996,7 +2568,7 @@ export default function FinancialsPage() {
             </div>
           )}
 
-          {/* ROI Display — Excel A29:I43 layout */}
+          {/* ROI Display - Excel A29:I43 layout */}
           {!loadingMonthly && allMonthlyData.length > 0 && (
             <div className="mt-6 p-6 bg-slate-50 border border-slate-200 rounded-lg">
               <h3 className="font-semibold text-slate-900 mb-4 text-lg">
@@ -2086,7 +2658,7 @@ export default function FinancialsPage() {
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Formula Reference
               </span>
-              <span className="text-slate-400 text-sm">{showFormulas ? "▲ Hide" : "▼ Show"}</span>
+              <span className="text-slate-400 text-sm">{showFormulas ? "â–² Hide" : "â–¼ Show"}</span>
             </button>
             {showFormulas && (
               <div className="px-5 py-4 text-xs text-slate-600 space-y-4 bg-white">
@@ -2098,7 +2670,7 @@ export default function FinancialsPage() {
                       {[
                         ["Cost Basis", "Purchase Price + Repairs + Closing Costs"],
                         ["Months Elapsed (Plan)", "Months from lease start (or Jan 1) through current month, capped at 12. First month prorated by days remaining."],
-                        ["Months Owned", "DATEDIF(purchase_date, today, 'm') — full months since purchase"],
+                        ["Months Owned", "DATEDIF(purchase_date, today, 'm') - full months since purchase"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2115,13 +2687,13 @@ export default function FinancialsPage() {
                     <tbody className="divide-y divide-slate-100">
                       {[
                         ["Plan Period", "YTD: lease-start month (or Jan) through current month of selected year. Lease / All-Time: lease-start through today (capped at lease_end for Lease view)."],
-                        ["Plan Gross Income", "target_monthly_rent × months_elapsed. First month prorated by days remaining after lease start. Includes deposit (target_monthly_rent) in lease-start month when last_month_rent_collected is checked. Pure plan — no actual override."],
-                        ["Plan Maintenance", "Plan Gross Income × 5%"],
-                        ["Plan Pool / Garden", "planned_monthly_cost × months_elapsed"],
-                        ["Plan HOA", "(planned_annual_hoa ÷ 12) × months_elapsed"],
-                        ["Plan PM Fee", "planned_pm_fee_monthly × months_elapsed"],
+                        ["Plan Gross Income", "target_monthly_rent Ã— months_elapsed. First month prorated by days remaining after lease start. Includes deposit (target_monthly_rent) in lease-start month when last_month_rent_collected is checked. Pure plan - no actual override."],
+                        ["Plan Maintenance", "Plan Gross Income Ã— 5%"],
+                        ["Plan Pool / Garden", "planned_monthly_cost Ã— months_elapsed"],
+                        ["Plan HOA", "(planned_annual_hoa Ã· 12) Ã— months_elapsed"],
+                        ["Plan PM Fee", "planned_pm_fee_monthly Ã— months_elapsed"],
                         ["Plan Total Expenses", "Maintenance + HOA + Pool + Garden + PM Fee  (property tax excluded)"],
-                        ["Plan Net Income", "Plan Gross Income − Plan Total Expenses"],
+                        ["Plan Net Income", "Plan Gross Income âˆ’ Plan Total Expenses"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2139,10 +2711,10 @@ export default function FinancialsPage() {
                       {[
                         ["Gross Income", "Sum of monthly rent_income for the period. Includes last-month deposit in the month it was physically received."],
                         ["Last-Month Deposit (sub-row)", "target_monthly_rent collected upfront at lease start. Shown as an informational breakdown of Gross Income when the deposit falls within the current view period."],
-                        ["Maintenance %", "Maintenance ÷ Gross Income × 100  |  Target: < 5%"],
+                        ["Maintenance %", "Maintenance Ã· Gross Income Ã— 100  |  Target: < 5%"],
                         ["Total Expenses", "Maintenance + HOA + Pool + Garden + PM Fee  (property tax excluded from this line)"],
-                        ["Net Income", "Gross Income − Total Expenses"],
-                        ["Property Tax", "Actual entered — displayed below the line, not included in Net Income or Total Expenses"],
+                        ["Net Income", "Gross Income âˆ’ Total Expenses"],
+                        ["Property Tax", "Actual entered - displayed below the line, not included in Net Income or Total Expenses"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2158,11 +2730,11 @@ export default function FinancialsPage() {
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["ROI — Net Income (Pre-Tax)", "Net Income ÷ Cost Basis × 100"],
-                        ["ROI Post Property Tax", "(Net Income − Property Tax) ÷ Cost Basis × 100"],
-                        ["Projected ROI (Pre-Tax)", "(target_monthly_rent − planned_pool − planned_garden − planned_hoa − planned_pm_fee) × 12 ÷ Cost Basis × 100"],
-                        ["ROI if Sold", "(Net Income − Property Tax − Est. Closing Costs + Appreciation since purchase) ÷ Cost Basis × 100"],
-                        ["Δ to Plan", "(Actual − Plan) ÷ |Plan| × 100  |  Green = favorable, Red = unfavorable"],
+                        ["ROI - Net Income (Pre-Tax)", "Net Income Ã· Cost Basis Ã— 100"],
+                        ["ROI Post Property Tax", "(Net Income âˆ’ Property Tax) Ã· Cost Basis Ã— 100"],
+                        ["Projected ROI (Pre-Tax)", "(target_monthly_rent âˆ’ planned_pool âˆ’ planned_garden âˆ’ planned_hoa âˆ’ planned_pm_fee) Ã— 12 Ã· Cost Basis Ã— 100"],
+                        ["ROI if Sold", "(Net Income âˆ’ Property Tax âˆ’ Est. Closing Costs + Appreciation since purchase) Ã· Cost Basis Ã— 100"],
+                        ["Î” to Plan", "(Actual âˆ’ Plan) Ã· |Plan| Ã— 100  |  Green = favorable, Red = unfavorable"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2178,10 +2750,10 @@ export default function FinancialsPage() {
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["Appreciation since purchase", "(Current Market Value − Cost Basis) ÷ Cost Basis × 100"],
-                        ["YTD Appreciation", "(Latest − Earliest market estimate entered in performance year) ÷ Cost Basis × 100"],
-                        ["Monthly Gain", "Appreciation since purchase ($) ÷ Months Owned"],
-                        ["Annualized Gain", "Monthly Gain × 12"],
+                        ["Appreciation since purchase", "(Current Market Value âˆ’ Cost Basis) Ã· Cost Basis Ã— 100"],
+                        ["YTD Appreciation", "(Latest âˆ’ Earliest market estimate entered in performance year) Ã· Cost Basis Ã— 100"],
+                        ["Monthly Gain", "Appreciation since purchase ($) Ã· Months Owned"],
+                        ["Annualized Gain", "Monthly Gain Ã— 12"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2197,10 +2769,10 @@ export default function FinancialsPage() {
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["YTD Income ROI", "Net Income ÷ Cost Basis × 100"],
-                        ["YTD Home Appreciation", "(Latest − Earliest market estimate in year) ÷ Cost Basis × 100"],
-                        ["Appreciation Since Purchase", "(Current Market Value − Cost Basis) ÷ Cost Basis × 100"],
-                        ["Total YTD ROI", "(Net Income + YTD Appreciation $) ÷ Cost Basis × 100"],
+                        ["YTD Income ROI", "Net Income Ã· Cost Basis Ã— 100"],
+                        ["YTD Home Appreciation", "(Latest âˆ’ Earliest market estimate in year) Ã· Cost Basis Ã— 100"],
+                        ["Appreciation Since Purchase", "(Current Market Value âˆ’ Cost Basis) Ã· Cost Basis Ã— 100"],
+                        ["Total YTD ROI", "(Net Income + YTD Appreciation $) Ã· Cost Basis Ã— 100"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2249,7 +2821,7 @@ export default function FinancialsPage() {
                   <td className="border border-slate-300 px-4 py-2">
                     {prop.financials_updated_at ? (
                       <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">
-                        ✓ Yes
+                        âœ“ Yes
                       </span>
                     ) : (
                       <span className="inline-block px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium">
@@ -2269,3 +2841,6 @@ export default function FinancialsPage() {
     </div>
   );
 }
+
+
+

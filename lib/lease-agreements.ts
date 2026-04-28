@@ -15,6 +15,8 @@ type LeaseAgreementDbRow = {
   lease_start_date: string;
   lease_end_date: string;
   monthly_rent: number | string;
+  deposit?: number | string | null;
+  last_month_rent_collected?: boolean | null;
   status: string | null;
   prior_lease_id?: string | null;
   notes?: string | null;
@@ -38,6 +40,8 @@ export type LeaseAgreementSummary = {
   leaseStartDate: string;
   leaseEndDate: string;
   monthlyRent: number;
+  deposit: number;
+  lastMonthRentCollected: boolean;
   status: LeaseAgreementStatus;
   priorLeaseId: string | null;
   notes: string | null;
@@ -53,6 +57,8 @@ export type CurrentLeaseSummary = {
   leaseStartDate: string | null;
   leaseEndDate: string | null;
   monthlyRent: number;
+  deposit: number;
+  lastMonthRentCollected: boolean;
   status: LeaseAgreementStatus;
   tenantIds: string[];
   tenantNames: string[];
@@ -228,6 +234,8 @@ export async function fetchPropertyLeaseSnapshots(
     lease_start?: string | null;
     lease_end?: string | null;
     target_monthly_rent?: number | string | null;
+    deposit?: number | string | null;
+    last_month_rent_collected?: boolean | null;
   }>
 ): Promise<Map<string, PropertyLeaseSnapshot>> {
   const snapshotMap = new Map<string, PropertyLeaseSnapshot>();
@@ -239,7 +247,7 @@ export async function fetchPropertyLeaseSnapshots(
   try {
     const { data, error } = await supabaseAdmin
       .from("lease_agreements")
-      .select("id, property_id, lease_start_date, lease_end_date, monthly_rent, status, prior_lease_id, notes, created_at, updated_at")
+      .select("id, property_id, lease_start_date, lease_end_date, monthly_rent, deposit, last_month_rent_collected, status, prior_lease_id, notes, created_at, updated_at")
       .in("property_id", propertyIds)
       .order("lease_start_date", { ascending: false });
     if (error) throw error;
@@ -320,6 +328,8 @@ export async function fetchPropertyLeaseSnapshots(
       leaseStartDate: row.lease_start_date,
       leaseEndDate: row.lease_end_date,
       monthlyRent: Number(row.monthly_rent || 0),
+      deposit: Number(row.deposit || 0),
+      lastMonthRentCollected: !!row.last_month_rent_collected,
       status: deriveLeaseAgreementStatus(row.lease_start_date, row.lease_end_date, row.status),
       priorLeaseId: row.prior_lease_id || null,
       notes: row.notes || null,
@@ -341,6 +351,8 @@ export async function fetchPropertyLeaseSnapshots(
         leaseStartDate: property.lease_start || null,
         leaseEndDate: property.lease_end || null,
         monthlyRent: Number(property.target_monthly_rent || 0),
+        deposit: Number(property.deposit || 0),
+        lastMonthRentCollected: !!property.last_month_rent_collected,
       },
     ])
   );
@@ -364,6 +376,8 @@ export async function fetchPropertyLeaseSnapshots(
         leaseStartDate: selected.leaseStartDate,
         leaseEndDate: selected.leaseEndDate,
         monthlyRent: selected.monthlyRent,
+        deposit: selected.deposit,
+        lastMonthRentCollected: selected.lastMonthRentCollected,
         status: selected.status,
         tenantIds: selected.tenantIds,
         tenantNames: selected.tenantNames,
@@ -382,6 +396,8 @@ export async function fetchPropertyLeaseSnapshots(
         leaseStartDate: selected.leaseStartDate,
         leaseEndDate: selected.leaseEndDate,
         monthlyRent: selected.monthlyRent,
+        deposit: selected.deposit,
+        lastMonthRentCollected: selected.lastMonthRentCollected,
         status: selected.status,
         tenantIds: selected.tenantIds,
         tenantNames: selected.tenantNames,
@@ -396,6 +412,8 @@ export async function fetchPropertyLeaseSnapshots(
         leaseStartDate: selected.leaseStartDate,
         leaseEndDate: selected.leaseEndDate,
         monthlyRent: selected.monthlyRent,
+        deposit: selected.deposit,
+        lastMonthRentCollected: selected.lastMonthRentCollected,
         status: selected.status,
         tenantIds: selected.tenantIds,
         tenantNames: selected.tenantNames,
@@ -413,6 +431,8 @@ export async function fetchPropertyLeaseSnapshots(
         leaseStartDate: legacy?.leaseStartDate || null,
         leaseEndDate: legacy?.leaseEndDate || null,
         monthlyRent: Number(legacy?.monthlyRent || 0),
+        deposit: Number(legacy?.deposit || 0),
+        lastMonthRentCollected: !!legacy?.lastMonthRentCollected,
         status: deriveLeaseAgreementStatus(legacy?.leaseStartDate || null, legacy?.leaseEndDate || null, null),
         tenantIds: fallbackTenants.map((tenant) => tenant.id),
         tenantNames: fallbackTenants.map((tenant) => tenant.name),
