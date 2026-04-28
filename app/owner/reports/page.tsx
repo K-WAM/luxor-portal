@@ -256,7 +256,7 @@ export default function OwnerReportsPage() {
                           {group.rows.map((row) => (
                             <div key={row.id} className="rounded-lg border border-slate-200 p-3">
                               <div className="font-medium text-slate-900">{row.description}</div>
-                              <div className="mt-2 text-sm text-slate-700">{formatCurrency(row.amount)} · {formatDateOnly(row.dueDate) || "-"}</div>
+                              <div className="mt-2 text-sm text-slate-700">{formatCurrency(row.amount)}  -  {formatDateOnly(row.dueDate) || "-"}</div>
                               <div className="mt-1 text-sm text-slate-700">{row.displayStatus}</div>
                               <div className="mt-1 text-sm text-slate-500">{row.tenantNames.length > 0 ? row.tenantNames.join(", ") : "Unassigned"}</div>
                             </div>
