@@ -189,22 +189,133 @@ export default function OwnerInvestmentReportsView() {
     });
   }, [filteredMonthly]);
 
-  const chartMonthlyData = useMemo(() => {
-    const trimmed = chronologicalMonthly.filter((m) => {
-      const hasIncome = (m.rent_income || 0) !== 0;
-      const hasExpenses =
-        (m.maintenance || 0) !== 0 ||
-        (m.pool || 0) !== 0 ||
-        (m.garden || 0) !== 0 ||
-        (m.hoa_payments || 0) !== 0 ||
-        (m.pm_fee || 0) !== 0;
-      const hasTotals =
-        (m.total_expenses || 0) !== 0 ||
-        (m.net_income || 0) !== 0;
-      return hasIncome || hasExpenses || hasTotals;
+  const allChronologicalMonthly = useMemo(() => {
+    return [...monthly].sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return a.month - b.month;
     });
-    return trimmed.length > 0 ? trimmed : chronologicalMonthly;
+  }, [monthly]);
+
+  const normalizeFinancialRows = (source: MonthlyPerformance[]) => {
+    const normalized = source.map((m) => {
+      const grossIncome = Number(m.rent_income || 0);
+      const maintenance = Number(m.maintenance || 0);
+      const hoa = Number(m.hoa_payments || 0);
+      const pool = Number(m.pool || 0);
+      const garden = Number(m.garden || 0);
+      const pmFee = Number(m.pm_fee || 0);
+      const knownExpenses = maintenance + hoa + pool + garden + pmFee;
+      const storedTotalExpenses = Number(m.total_expenses || 0);
+      const otherExpenses = Math.max(0, storedTotalExpenses - knownExpenses);
+      const totalExpenses = knownExpenses + otherExpenses;
+      const netIncome = grossIncome - totalExpenses;
+      return {
+        label: m.month_name,
+        sortKey: `${m.year}-${String(m.month).padStart(2, "0")}`,
+        grossIncome,
+        maintenance,
+        hoa,
+        pool,
+        garden,
+        pmFee,
+        otherExpenses,
+        totalExpenses,
+        netIncome,
+        expenseRatio: grossIncome > 0 ? (totalExpenses / grossIncome) * 100 : 0,
+      };
+    });
+
+    const trimmed = normalized.filter((m) => {
+      return (
+        m.grossIncome !== 0 ||
+        m.maintenance !== 0 ||
+        m.hoa !== 0 ||
+        m.pool !== 0 ||
+        m.garden !== 0 ||
+        m.pmFee !== 0 ||
+        m.otherExpenses !== 0 ||
+        m.totalExpenses !== 0 ||
+        m.netIncome !== 0
+      );
+    });
+
+    return trimmed.length > 0 ? trimmed : normalized;
+  };
+
+  const periodFinancialRows = useMemo(() => {
+    return normalizeFinancialRows(chronologicalMonthly);
   }, [chronologicalMonthly]);
+
+  const allTimeFinancialRows = useMemo(() => {
+    return normalizeFinancialRows(allChronologicalMonthly);
+  }, [allChronologicalMonthly]);
+
+  const isAllTimeReport = periodType === "alltime";
+  const financialRowsForView = isAllTimeReport ? allTimeFinancialRows : periodFinancialRows;
+
+  const financialAggregate = useMemo(() => {
+    return financialRowsForView.reduce(
+      (acc, row) => {
+        acc.grossIncome += row.grossIncome;
+        acc.maintenance += row.maintenance;
+        acc.hoa += row.hoa;
+        acc.pool += row.pool;
+        acc.garden += row.garden;
+        acc.pmFee += row.pmFee;
+        acc.otherExpenses += row.otherExpenses;
+        acc.totalExpenses += row.totalExpenses;
+        acc.netIncome += row.netIncome;
+        return acc;
+      },
+      {
+        grossIncome: 0,
+        maintenance: 0,
+        hoa: 0,
+        pool: 0,
+        garden: 0,
+        pmFee: 0,
+        otherExpenses: 0,
+        totalExpenses: 0,
+        netIncome: 0,
+      }
+    );
+  }, [financialRowsForView]);
+
+  const financialStatementRow = useMemo(() => {
+    return {
+      label: periodLabel,
+      sortKey: periodType,
+      grossIncome: financialAggregate.grossIncome,
+      maintenance: financialAggregate.maintenance,
+      hoa: financialAggregate.hoa,
+      pool: financialAggregate.pool,
+      garden: financialAggregate.garden,
+      pmFee: financialAggregate.pmFee,
+      otherExpenses: financialAggregate.otherExpenses,
+      totalExpenses: financialAggregate.totalExpenses,
+      netIncome: financialAggregate.netIncome,
+      expenseRatio:
+        financialAggregate.grossIncome > 0
+          ? (financialAggregate.totalExpenses / financialAggregate.grossIncome) * 100
+          : 0,
+    };
+  }, [financialAggregate, periodLabel, periodType]);
+
+  const expenseBreakdownTotals = useMemo(() => {
+    const categories = [
+      { label: "Maintenance", amount: financialAggregate.maintenance, color: "#ea580c" },
+      { label: "HOA", amount: financialAggregate.hoa, color: "#eab308" },
+      { label: "Pool", amount: financialAggregate.pool, color: "#3b82f6" },
+      { label: "Garden", amount: financialAggregate.garden, color: "#94a3b8" },
+      { label: "PM Fee", amount: financialAggregate.pmFee, color: "#0f766e" },
+    ];
+
+    if (financialAggregate.otherExpenses > 0) {
+      categories.push({ label: "Other", amount: financialAggregate.otherExpenses, color: "#7c3aed" });
+    }
+
+    return categories;
+  }, [financialAggregate]);
 
   const marketEstimateData = useMemo(() => {
     const now = new Date();
@@ -637,7 +748,7 @@ Use the provided property and document context from the server; do not guess.`;
   return (
     <div className="space-y-8">
       {/* Header — unchanged */}
-      <div className="bg-white border-b border-slate-200 py-6 px-8 shadow-sm">
+      <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white px-4 py-5 shadow-sm md:top-4 md:px-8 md:py-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between gap-8 mb-4">
             <div className="flex items-center gap-3">
@@ -963,84 +1074,288 @@ Use the provided property and document context from the server; do not guess.`;
           </div>
         </div>
 
-        {/* 7. Charts — devicePixelRatio:2 for sharpness */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
-            <h3 className="text-sm text-center font-semibold text-slate-700 uppercase tracking-wide mb-6">Income Summary ({selectedYear})</h3>
-            <Bar
+        {/* 7. Financial Overview */}
+        <div className="space-y-6">
+          <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Financial Overview</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                One reconciled reporting set for statement, expense allocation, and performance trend.
+              </p>
+            </div>
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Active report filter: {periodLabel}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-6 flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                    {`Income Statement - ${periodLabel}`}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {`Aggregated across the currently selected ${periodLabel.toLowerCase()} reporting window.`}
+                  </p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  financialStatementRow.netIncome >= 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                }`}>
+                  {financialStatementRow.netIncome >= 0 ? "Positive Net" : "Negative Net"}
+                </span>
+              </div>
+              <Bar
+                data={{
+                  labels: ["Gross Income", "Total Expenses", "Net Income"],
+                  datasets: [{
+                    data: [
+                      financialStatementRow.grossIncome,
+                      financialStatementRow.totalExpenses,
+                      financialStatementRow.netIncome,
+                    ],
+                    backgroundColor: [
+                      "#0f766e",
+                      "#c2410c",
+                      financialStatementRow.netIncome >= 0 ? "#15803d" : "#dc2626",
+                    ],
+                    borderRadius: 6,
+                  }]
+                }}
+                options={{
+                  devicePixelRatio: 2,
+                  responsive: true,
+                  maintainAspectRatio: true,
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                      backgroundColor: "rgba(15,23,42,0.92)",
+                      titleColor: "#f8fafc",
+                      bodyColor: "#e2e8f0",
+                      padding: 10,
+                      callbacks: {
+                        label: (context) => `${context.label}: ${formatCurrency(context.parsed.y || 0)}`,
+                      }
+                    }
+                  },
+                  scales: {
+                    y: {
+                      beginAtZero: true,
+                      ticks: {
+                        color: "#64748b",
+                        font: { size: 11 },
+                        callback: (value) => "$" + value.toLocaleString(),
+                      },
+                      grid: { color: "#f1f5f9" }
+                    },
+                    x: {
+                      ticks: { color: "#64748b", font: { size: 10 } },
+                      grid: { display: false }
+                    }
+                  }
+                }}
+              />
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                  {isAllTimeReport ? "Expense Breakdown - All Time" : "Monthly Expense Breakdown"}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {isAllTimeReport
+                    ? "Cumulative expense totals by category across the full selected all-time history."
+                    : "Monthly stacked expense allocation bounded by the selected report period."}
+                </p>
+              </div>
+              <Bar
+                data={!isAllTimeReport
+                  ? {
+                      labels: financialRowsForView.map((row) => row.label),
+                      datasets: [
+                        { label: "Maintenance", data: financialRowsForView.map((row) => row.maintenance), backgroundColor: "#ea580c", borderRadius: 2 },
+                        { label: "HOA", data: financialRowsForView.map((row) => row.hoa), backgroundColor: "#eab308", borderRadius: 2 },
+                        { label: "Pool", data: financialRowsForView.map((row) => row.pool), backgroundColor: "#3b82f6", borderRadius: 2 },
+                        { label: "Garden", data: financialRowsForView.map((row) => row.garden), backgroundColor: "#94a3b8", borderRadius: 2 },
+                        { label: "PM Fee", data: financialRowsForView.map((row) => row.pmFee), backgroundColor: "#0f766e", borderRadius: 2 },
+                        ...(financialAggregate.otherExpenses > 0
+                          ? [{ label: "Other", data: financialRowsForView.map((row) => row.otherExpenses), backgroundColor: "#7c3aed", borderRadius: 2 }]
+                          : []),
+                      ],
+                    }
+                  : {
+                      labels: expenseBreakdownTotals.map((category) => category.label),
+                      datasets: [{
+                        label: "Amount",
+                        data: expenseBreakdownTotals.map((category) => category.amount),
+                        backgroundColor: expenseBreakdownTotals.map((category) => category.color),
+                        borderRadius: 6,
+                      }],
+                    }}
+                options={{
+                  devicePixelRatio: 2,
+                  responsive: true,
+                  maintainAspectRatio: true,
+                  plugins: {
+                    legend: {
+                      display: true,
+                      position: "bottom",
+                      labels: { color: "#64748b", font: { size: 10 }, boxWidth: 12, padding: 12 }
+                    },
+                    tooltip: {
+                      backgroundColor: "rgba(15,23,42,0.92)",
+                      titleColor: "#f8fafc",
+                      bodyColor: "#e2e8f0",
+                      padding: 10,
+                      callbacks: {
+                        label: (context) => `${context.dataset.label === "Amount" ? context.label : context.dataset.label}: ${formatCurrency(context.parsed.y || 0)}`,
+                      }
+                    }
+                  },
+                  scales: {
+                    y: {
+                      beginAtZero: true,
+                      stacked: !isAllTimeReport,
+                      ticks: {
+                        color: "#64748b",
+                        font: { size: 11 },
+                        callback: (value) => "$" + value.toLocaleString(),
+                      },
+                      grid: { color: "#f1f5f9" }
+                    },
+                    x: {
+                      stacked: !isAllTimeReport,
+                      ticks: { color: "#64748b", font: { size: 10 } },
+                      grid: { display: false }
+                    }
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Financial Performance Trend</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Net income trend with reconciled tooltip detail for gross income, expenses, and expense ratio.
+              </p>
+            </div>
+            <Line
               data={{
-                labels: ["Gross Income", "Maintenance", "HOA, Pool, Garden", "Total Expenses", "Net Income", "Property Tax"],
-                datasets: [{ data: [metrics.ytd_rent_income, metrics.ytd_maintenance, metrics.ytd_pool + metrics.ytd_garden + metrics.ytd_hoa, metrics.ytd_total_expenses, metrics.ytd_net_income, metrics.ytd_property_tax], backgroundColor: ["#5b9bd5", "#ed7d31", "#70ad47", "#ffc000", "#4472c4", "#7030a0"], borderRadius: 4 }]
+                labels: financialRowsForView.map((row) => row.label),
+                datasets: [{
+                  label: "Net Income",
+                  data: financialRowsForView.map((row) => row.netIncome),
+                  borderWidth: 3,
+                  tension: 0.3,
+                  fill: false,
+                  segment: {
+                    borderColor: (ctx) => {
+                      const nextValue = Number(ctx.p1.parsed.y || 0);
+                      return nextValue < 0 ? "#dc2626" : "#15803d";
+                    },
+                  },
+                  pointRadius: 4,
+                  pointHoverRadius: 6,
+                  pointBackgroundColor: financialRowsForView.map((row) => row.netIncome < 0 ? "#dc2626" : "#15803d"),
+                  pointBorderColor: financialRowsForView.map((row) => row.netIncome < 0 ? "#dc2626" : "#15803d"),
+                }]
               }}
               options={{
-                devicePixelRatio: 2, responsive: true, maintainAspectRatio: true,
+                devicePixelRatio: 2,
+                responsive: true,
+                maintainAspectRatio: true,
                 plugins: {
                   legend: { display: false },
-                  tooltip: { backgroundColor: "rgba(15,23,42,0.92)", titleColor: "#f8fafc", bodyColor: "#e2e8f0", padding: 10, callbacks: { label: (context) => formatCurrency(context.parsed.y || 0) } }
+                  tooltip: {
+                    backgroundColor: "rgba(15,23,42,0.92)",
+                    titleColor: "#f8fafc",
+                    bodyColor: "#e2e8f0",
+                    padding: 10,
+                    callbacks: {
+                      label: (context) => `Net Income: ${formatCurrency(context.parsed.y || 0)}`,
+                      afterLabel: (context) => {
+                        const row = financialRowsForView[context.dataIndex];
+                        if (!row) return [];
+                        return [
+                          `Rent Income: ${formatCurrency(row.grossIncome)}`,
+                          `Total Expenses: ${formatCurrency(row.totalExpenses)}`,
+                          `Expense Ratio: ${formatPercentage(row.expenseRatio)}`,
+                        ];
+                      },
+                    }
+                  }
                 },
                 scales: {
-                  y: { beginAtZero: true, ticks: { color: "#64748b", font: { size: 11 }, callback: (value) => "$" + value.toLocaleString() }, grid: { color: "#f1f5f9" } },
-                  x: { ticks: { color: "#64748b", font: { size: 10 } }, grid: { display: false } }
+                  y: {
+                    ticks: {
+                      color: "#64748b",
+                      font: { size: 11 },
+                      callback: (value) => "$" + value.toLocaleString(),
+                    },
+                    grid: { color: "#f1f5f9" }
+                  },
+                  x: {
+                    ticks: { color: "#64748b", font: { size: 10 } },
+                    grid: { display: false }
+                  }
                 }
               }}
             />
           </div>
 
-          <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
-            <h3 className="text-sm text-center font-semibold text-slate-700 uppercase tracking-wide mb-6">Monthly Business Expenses</h3>
-            <Bar
-              data={{
-                labels: chartMonthlyData.map(m => m.month_name),
-                datasets: [
-                  { label: "Maintenance", data: chartMonthlyData.map(m => m.maintenance), backgroundColor: "#ed7d31", borderRadius: 2 },
-                  { label: "Pool", data: chartMonthlyData.map(m => m.pool), backgroundColor: "#5b9bd5", borderRadius: 2 },
-                  { label: "Garden", data: chartMonthlyData.map(m => m.garden), backgroundColor: "#a5a5a5", borderRadius: 2 },
-                  { label: "HOA Payments", data: chartMonthlyData.map(m => m.hoa_payments), backgroundColor: "#ffc000", borderRadius: 2 },
-                  { label: "PM Fee", data: chartMonthlyData.map(m => m.pm_fee || 0), backgroundColor: "#14b8a6", borderRadius: 2 },
-                ]
-              }}
-              options={{
-                devicePixelRatio: 2, responsive: true, maintainAspectRatio: true,
-                plugins: {
-                  legend: { display: true, position: "bottom", labels: { color: "#64748b", font: { size: 10 }, boxWidth: 12, padding: 12 } },
-                  tooltip: { backgroundColor: "rgba(15,23,42,0.92)", titleColor: "#f8fafc", bodyColor: "#e2e8f0", padding: 10, callbacks: { label: (context) => context.dataset.label + ": " + formatCurrency(context.parsed.y || 0) } }
-                },
-                scales: {
-                  y: { beginAtZero: true, stacked: true, ticks: { color: "#64748b", font: { size: 11 }, callback: (value) => "$" + value.toLocaleString() }, grid: { color: "#f1f5f9" } },
-                  x: { stacked: true, ticks: { color: "#64748b", font: { size: 10 } }, grid: { display: false } }
-                }
-              }}
-            />
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                  {`Expense Summary - ${periodLabel}`}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Summary table aligned to the same expense totals shown in the charts above.
+                </p>
+              </div>
+              <span className="text-xs font-medium text-slate-500">
+                Gross {formatCurrency(financialStatementRow.grossIncome)} - Expenses {formatCurrency(financialStatementRow.totalExpenses)} = Net {formatCurrency(financialStatementRow.netIncome)}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="py-2 pr-4 font-semibold">Category</th>
+                    <th className="py-2 font-semibold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-3 pr-4 text-slate-700">Maintenance</td>
+                    <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.maintenance)}</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-3 pr-4 text-slate-700">HOA / Pool / Garden</td>
+                    <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.hoa + financialStatementRow.pool + financialStatementRow.garden)}</td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-3 pr-4 text-slate-700">PM Fee</td>
+                    <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.pmFee)}</td>
+                  </tr>
+                  {financialStatementRow.otherExpenses > 0 ? (
+                    <tr className="border-b border-slate-100">
+                      <td className="py-3 pr-4 text-slate-700">Other</td>
+                      <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.otherExpenses)}</td>
+                    </tr>
+                  ) : null}
+                  <tr>
+                    <td className="py-3 pr-4 font-semibold text-slate-900">Total Expenses</td>
+                    <td className="py-3 font-semibold text-slate-900">{formatCurrency(financialStatementRow.totalExpenses)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
 
-        <div>
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Monthly Trends</h2>
-          <div className="bg-white border border-slate-200 p-6 mb-6 rounded-xl shadow-sm">
-            <Bar
-              data={{
-                labels: chartMonthlyData.map(m => m.month_name),
-                datasets: [
-                  { label: "Rent Income", data: chartMonthlyData.map(m => m.rent_income), backgroundColor: "#a9d18e", borderRadius: 3 },
-                  { label: "Total Expenses", data: chartMonthlyData.map(m => m.total_expenses), backgroundColor: "#e17055", borderRadius: 3 },
-                  { label: "Net Income", data: chartMonthlyData.map(m => m.net_income), backgroundColor: "#70ad47", borderRadius: 3 },
-                ]
-              }}
-              options={{
-                devicePixelRatio: 2, responsive: true, maintainAspectRatio: true,
-                plugins: {
-                  title: { display: true, text: "Monthly Income and Expense Statement", color: "#475569", font: { size: 13 } },
-                  legend: { display: true, position: "bottom", labels: { color: "#64748b", font: { size: 10 }, padding: 12 } },
-                  tooltip: { backgroundColor: "rgba(15,23,42,0.92)", titleColor: "#f8fafc", bodyColor: "#e2e8f0", padding: 10, callbacks: { label: (context) => context.dataset.label + ": " + formatCurrency(context.parsed.y || 0) } }
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { color: "#64748b", font: { size: 11 }, callback: (value) => "$" + value.toLocaleString() }, grid: { color: "#f1f5f9" } },
-                  x: { ticks: { color: "#64748b", font: { size: 10 } }, grid: { display: false } }
-                }
-              }}
-            />
-          </div>
-          <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <Line
               data={{
                 labels: marketEstimateData.map(m => m.month_name),

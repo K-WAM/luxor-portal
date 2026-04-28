@@ -320,6 +320,10 @@ Pattern mirrors `planned_pool_cost` / `planned_garden_cost`. API route GET selec
 - Property-wide document visibility is not sufficient for tenant-sensitive files. Lease agreements, inspections, tenant notices, and tenant correspondence must be tied to `lease_agreement_id` so future tenants on the same property do not inherit prior lease documents.
 - Existing property documents without a lease link must default to property-wide. If a document type is tenant-sensitive and legacy rows are unscoped, keep them owner-visible only until an admin assigns them to the correct lease.
 
+### C.36 Owner Financial Charts Must Share One Reconciled Dataset
+- The Owner Reports financial charts must derive Gross Income, Total Expenses, Net Income, and PM Fee from one shared normalized monthly dataset. Do not let the statement, expense breakdown, and trend chart compute different totals from different sources.
+- Income Statement can show only Gross Income, Total Expenses, and Net Income. Expense components belong in Expense Breakdown. Trend can show Net Income only, but its tooltip must reconcile back to the same gross income and total expense values.
+
 ---
 
 ## Appendix D: Calculation â†’ Output Map
@@ -457,6 +461,24 @@ Same component as admin. Key prop differences:
 | Performance grade | Excellent: `projectedRoi â‰¥5%` AND maint <5%; Good: â‰¥3% AND <7%; else Needs Attention | `performanceStatus` |
 | Narrative: period plan net | `planNetIncomePeriod = planRentPeriod âˆ’ planMaintenancePeriod âˆ’ planHoaPoolGardenPeriod âˆ’ planPmFeePeriod` | Period-proportional |
 | Narrative: period plan ROI | `planRoiPeriod = planNetIncomePeriod / cost_basis Ã— 100` | Period-proportional |
+
+---
+
+### D.7A Owner Reports - Financial Overview Charts
+
+Lives in `app/components/owner/OwnerInvestmentReportsView.tsx`.
+
+| Output | Formula | Notes |
+|--------|---------|-------|
+| Income Statement - Gross Income | `financialStatementRow.grossIncome` | Always aggregated across the currently selected report period (`YTD`, `Lease Term`, or `All Time`). |
+| Income Statement - Total Expenses | `maintenance + hoa + pool + garden + pm_fee + otherExpenses` | Must include PM fee. Property tax remains excluded. |
+| Income Statement - Net Income | `grossIncome - totalExpenses` | Same formula used in trend and summary table. |
+| Expense Breakdown - Monthly | Per-month category bars from normalized monthly rows within the selected `YTD` or `Lease Term` window | Categories: Maintenance, HOA, Pool, Garden, PM Fee, Other if present. No totals. |
+| Expense Breakdown - All Time | Sum each category across normalized monthly rows for the full selected all-time history | Same categories, aggregated. |
+| Financial Performance Trend | `netIncome` by month from normalized monthly rows bounded by the selected report period | Tooltip must also show gross income, total expenses, and expense ratio. |
+| Expense Ratio | `totalExpenses / grossIncome * 100` when gross income > 0 else `0` | Tooltip/support metric only. |
+
+> Reconciliation rule: for every chart view, `grossIncome - totalExpenses = netIncome`, and `totalExpenses` must include PM fee.
 
 ---
 
@@ -620,6 +642,9 @@ Before marking a formula task done:
 
 | Field | Value |
 |-------|-------|
-| Version | 3.3 |
+| Version | 3.5 |
 | Status | Active |
-| Last Updated | 2026-04-28 - v3.3: added C.35 to require tenant-sensitive documents to be lease-scoped and legacy unscoped rows to stay owner-visible until reassigned. v3.2: added C.34 to require additive table reads to survive missing migrations by falling back cleanly when new tables are absent. v3.1: added C.33 to require additive lease-agreement rollouts with legacy property fallback and mirrored current lease fields for compatibility. v3.0: added C.32 to require dedicated stacked rows and compact month/year markers in the owner unit timeline so renewal/listing labels stay readable. v2.9: added C.31 to require explicit width for compact admin billing date inputs so due dates stay visible in the tenant billing table. v2.8: added C.30 to require UTF-8 owner portal source files after a production build failed on `app/owner/reports/page.tsx` due to invalid encoding. v2.7: added C.29 to lock the owner dashboard as operational-only and move analytics-heavy content into reusable owner reports. v2.6: added C.28 to lock tenant dashboard multi-line upcoming-payment summaries to the viewer's existing access scope without changing billing visibility rules. v2.5: added C.27 to lock tenant dashboard status-line sourcing and priority rules. v2.4: added C.26 to lock invite form minimum fields and single-property owner invite guidance. v2.3: added C.25 to lock the manual invite workflow and canonical invite URL generation. v2.2: plannedYtd made period-aware (YTD/Lease/Alltime); removed actual-rent override from plan; deposit added to plan gross income in lease-start month when last_month_rent_collected; D.8 rewritten; D.0 Plan Gross Income updated; formula accordion updated. v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist; v2.0: Full variable consistency audit: D.0 Master Variable Table added (Actual/Plan/YE Target for all 10 variables); deposit model changed to inclusive (last-month deposit counted in gross income for the month received); displayYtd removed -> showDepositBreakdown; calculatedYeTarget dead useMemo removed; YE Target monthly table row now includes PM fee; formula accordion updated to deposit-inclusive model; Projected ROI unified to single calculateExpectedRoi() with PM fee across all three locations (admin dashboard, admin financials, owner page) |
+| Last Updated | 2026-04-28 - v3.5: added C.37 and updated D.7A so owner charts obey the primary Investment Performance filters only and the filter card stays sticky while scrolling. v3.4: added C.36 and D.7A to require one reconciled owner financial-chart dataset with PM fee included in total expenses and non-redundant statement/breakdown/trend outputs. v3.3: added C.35 to require tenant-sensitive documents to be lease-scoped and legacy unscoped rows to stay owner-visible until reassigned. v3.2: added C.34 to require additive table reads to survive missing migrations by falling back cleanly when new tables are absent. v3.1: added C.33 to require additive lease-agreement rollouts with legacy property fallback and mirrored current lease fields for compatibility. v3.0: added C.32 to require dedicated stacked rows and compact month/year markers in the owner unit timeline so renewal/listing labels stay readable. v2.9: added C.31 to require explicit width for compact admin billing date inputs so due dates stay visible in the tenant billing table. v2.8: added C.30 to require UTF-8 owner portal source files after a production build failed on `app/owner/reports/page.tsx` due to invalid encoding. v2.7: added C.29 to lock the owner dashboard as operational-only and move analytics-heavy content into reusable owner reports. v2.6: added C.28 to lock tenant dashboard multi-line upcoming-payment summaries to the viewer's existing access scope without changing billing visibility rules. v2.5: added C.27 to lock tenant dashboard status-line sourcing and priority rules. v2.4: added C.26 to lock invite form minimum fields and single-property owner invite guidance. v2.3: added C.25 to lock the manual invite workflow and canonical invite URL generation. v2.2: plannedYtd made period-aware (YTD/Lease/Alltime); removed actual-rent override from plan; deposit added to plan gross income in lease-start month when last_month_rent_collected; D.8 rewritten; D.0 Plan Gross Income updated; formula accordion updated. v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist; v2.0: Full variable consistency audit: D.0 Master Variable Table added (Actual/Plan/YE Target for all 10 variables); deposit model changed to inclusive (last-month deposit counted in gross income for the month received); displayYtd removed -> showDepositBreakdown; calculatedYeTarget dead useMemo removed; YE Target monthly table row now includes PM fee; formula accordion updated to deposit-inclusive model; Projected ROI unified to single calculateExpectedRoi() with PM fee across all three locations (admin dashboard, admin financials, owner page) |
+
+
+
