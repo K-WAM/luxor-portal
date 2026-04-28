@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { getAuthContext, getAccessiblePropertyIds, isAdmin } from '@/lib/auth/route-helpers'
+import { isTenantSensitiveDocumentType } from '@/lib/document-scope'
+import { fetchActiveLeaseIdsForUser } from '@/lib/lease-agreements'
 
 export async function GET(request: Request) {
   try {
@@ -14,7 +16,7 @@ export async function GET(request: Request) {
 
     let query = supabaseAdmin
       .from('property_documents')
-      .select('*')
+      .select('id, property_id, lease_agreement_id, document_type, title, file_url, visibility, created_at, name')
       .order('created_at', { ascending: false })
 
     // Admin sees everything (optional property filter)
@@ -38,16 +40,24 @@ export async function GET(request: Request) {
     query = query.in('property_id', propertyId ? [propertyId] : allowedProperties)
 
     if (role === 'tenant') {
+      const activeLeaseIds = await fetchActiveLeaseIdsForUser(user.id, propertyId ? [propertyId] : allowedProperties)
       query = query.in('visibility', ['tenant', 'all'])
+      if (activeLeaseIds.length > 0) {
+        query = query.or(
+          `and(lease_agreement_id.is.null),and(lease_agreement_id.in.(${activeLeaseIds.join(",")}))`
+        )
+      } else {
+        query = query.is('lease_agreement_id', null)
+      }
     } else if (role === 'owner') {
-      query = query.in('visibility', ['owner', 'all'])
+      // Owners can review all documents for their properties, including lease-specific history.
     }
 
     const { data, error } = await query
 
     if (error) throw error
 
-    return NextResponse.json(data)
+    return NextResponse.json(data || [])
   } catch (error) {
     console.error('Error fetching documents:', error)
     return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 })
@@ -64,7 +74,9 @@ export async function POST(request: Request) {
     const formData = await request.formData()
     const file = formData.get('file') as File
     const property_id = formData.get('property_id') as string
+    const lease_agreement_id = (formData.get('lease_agreement_id') as string) || null
     const title = (formData.get('title') as string) || file?.name || 'Untitled'
+    const document_type = (formData.get('document_type') as string) || title || 'Other'
     const visibility = (formData.get('visibility') as string) || 'owner'
 
     // Validate required fields
@@ -74,6 +86,26 @@ export async function POST(request: Request) {
 
     if (!property_id) {
       return NextResponse.json({ error: 'Property ID is required' }, { status: 400 })
+    }
+
+    if (isTenantSensitiveDocumentType(document_type) && !lease_agreement_id) {
+      return NextResponse.json({ error: 'Lease agreement is required for this document type' }, { status: 400 })
+    }
+
+    if (lease_agreement_id) {
+      const { data: leaseAgreement, error: leaseAgreementError } = await supabaseAdmin
+        .from('lease_agreements')
+        .select('id, property_id')
+        .eq('id', lease_agreement_id)
+        .single()
+
+      if (leaseAgreementError || !leaseAgreement) {
+        return NextResponse.json({ error: 'Selected lease agreement was not found' }, { status: 400 })
+      }
+
+      if (leaseAgreement.property_id !== property_id) {
+        return NextResponse.json({ error: 'Lease agreement does not belong to the selected property' }, { status: 400 })
+      }
     }
 
     // Upload to Supabase Storage
@@ -100,6 +132,8 @@ export async function POST(request: Request) {
       .from('property_documents')
       .insert({
         property_id,
+        lease_agreement_id,
+        document_type,
         title,
         file_url: publicUrl,
         visibility,

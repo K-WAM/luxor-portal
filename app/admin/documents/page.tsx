@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DOCUMENT_TYPES, getDocumentScopeLabel, isTenantSensitiveDocumentType } from "@/lib/document-scope";
 
 type Property = {
   id: string;
@@ -9,27 +10,36 @@ type Property = {
   address?: string | null;
 };
 
+type LeaseAgreementOption = {
+  id: string;
+  leaseStartDate: string;
+  leaseEndDate: string;
+  monthlyRent: number;
+  status: string;
+  tenantNames: string[];
+};
+
 type DocumentRecord = {
   id: string;
   property_id: string | null;
+  lease_agreement_id?: string | null;
+  document_type?: string | null;
   title: string;
   file_url: string;
   name: string;
   visibility: "admin" | "owner" | "tenant" | "all";
   created_at: string;
+  lease_agreements?: {
+    lease_start_date?: string | null;
+    lease_end_date?: string | null;
+  } | null;
 };
-
-const documentTypes = [
-  "Lease Agreement",
-  "HOA Rules",
-  "Welcome Package",
-  "Tenant Insurance Confirmation",
-  "Other",
-];
 
 export default function AdminDocumentsPage() {
   const [properties, setProperties] = useState<Property[]>([]);
+  const [leaseOptionsByProperty, setLeaseOptionsByProperty] = useState<Record<string, LeaseAgreementOption[]>>({});
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
+  const [selectedLeaseAgreementId, setSelectedLeaseAgreementId] = useState<string>("");
   const [documentType, setDocumentType] = useState<string>("Lease Agreement");
   const [customTitle, setCustomTitle] = useState("");
   const [visibilitySelection, setVisibilitySelection] = useState({
@@ -61,6 +71,34 @@ export default function AdminDocumentsPage() {
 
     fetchProperties();
   }, []);
+
+  useEffect(() => {
+    const loadLeaseOptions = async () => {
+      if (!selectedPropertyId || !isTenantSensitiveDocumentType(documentType)) {
+        setSelectedLeaseAgreementId("");
+        return;
+      }
+
+      if (leaseOptionsByProperty[selectedPropertyId]) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/admin/lease-agreements?propertyId=${encodeURIComponent(selectedPropertyId)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load lease agreements");
+        setLeaseOptionsByProperty((prev) => ({
+          ...prev,
+          [selectedPropertyId]: data.agreements || [],
+        }));
+      } catch (err) {
+        console.error(err);
+        setError("Could not load lease agreements.");
+      }
+    };
+
+    loadLeaseOptions();
+  }, [selectedPropertyId, documentType, leaseOptionsByProperty]);
 
   const loadDocuments = async () => {
     try {
@@ -102,6 +140,11 @@ export default function AdminDocumentsPage() {
       return;
     }
 
+    if (isTenantSensitiveDocumentType(documentType) && !selectedLeaseAgreementId) {
+      setError("Please select a lease agreement for this document type.");
+      return;
+    }
+
     const visibilityValue = (() => {
       const hasOwner = visibilitySelection.owner;
       const hasTenant = visibilitySelection.tenant;
@@ -124,7 +167,11 @@ export default function AdminDocumentsPage() {
       formData.append("file", file);
       formData.append("title", finalTitle || file.name);
       formData.append("property_id", selectedPropertyId);
+      formData.append("document_type", documentType);
       formData.append("visibility", visibilityValue);
+      if (selectedLeaseAgreementId) {
+        formData.append("lease_agreement_id", selectedLeaseAgreementId);
+      }
 
       const res = await fetch("/api/documents", {
         method: "POST",
@@ -141,6 +188,7 @@ export default function AdminDocumentsPage() {
       setCustomTitle("");
       setFile(null);
       setSelectedPropertyId("");
+      setSelectedLeaseAgreementId("");
       setVisibilitySelection({ owner: true, tenant: true });
       const fileInput = document.getElementById("file-input") as HTMLInputElement | null;
       if (fileInput) fileInput.value = "";
@@ -241,6 +289,13 @@ export default function AdminDocumentsPage() {
     return p.name || p.address || "Property";
   };
 
+  const getLeaseLabel = (doc: DocumentRecord) => {
+    if (!doc.lease_agreement_id) return "—";
+    const lease = doc.lease_agreements;
+    if (!lease?.lease_start_date || !lease?.lease_end_date) return "Lease-specific";
+    return `${lease.lease_start_date} to ${lease.lease_end_date}`;
+  };
+
   const isVisibleToOwner = (visibility: DocumentRecord["visibility"]) =>
     visibility === "owner" || visibility === "all";
   const isVisibleToTenant = (visibility: DocumentRecord["visibility"]) =>
@@ -324,19 +379,46 @@ export default function AdminDocumentsPage() {
             <label className="text-sm font-medium text-slate-700">
               Document Type
             </label>
-            <select
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
-              value={documentType}
-              onChange={(e) => setDocumentType(e.target.value)}
-              required
-            >
-              {documentTypes.map((type) => (
+              <select
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                value={documentType}
+                onChange={(e) => {
+                  setDocumentType(e.target.value);
+                  setSelectedLeaseAgreementId("");
+                }}
+                required
+              >
+              {DOCUMENT_TYPES.map((type) => (
                 <option key={type} value={type}>
                   {type}
                 </option>
               ))}
             </select>
           </div>
+
+          {isTenantSensitiveDocumentType(documentType) && (
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-slate-700">
+                Select Lease
+              </label>
+              <select
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                value={selectedLeaseAgreementId}
+                onChange={(e) => setSelectedLeaseAgreementId(e.target.value)}
+                required
+              >
+                <option value="">Select a lease agreement</option>
+                {(leaseOptionsByProperty[selectedPropertyId] || []).map((lease) => (
+                  <option key={lease.id} value={lease.id}>
+                    {lease.leaseStartDate} to {lease.leaseEndDate} · {lease.tenantNames.join(", ") || "No tenants"} · ${lease.monthlyRent}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500">
+                Tenant-sensitive documents are scoped to a specific lease so future tenants do not inherit prior lease files.
+              </p>
+            </div>
+          )}
 
           {documentType === "Other" && (
             <div className="flex flex-col gap-1">
@@ -429,6 +511,9 @@ export default function AdminDocumentsPage() {
                 <tr className="text-left border-b border-slate-200 text-slate-500">
                   <th className="py-2 pr-4">Property</th>
                   <th className="py-2 pr-4">Name</th>
+                  <th className="py-2 pr-4">Type</th>
+                  <th className="py-2 pr-4">Scope</th>
+                  <th className="py-2 pr-4">Lease</th>
                   <th className="py-2 pr-4">Visibility</th>
                   <th className="py-2 pr-4">Created</th>
                   <th className="py-2 pr-4">Actions</th>
@@ -450,6 +535,15 @@ export default function AdminDocumentsPage() {
                       </td>
                       <td className="py-2 pr-4 text-slate-800">
                         {doc.title || "Untitled document"}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {doc.document_type || doc.title || "Other"}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {getDocumentScopeLabel(doc.lease_agreement_id)}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-700">
+                        {getLeaseLabel(doc)}
                       </td>
                       <td className="py-2 pr-4 text-slate-700">
                         <div className="flex flex-col gap-2">

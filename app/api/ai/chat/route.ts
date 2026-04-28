@@ -6,6 +6,7 @@ import {
   isAdmin,
   type UserRole,
 } from "@/lib/auth/route-helpers";
+import { fetchActiveLeaseIdsForUser } from "@/lib/lease-agreements";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = "gpt-4o-mini";
@@ -53,13 +54,6 @@ export async function POST(request: Request) {
       }
     }
 
-    const visibilityFilter =
-      role === "tenant"
-        ? ["tenant", "all"]
-        : role === "owner"
-          ? ["owner", "all"]
-          : ["admin", "owner", "tenant", "all"];
-
     // Pull property details
     const { data: property } = propertyFilterId
       ? await supabaseAdmin
@@ -70,14 +64,29 @@ export async function POST(request: Request) {
       : { data: null };
 
     // Pull documents scoped to property + visibility
-    const { data: docs } = propertyFilterId
-      ? await supabaseAdmin
-          .from("property_documents")
-          .select("id, title, file_url, visibility, name")
-          .eq("property_id", propertyFilterId)
-          .in("visibility", visibilityFilter)
-          .order("created_at", { ascending: false })
-      : { data: [] as any[] };
+    let docs: any[] = [];
+    if (propertyFilterId) {
+      let docsQuery = supabaseAdmin
+        .from("property_documents")
+        .select("id, title, file_url, visibility, name, lease_agreement_id")
+        .eq("property_id", propertyFilterId)
+        .order("created_at", { ascending: false });
+
+      if (role === "tenant") {
+        const activeLeaseIds = await fetchActiveLeaseIdsForUser(user.id, [propertyFilterId]);
+        docsQuery = docsQuery.in("visibility", ["tenant", "all"]);
+        if (activeLeaseIds.length > 0) {
+          docsQuery = docsQuery.or(
+            `and(lease_agreement_id.is.null),and(lease_agreement_id.in.(${activeLeaseIds.join(",")}))`
+          );
+        } else {
+          docsQuery = docsQuery.is("lease_agreement_id", null);
+        }
+      }
+
+      const { data: docsData } = await docsQuery;
+      docs = docsData || [];
+    }
 
     const docPreviews: { title: string; visibility: string; snippet?: string; file_url: string }[] = [];
     for (const doc of docs || []) {

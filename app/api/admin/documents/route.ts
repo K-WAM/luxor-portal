@@ -13,7 +13,7 @@ export async function GET() {
 
     const { data, error} = await supabaseAdmin
       .from("property_documents")
-      .select("id, property_id, title, file_url, visibility, created_at, name")
+      .select("id, property_id, lease_agreement_id, document_type, title, file_url, visibility, created_at, name, lease_agreements(lease_start_date, lease_end_date)")
       .order("created_at", { ascending: false });
 
     if (error) {
