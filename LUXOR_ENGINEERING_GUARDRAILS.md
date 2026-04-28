@@ -1,5 +1,5 @@
-<!-- COPY-PASTE PROMPT STARTER -->
-> **Start every session with:** "Read `LUXOR_ENGINEERING_GUARDRAILS.md` and apply all rules before proceeding. Appendix D is the authoritative calculation â†’ output map for every financial variable. **After any change that touches a formula, variable name, or output value, update Appendix D before ending the session.**"
+﻿<!-- COPY-PASTE PROMPT STARTER -->
+> **Start every session with:** "Read `LUXOR_ENGINEERING_GUARDRAILS.md` and apply all rules before proceeding. Appendix D is the authoritative calculation Ã¢â€ â€™ output map for every financial variable. **After any change that touches a formula, variable name, or output value, update Appendix D before ending the session.**"
 
 ---
 
@@ -23,20 +23,20 @@ Luxor is near-production. Architecture is intentional and must be preserved.
 ## 3. Data & API Safety (Non-Negotiable)
 
 - **No deletion** of financial records (`property_monthly_performance`, `billing_invoices`, `tenant_bills`)
-- **Schema changes additive only** â€” new columns must be nullable or have defaults; no removals/renames
+- **Schema changes additive only** Ã¢â‚¬â€ new columns must be nullable or have defaults; no removals/renames
 - **RLS policies immutable** without explicit approval
-- **API responses** â€” never remove or rename existing fields; add only
-- **Types** â€” `CanonicalMetrics`, `PropertyData`, `MonthlyDataRow` interfaces are frozen; extend with optional properties only
-- **Hook signatures** â€” `useAuth()`, `usePeriodFilter()` return types cannot change
+- **API responses** Ã¢â‚¬â€ never remove or rename existing fields; add only
+- **Types** Ã¢â‚¬â€ `CanonicalMetrics`, `PropertyData`, `MonthlyDataRow` interfaces are frozen; extend with optional properties only
+- **Hook signatures** Ã¢â‚¬â€ `useAuth()`, `usePeriodFilter()` return types cannot change
 
 ---
 
 ## 4. Reuse-First (Mandatory Order)
 
 Before writing new code:
-1. `app/components/` â€” `GaugeChart`, `PeriodToggle`, `ROISpeedometer`, `InvestmentPerformanceTable`
-2. `app/hooks/` â€” `usePeriodFilter`, `useAuth`
-3. `lib/` â€” `canonical-metrics.ts` (ALL financials), `date-only.ts`, `route-helpers.ts`, `supabase/`
+1. `app/components/` Ã¢â‚¬â€ `GaugeChart`, `PeriodToggle`, `ROISpeedometer`, `InvestmentPerformanceTable`
+2. `app/hooks/` Ã¢â‚¬â€ `usePeriodFilter`, `useAuth`
+3. `lib/` Ã¢â‚¬â€ `canonical-metrics.ts` (ALL financials), `date-only.ts`, `route-helpers.ts`, `supabase/`
 4. Existing pattern in same portal (`app/admin/`, `app/owner/`, `app/tenant/`, `app/api/`)
 
 **Prohibited:** New financial calc functions, new auth helpers, new date utilities, new Supabase clients, duplicating existing logic.
@@ -45,11 +45,11 @@ Before writing new code:
 
 ## 5. Required Workflow
 
-1. **Investigate** â€” read all files to be modified, find reusable code
-2. **Plan** â€” list files to modify/create, dependencies, DB changes
-3. **Impact analysis** â€” downstream effects, breaking changes (must be NONE)
-4. **Confirm** â€” present plan, wait for approval
-5. **Execute** â€” implement, validate
+1. **Investigate** Ã¢â‚¬â€ read all files to be modified, find reusable code
+2. **Plan** Ã¢â‚¬â€ list files to modify/create, dependencies, DB changes
+3. **Impact analysis** Ã¢â‚¬â€ downstream effects, breaking changes (must be NONE)
+4. **Confirm** Ã¢â‚¬â€ present plan, wait for approval
+5. **Execute** Ã¢â‚¬â€ implement, validate
 
 ---
 
@@ -73,17 +73,17 @@ No state libraries, alternative auth/DB, CSS-in-JS, or ORM layers.
 
 ---
 
-## 8. AI Boundaries â€” Always-On Rules
+## 8. AI Boundaries Ã¢â‚¬â€ Always-On Rules
 
 **Must always:**
 - Investigate before proposing; read files before modifying
 - Reuse existing patterns (Section 4); place new files per Appendix B
 - Present plan before executing; make minimal changes; confirm backward compatibility
 - **Use the relevant Claude skill** for any task that maps to one (see C.22)
-- **Eliminate dead code** created as a side-effect of any change â€” imports, helpers, useMemos, and IIFE blocks that are no longer referenced
-- **Reconcile conflicting code** â€” if a change makes another calculation, constant, or branch unreachable or contradictory, fix or remove it in the same PR
+- **Eliminate dead code** created as a side-effect of any change Ã¢â‚¬â€ imports, helpers, useMemos, and IIFE blocks that are no longer referenced
+- **Reconcile conflicting code** Ã¢â‚¬â€ if a change makes another calculation, constant, or branch unreachable or contradictory, fix or remove it in the same PR
 - **Update `LUXOR_ENGINEERING_GUARDRAILS.md`** at the end of every session with new lessons; bump version
-- **End every response** with: _"Do you have more input, or shall I push to GitHub?"_ â€” never push without explicit user approval
+- **End every response** with: _"Do you have more input, or shall I push to GitHub?"_ Ã¢â‚¬â€ never push without explicit user approval
 
 **Must NOT:**
 - Refactor working code; add abstractions for future use
@@ -96,7 +96,7 @@ No state libraries, alternative auth/DB, CSS-in-JS, or ORM layers.
 
 ## 9. Enforcement
 
-Violations â†’ automatic rejection: missing investigation, breaking API/types, data deletion, duplicating utilities, stack changes, UI modifications without request, dead code left behind, conflicting logic not reconciled, pushing to GitHub without approval.
+Violations Ã¢â€ â€™ automatic rejection: missing investigation, breaking API/types, data deletion, duplicating utilities, stack changes, UI modifications without request, dead code left behind, conflicting logic not reconciled, pushing to GitHub without approval.
 
 ---
 
@@ -170,7 +170,7 @@ Derived aggregates (maintenance open/closed/red counts) computed in API routes, 
 Single logo: `public/luxor-logo.svg`. No duplicate assets. New files go in correct locations per Appendix B.
 
 ### C.5 Dead Code After Changes
-When a change replaces or removes a feature, immediately remove: orphaned imports, unused useMemos, helper functions, IIFE blocks, and state variables. Do not wrap in `{false && ...}` as a temporary measure â€” delete the code. Dead code left behind is a guardrails violation.
+When a change replaces or removes a feature, immediately remove: orphaned imports, unused useMemos, helper functions, IIFE blocks, and state variables. Do not wrap in `{false && ...}` as a temporary measure Ã¢â‚¬â€ delete the code. Dead code left behind is a guardrails violation.
 
 ### C.6 Batch Save Over onBlur
 Multi-input forms use a single Save button. Avoid per-field `onBlur` handlers.
@@ -182,11 +182,11 @@ git show --name-only <commit-hash>
 ```
 
 ### C.9 Owner Dashboard Design Conventions
-- **Section order:** ROI Gauges â†’ Narrative â†’ Metrics (InvestmentPerformanceTable) â†’ Thresholds â†’ Luxor AI â†’ Charts
-- **Performance thresholds:** Excellent: ROI â‰¥5% AND Maint <5%; Good: ROI â‰¥3% AND Maint <7%; Needs Attention: below these
+- **Section order:** ROI Gauges Ã¢â€ â€™ Narrative Ã¢â€ â€™ Metrics (InvestmentPerformanceTable) Ã¢â€ â€™ Thresholds Ã¢â€ â€™ Luxor AI Ã¢â€ â€™ Charts
+- **Performance thresholds:** Excellent: ROI Ã¢â€°Â¥5% AND Maint <5%; Good: ROI Ã¢â€°Â¥3% AND Maint <7%; Needs Attention: below these
 - **Maintenance target is <5%.** Do not use 4% as the target anywhere in narratives or thresholds.
-- **Projected ROI calc** (canonical, plan-based): `calculateExpectedRoi({ ..., plannedPmFeeMonthly })` â†’ `annualPlanNetIncome / costBasis * 100` where `annualPlanNetIncome = (rentÃ—12) âˆ’ (maintenance + pool + garden + hoa + pmFee)Ã—12`. **This single formula is used in all three locations:** admin dashboard card, admin financials "Projected ROI (Pre-Tax)", owner dashboard gauge and InvestmentPerformanceTable YE Target row. Never annualize from elapsed months for this metric.
-- **InvestmentPerformanceTable** is the single shared component for the Excel A29:I43 layout â€” used in owner dashboard and admin financials monthly tab. Never rebuild this table inline.
+- **Projected ROI calc** (canonical, plan-based): `calculateExpectedRoi({ ..., plannedPmFeeMonthly })` Ã¢â€ â€™ `annualPlanNetIncome / costBasis * 100` where `annualPlanNetIncome = (rentÃƒâ€”12) Ã¢Ë†â€™ (maintenance + pool + garden + hoa + pmFee)Ãƒâ€”12`. **This single formula is used in all three locations:** admin dashboard card, admin financials "Projected ROI (Pre-Tax)", owner dashboard gauge and InvestmentPerformanceTable YE Target row. Never annualize from elapsed months for this metric.
+- **InvestmentPerformanceTable** is the single shared component for the Excel A29:I43 layout Ã¢â‚¬â€ used in owner dashboard and admin financials monthly tab. Never rebuild this table inline.
 - **Investment Report narrative** reads: income vs plan, maintenance % (target <5%), projected ROI (plan-based), actual period ROI, property tax note, home value with appreciation and months owned.
 - **Chart.js:** `devicePixelRatio: 2`, `borderRadius: 3-4`, grid `#f1f5f9`, tooltip `rgba(15,23,42,0.92)`.
 
@@ -196,48 +196,48 @@ Stack summary: `C:\Users\karee\.claude\projects\c--Users-karee-Desktop-LuxApp\me
 ### C.11 Narrative Grammar
 "is rated **{label}**" not "is **{label}**". Plan ROI in narrative = period-proportional.
 
-### C.12 Admin Dashboard â€” API Conventions
+### C.12 Admin Dashboard Ã¢â‚¬â€ API Conventions
 - `performance_status` computed server-side in `/api/admin/dashboard`; do NOT recompute client-side.
 - `current_month_rent_paid`: `monthlyData.find(r => r.month === currentMonth)?.rent_income > 0`.
 
-### C.13 Admin Financials â€” Projected Summary
+### C.13 Admin Financials Ã¢â‚¬â€ Projected Summary
 Reuse `annualPlan` useMemo. Do NOT recompute inline. `annualPlan.maintenance = rent * 0.05`.
 
 ### C.14 Sidebar Logos
-48Ã—48px across all 3 portals. No subtitle text.
+48Ãƒâ€”48px across all 3 portals. No subtitle text.
 
-### C.15 Tenant Payments â€” Future Month Status
-Bills unpaid where `dueDate > now + 10 days` â†’ show blank status badge.
+### C.15 Tenant Payments Ã¢â‚¬â€ Future Month Status
+Bills unpaid where `dueDate > now + 10 days` Ã¢â€ â€™ show blank status badge.
 
-### C.16 Owner Dashboard â€” Investment Metrics Table
-5-column: label | YTD Actual | Plan (period) | YE Target | Î” vs Plan. Delta: `(actual - plan) / |plan| * 100`.
+### C.16 Owner Dashboard Ã¢â‚¬â€ Investment Metrics Table
+5-column: label | YTD Actual | Plan (period) | YE Target | ÃŽâ€ vs Plan. Delta: `(actual - plan) / |plan| * 100`.
 
-### C.17 Monthly Tab â€” YTD Summary Cards
+### C.17 Monthly Tab Ã¢â‚¬â€ YTD Summary Cards
 - `actualYtd = canonicalMetrics.ytd`. Subtract `lastMonthRentBonus` for display; show footnote.
-- `ytdAppreciation` = earliestâ†’latest `property_market_estimate` in `performanceYear`. NOT since-purchase.
+- `ytdAppreciation` = earliestÃ¢â€ â€™latest `property_market_estimate` in `performanceYear`. NOT since-purchase.
 
 ### C.18 SQL Disclosure Rule
-End every response with "SQL to run" â€” even if none: _"No SQL required."_
+End every response with "SQL to run" Ã¢â‚¬â€ even if none: _"No SQL required."_
 
 ### C.19 Temporal Dead Zone (TDZ)
 `const` in `useMemo` callback referencing a later `const` = ReferenceError. Declare before the useMemo that uses them.
 
 ### C.20 YTD vs Since-Purchase Appreciation
-- **YTD** = latest âˆ’ earliest `property_market_estimate` in current year. Use cost_basis as % denominator.
-- **Since Purchase** = `current_market_value âˆ’ cost_basis`. Never confuse these.
+- **YTD** = latest Ã¢Ë†â€™ earliest `property_market_estimate` in current year. Use cost_basis as % denominator.
+- **Since Purchase** = `current_market_value Ã¢Ë†â€™ cost_basis`. Never confuse these.
 
-### C.21 Plan Gross Income â€” Deposit Is NOT Subtracted
-Excel B26: `=SUMIFS(actual_monthly_rent, dates, "<="&EOMONTH(TODAY(),0)) âˆ’ deposit` â€” this is "actual recurring rent to date", not a budget plan. Our code intentionally differs:
-- **Plan** = `target_monthly_rent Ã— elapsedMonths` (pure budget target). Never subtract deposit from plan.
+### C.21 Plan Gross Income Ã¢â‚¬â€ Deposit Is NOT Subtracted
+Excel B26: `=SUMIFS(actual_monthly_rent, dates, "<="&EOMONTH(TODAY(),0)) Ã¢Ë†â€™ deposit` Ã¢â‚¬â€ this is "actual recurring rent to date", not a budget plan. Our code intentionally differs:
+- **Plan** = `target_monthly_rent Ãƒâ€” elapsedMonths` (pure budget target). Never subtract deposit from plan.
 - **Deposit is isolated**: canonical metrics adds it via `lastMonthRentBonus` to actual YTD; admin monthly tab subtracts it with a footnote.
-- **Past incident**: Subtracting deposit from plan caused false Î” negatives in month 1 and distorted all future month comparisons.
+- **Past incident**: Subtracting deposit from plan caused false ÃŽâ€ negatives in month 1 and distorted all future month comparisons.
 
 ### C.22 Always Use Relevant Claude Skills
 Before writing code to process files or perform specialized tasks, check if a Claude skill applies:
 
 | Task | Skill |
 |------|-------|
-| Excel formulas / spreadsheet edits | `document-skills:xlsx` â€” use `load_workbook(data_only=False)` to read raw formulas |
+| Excel formulas / spreadsheet edits | `document-skills:xlsx` Ã¢â‚¬â€ use `load_workbook(data_only=False)` to read raw formulas |
 | PDF read/create/merge | `document-skills:pdf` |
 | Word documents (.docx) | `document-skills:docx` |
 | PowerPoint (.pptx) | `document-skills:pptx` |
@@ -245,23 +245,23 @@ Before writing code to process files or perform specialized tasks, check if a Cl
 | Claude API / Anthropic SDK | `document-skills:claude-api` |
 | Internal comms / reports | `document-skills:internal-comms` |
 
-**Never eyeball Excel cell values** â€” always extract formula strings via the skill and compare each formula to the equivalent code. Report matches and discrepancies explicitly.
+**Never eyeball Excel cell values** Ã¢â‚¬â€ always extract formula strings via the skill and compare each formula to the equivalent code. Report matches and discrepancies explicitly.
 
 Reference file: `docs/excel property reporting example.xlsx` (sheet "SWE 26").
 
 Past failure: maintenance target showed as 4% in code because formulas were assumed, not read. The skill confirmed 5%.
 
-### C.23 Admin Financials â€” Deposit Period Logic (Critical)
+### C.23 Admin Financials Ã¢â‚¬â€ Deposit Period Logic (Critical)
 The last-month deposit is physically collected at **lease start** but conceptually covers the **last month of the lease**. Two separate booleans gate its behavior:
 
 | Variable | True when | Effect |
 |----------|-----------|--------|
 | `depositInCurrentViewData` | `performanceYear === leaseStartYear` OR `periodType === "alltime"` | `displayYtd` subtracts deposit from `rent_income`/`net_income` (it's physically in this period's data) |
-| `depositAppliesThisView` | `performanceYear === leaseEndYear` OR `periodType === "alltime"` | Pass `lastMonthDeposit={lastMonthRentBonus}` to table â†’ deposit sub-rows visible |
+| `depositAppliesThisView` | `performanceYear === leaseEndYear` OR `periodType === "alltime"` | Pass `lastMonthDeposit={lastMonthRentBonus}` to table Ã¢â€ â€™ deposit sub-rows visible |
 
-- `displayYtd` = `actualYtd - lastMonthRentBonus` **only when** `depositInCurrentViewData`. For any other year, `displayYtd === actualYtd` (no subtraction â€” deposit isn't in the data).
+- `displayYtd` = `actualYtd - lastMonthRentBonus` **only when** `depositInCurrentViewData`. For any other year, `displayYtd === actualYtd` (no subtraction Ã¢â‚¬â€ deposit isn't in the data).
 - `lastMonthDeposit` prop to `InvestmentPerformanceTable` = `depositAppliesThisView ? lastMonthRentBonus : 0`
-- **`maintenancePct`** for `displayYtd`: `displayYtd.rent_income > 0 ? (displayYtd.maintenance / displayYtd.rent_income * 100) : 0` â€” do NOT use `canonicalMetrics.maintenance_pct`.
+- **`maintenancePct`** for `displayYtd`: `displayYtd.rent_income > 0 ? (displayYtd.maintenance / displayYtd.rent_income * 100) : 0` Ã¢â‚¬â€ do NOT use `canonicalMetrics.maintenance_pct`.
 - **`roi.preTax` / `roi.postTax`**: compute inline from `displayYtd.net_income / costBasis`, not `canonicalMetrics.roi_pre_tax`.
 
 ### C.24 PM Fee Plan Input
@@ -324,9 +324,21 @@ Pattern mirrors `planned_pool_cost` / `planned_garden_cost`. API route GET selec
 - The Owner Reports financial charts must derive Gross Income, Total Expenses, Net Income, and PM Fee from one shared normalized monthly dataset. Do not let the statement, expense breakdown, and trend chart compute different totals from different sources.
 - Income Statement can show only Gross Income, Total Expenses, and Net Income. Expense components belong in Expense Breakdown. Trend can show Net Income only, but its tooltip must reconcile back to the same gross income and total expense values.
 
+### C.37 Owner Charts Must Obey The Primary Report Filters
+- Owner financial charts must use only the primary Investment Performance filters already present in the report header: selected property, selected year, and selected report period (`YTD`, `Lease Term`, `All Time`). Do not add a second time-toggle system inside the chart section.
+- If the report header is expected to drive multiple charts, keep that header sticky while scrolling so users can always see the active property/year/period context.
+
+### C.38 Admin Document Metadata Edits Must Preserve Files And Enforce Property/Lease Validation
+- Admin document metadata edits must never rewrite, move, or re-upload the underlying file unless the user explicitly performs a file action. Metadata-only edits update database fields only.
+- When editing property, scope, lease, type, or visibility, validate on the server that the lease belongs to the selected property, property-wide rows clear `lease_agreement_id`, lease-specific rows require a valid `lease_agreement_id`, and tenant-sensitive document types cannot be saved in a tenant-visible unscoped state.
+
+### C.39 Owner Portal AI Surfaces Must Be Removable Without Deleting Shared AI Infrastructure
+- When removing owner-facing AI cards, strip the page-level imports, state, handlers, and JSX from the owner portal only. Do not delete shared AI components or `/api/ai/chat` unless they are proven unused across the rest of Luxor.
+- Keep the owner dashboard and reports layout clean after the AI surface is removed; removal is presentational, not a backend teardown.
+
 ---
 
-## Appendix D: Calculation â†’ Output Map
+## Appendix D: Calculation Ã¢â€ â€™ Output Map
 
 **This is the authoritative reference.** When in doubt, look here first. **Do not introduce a second version of any calculation listed here. Update this appendix after any change that touches a formula, variable name, or output value.**
 
@@ -338,22 +350,22 @@ Every financial variable in the app, with its Actual, Plan, and YE Target formul
 
 | Variable | Actual Formula | Plan Formula | YE Target Formula |
 |----------|---------------|--------------|-------------------|
-| **Gross Income** | `canonicalMetrics.ytd.rent_income` â€” sum of monthly `rent_income` (includes last-month deposit in the month received) | `target_monthly_rent Ã— monthsElapsedPlanned` (prorated for partial lease-start month; adds `target_monthly_rent` deposit in lease-start month when `last_month_rent_collected`). **Pure plan â€” no actual-rent override.** Period-aware: YTD uses `performanceYear`; Lease/Alltime spans full elapsed lease months. | `yeTarget.rent_income` (user-entered) |
-| **Maintenance** | `canonicalMetrics.ytd.maintenance` â€” sum of monthly `maintenance` | `plannedYtd.rent_income Ã— 0.05` | `yeTarget.maintenance` (user-entered) |
-| **Maintenance %** | `ytd.maintenance / ytd.rent_income Ã— 100` | 5.00% (fixed) | 5.00% (fixed) |
-| **HOA, Pool, Garden** | `ytd.hoa_payments + ytd.pool + ytd.garden` | `(hoaAnnual/12 + poolMonthly + gardenMonthly) Ã— monthsElapsedPlanned` | `yeTarget.hoa + yeTarget.pool + yeTarget.garden` |
-| **PM Fee** | `ytd.pm_fee` â€” sum of monthly `pm_fee` | `planned_pm_fee_monthly Ã— monthsElapsedPlanned` | `planned_pm_fee_monthly Ã— 12` |
+| **Gross Income** | `canonicalMetrics.ytd.rent_income` Ã¢â‚¬â€ sum of monthly `rent_income` (includes last-month deposit in the month received) | `target_monthly_rent Ãƒâ€” monthsElapsedPlanned` (prorated for partial lease-start month; adds `target_monthly_rent` deposit in lease-start month when `last_month_rent_collected`). **Pure plan Ã¢â‚¬â€ no actual-rent override.** Period-aware: YTD uses `performanceYear`; Lease/Alltime spans full elapsed lease months. | `yeTarget.rent_income` (user-entered) |
+| **Maintenance** | `canonicalMetrics.ytd.maintenance` Ã¢â‚¬â€ sum of monthly `maintenance` | `plannedYtd.rent_income Ãƒâ€” 0.05` | `yeTarget.maintenance` (user-entered) |
+| **Maintenance %** | `ytd.maintenance / ytd.rent_income Ãƒâ€” 100` | 5.00% (fixed) | 5.00% (fixed) |
+| **HOA, Pool, Garden** | `ytd.hoa_payments + ytd.pool + ytd.garden` | `(hoaAnnual/12 + poolMonthly + gardenMonthly) Ãƒâ€” monthsElapsedPlanned` | `yeTarget.hoa + yeTarget.pool + yeTarget.garden` |
+| **PM Fee** | `ytd.pm_fee` Ã¢â‚¬â€ sum of monthly `pm_fee` | `planned_pm_fee_monthly Ãƒâ€” monthsElapsedPlanned` | `planned_pm_fee_monthly Ãƒâ€” 12` |
 | **Total Expenses** | `ytd.total_expenses` = maint + pool + garden + hoa + pmFee (**EXCL. property_tax**) | `plannedYtd.total_expenses` (same structure) | `yeTargetTotalExp` = sum of above |
-| **Net Income** | `ytd.net_income` = gross income âˆ’ total_expenses (**EXCL. property_tax**) | `plannedYtd.net_income` | `yeTargetNet` = rent âˆ’ expenses |
-| **Property Tax** | `ytd.property_tax` â€” separate, NOT in net income or total_expenses | â€” (no plan) | `yeTarget.property_tax` (user-entered) |
-| **ROI Pre-Tax** | `ytd.net_income / cost_basis Ã— 100` | `plannedYtd.net_income / cost_basis Ã— 100` | `yeTargetNet / cost_basis Ã— 100` |
-| **ROI Post-Tax** | `(ytd.net_income âˆ’ ytd.property_tax) / cost_basis Ã— 100` | â€” | â€” |
-| **Projected ROI (annual plan)** | â€” | `calculateExpectedRoi({rent, pool, garden, hoa, pmFee, costBasis})` = `(rentÃ—12 âˆ’ expensesÃ—12) / costBasis Ã— 100` | Same formula, same value |
+| **Net Income** | `ytd.net_income` = gross income Ã¢Ë†â€™ total_expenses (**EXCL. property_tax**) | `plannedYtd.net_income` | `yeTargetNet` = rent Ã¢Ë†â€™ expenses |
+| **Property Tax** | `ytd.property_tax` Ã¢â‚¬â€ separate, NOT in net income or total_expenses | Ã¢â‚¬â€ (no plan) | `yeTarget.property_tax` (user-entered) |
+| **ROI Pre-Tax** | `ytd.net_income / cost_basis Ãƒâ€” 100` | `plannedYtd.net_income / cost_basis Ãƒâ€” 100` | `yeTargetNet / cost_basis Ãƒâ€” 100` |
+| **ROI Post-Tax** | `(ytd.net_income Ã¢Ë†â€™ ytd.property_tax) / cost_basis Ãƒâ€” 100` | Ã¢â‚¬â€ | Ã¢â‚¬â€ |
+| **Projected ROI (annual plan)** | Ã¢â‚¬â€ | `calculateExpectedRoi({rent, pool, garden, hoa, pmFee, costBasis})` = `(rentÃƒâ€”12 Ã¢Ë†â€™ expensesÃƒâ€”12) / costBasis Ãƒâ€” 100` | Same formula, same value |
 | **Cost Basis** | `home_cost + home_repair_cost + closing_costs` | Same | Same |
-| **Appreciation (since purchase)** | `current_market_value âˆ’ cost_basis` / `cost_basis Ã— 100` | â€” | â€” |
-| **Appreciation (YTD)** | `latest âˆ’ earliest market_estimate in performanceYear` / `cost_basis Ã— 100` | â€” | â€” |
+| **Appreciation (since purchase)** | `current_market_value Ã¢Ë†â€™ cost_basis` / `cost_basis Ãƒâ€” 100` | Ã¢â‚¬â€ | Ã¢â‚¬â€ |
+| **Appreciation (YTD)** | `latest Ã¢Ë†â€™ earliest market_estimate in performanceYear` / `cost_basis Ãƒâ€” 100` | Ã¢â‚¬â€ | Ã¢â‚¬â€ |
 
-> **Excel rule (B43):** `total_expenses` excludes `property_tax`. `net_income = gross_income âˆ’ total_expenses`. Property tax is tracked but below the line.
+> **Excel rule (B43):** `total_expenses` excludes `property_tax`. `net_income = gross_income Ã¢Ë†â€™ total_expenses`. Property tax is tracked but below the line.
 
 ---
 
@@ -364,75 +376,75 @@ The deposit is collected upfront at lease signing (lease-start year), representi
 | Variable | Formula | File |
 |----------|---------|------|
 | `lastMonthRentBonus` | `target_monthly_rent` if `last_month_rent_collected`, else `deposit` | admin financials page |
-| `actualYtd` | `canonicalMetrics.ytd` â€” includes deposit in the month it was received | canonical-metrics.ts |
-| `showDepositBreakdown` | `lastMonthRentBonus > 0 && (periodType !== "ytd" \|\| performanceYear === leaseStartYear)` â€” controls breakdown sub-row visibility | admin financials page |
-| `lastMonthDeposit` prop | `showDepositBreakdown ? lastMonthRentBonus : 0` â€” passed to InvestmentPerformanceTable | admin financials page |
+| `actualYtd` | `canonicalMetrics.ytd` Ã¢â‚¬â€ includes deposit in the month it was received | canonical-metrics.ts |
+| `showDepositBreakdown` | `lastMonthRentBonus > 0 && (periodType !== "ytd" \|\| performanceYear === leaseStartYear)` Ã¢â‚¬â€ controls breakdown sub-row visibility | admin financials page |
+| `lastMonthDeposit` prop | `showDepositBreakdown ? lastMonthRentBonus : 0` Ã¢â‚¬â€ passed to InvestmentPerformanceTable | admin financials page |
 
-> **Gross income IS inclusive of the deposit in the view where it was received.** The deposit breakdown sub-row under Gross Income is informational only â€” it shows how much of the period's gross income came from the deposit. There is NO "recurring only" vs "incl. deposit" split in the primary rows.
+> **Gross income IS inclusive of the deposit in the view where it was received.** The deposit breakdown sub-row under Gross Income is informational only Ã¢â‚¬â€ it shows how much of the period's gross income came from the deposit. There is NO "recurring only" vs "incl. deposit" split in the primary rows.
 
-> `leaseEndMonthLabel` â€” computed from `lease_end` date: `new Date(year, month-1).toLocaleString("default", { month: "short", year: "numeric" })`. Shown in the deposit sub-row label to indicate what month it covers.
+> `leaseEndMonthLabel` Ã¢â‚¬â€ computed from `lease_end` date: `new Date(year, month-1).toLocaleString("default", { month: "short", year: "numeric" })`. Shown in the deposit sub-row label to indicate what month it covers.
 
 ---
 
-### D.2 Admin Financials â€” YTD Performance Cards
+### D.2 Admin Financials Ã¢â‚¬â€ YTD Performance Cards
 
 | Card | Formula | Variable |
 |------|---------|----------|
-| YTD Income ROI | `actualYtd.net_income / calculatedTotalCost Ã— 100` | admin financials page |
-| YTD Home Appreciation | `(latest âˆ’ earliest market_estimate in year) / cost_basis Ã— 100` | `ytdAppreciation.pct` |
-| Appreciation Since Purchase | `(current_market_value âˆ’ cost_basis) / cost_basis Ã— 100` | `purchaseAppreciation.pct` |
-| Total YTD ROI (Net + YTD Appr.) | `(actualYtd.net_income + ytdAppreciation.value) / calculatedTotalCost Ã— 100` â€” uses **YTD** appreciation, not since-purchase | admin financials page |
+| YTD Income ROI | `actualYtd.net_income / calculatedTotalCost Ãƒâ€” 100` | admin financials page |
+| YTD Home Appreciation | `(latest Ã¢Ë†â€™ earliest market_estimate in year) / cost_basis Ãƒâ€” 100` | `ytdAppreciation.pct` |
+| Appreciation Since Purchase | `(current_market_value Ã¢Ë†â€™ cost_basis) / cost_basis Ãƒâ€” 100` | `purchaseAppreciation.pct` |
+| Total YTD ROI (Net + YTD Appr.) | `(actualYtd.net_income + ytdAppreciation.value) / calculatedTotalCost Ãƒâ€” 100` Ã¢â‚¬â€ uses **YTD** appreciation, not since-purchase | admin financials page |
 
-> **Total YTD ROI uses YTD appreciation** (`ytdAppreciation.value`), not since-purchase (`purchaseAppreciation.value`). These are different â€” do not swap them.
+> **Total YTD ROI uses YTD appreciation** (`ytdAppreciation.value`), not since-purchase (`purchaseAppreciation.value`). These are different Ã¢â‚¬â€ do not swap them.
 
 ---
 
-### D.3 Admin Financials â€” InvestmentPerformanceTable (Income & Expenses section)
+### D.3 Admin Financials Ã¢â‚¬â€ InvestmentPerformanceTable (Income & Expenses section)
 
-All **Actual** values come from `actualYtd` (includes deposit in the month received). When `lastMonthDeposit > 0`, a breakdown sub-row appears under Gross Income showing the deposit amount â€” it is informational, not additive.
+All **Actual** values come from `actualYtd` (includes deposit in the month received). When `lastMonthDeposit > 0`, a breakdown sub-row appears under Gross Income showing the deposit amount Ã¢â‚¬â€ it is informational, not additive.
 
 | Row | Actual | Plan | YE Target |
 |-----|--------|------|-----------|
 | Gross Income | `actualYtd.rent_income` | `plannedYtd.rent_income` | `yeTarget.rent_income` |
-| â†³ incl. Last-Month Deposit (informational) | `lastMonthRentBonus` shown as breakdown â€” only when `showDepositBreakdown` | â€” | â€” |
-| Maintenance | `actualYtd.maintenance` | `plannedYtd.maintenance` = `plan_rent Ã— 0.05` | `yeTarget.maintenance` |
-| â†³ as % of rent | `actualYtd.maintenance / actualYtd.rent_income Ã— 100` | 5.00% (fixed) | 5.00% (fixed) |
-| HOA, Pool, Garden | `actualYtd.hoa_payments + pool + garden` | `(hoaAnnual/12 + poolMonthly + gardenMonthly) Ã— monthsElapsed` | `yeTarget.hoa + pool + garden` |
-| PM Fee | `actualYtd.pm_fee` | `planned_pm_fee_monthly Ã— monthsElapsed` | `planned_pm_fee_monthly Ã— 12` |
+| Ã¢â€ Â³ incl. Last-Month Deposit (informational) | `lastMonthRentBonus` shown as breakdown Ã¢â‚¬â€ only when `showDepositBreakdown` | Ã¢â‚¬â€ | Ã¢â‚¬â€ |
+| Maintenance | `actualYtd.maintenance` | `plannedYtd.maintenance` = `plan_rent Ãƒâ€” 0.05` | `yeTarget.maintenance` |
+| Ã¢â€ Â³ as % of rent | `actualYtd.maintenance / actualYtd.rent_income Ãƒâ€” 100` | 5.00% (fixed) | 5.00% (fixed) |
+| HOA, Pool, Garden | `actualYtd.hoa_payments + pool + garden` | `(hoaAnnual/12 + poolMonthly + gardenMonthly) Ãƒâ€” monthsElapsed` | `yeTarget.hoa + pool + garden` |
+| PM Fee | `actualYtd.pm_fee` | `planned_pm_fee_monthly Ãƒâ€” monthsElapsed` | `planned_pm_fee_monthly Ãƒâ€” 12` |
 | Total Expenses | `actualYtd.total_expenses` (excl. property tax) | `plannedYtd.total_expenses` | `yeTargetTotalExp` |
 | Net Income | `actualYtd.net_income` | `plannedYtd.net_income` | `yeTargetNet` |
-| Property Tax | `actualYtd.property_tax` (below the line) | â€” | `yeTarget.property_tax` |
+| Property Tax | `actualYtd.property_tax` (below the line) | Ã¢â‚¬â€ | `yeTarget.property_tax` |
 
 ---
 
-### D.4 Admin Financials â€” InvestmentPerformanceTable (Investment Performance section)
+### D.4 Admin Financials Ã¢â‚¬â€ InvestmentPerformanceTable (Investment Performance section)
 
 | Row | Actual | Plan | YE Target |
 |-----|--------|------|-----------|
-| ROI â€” Net Income (Pre-Tax) | `actualYtd.net_income / costBasis Ã— 100` | `plannedYtd.net_income / costBasis Ã— 100` | `yeTargetNet / costBasis Ã— 100` |
-| ROI Post Property Tax | `(actualYtd.net_income âˆ’ actualYtd.property_tax) / costBasis Ã— 100` | â€” | â€” |
-| Home Value Appreciation | `(current_market_value âˆ’ cost_basis) / cost_basis Ã— 100` | â€” | â€” |
-| ROI Post Tax + Appr âˆ’ Closing Cost | `(netIncome âˆ’ propertyTax âˆ’ closingCosts + appreciationValue) / costBasis Ã— 100` | â€” | â€” |
+| ROI Ã¢â‚¬â€ Net Income (Pre-Tax) | `actualYtd.net_income / costBasis Ãƒâ€” 100` | `plannedYtd.net_income / costBasis Ãƒâ€” 100` | `yeTargetNet / costBasis Ãƒâ€” 100` |
+| ROI Post Property Tax | `(actualYtd.net_income Ã¢Ë†â€™ actualYtd.property_tax) / costBasis Ãƒâ€” 100` | Ã¢â‚¬â€ | Ã¢â‚¬â€ |
+| Home Value Appreciation | `(current_market_value Ã¢Ë†â€™ cost_basis) / cost_basis Ãƒâ€” 100` | Ã¢â‚¬â€ | Ã¢â‚¬â€ |
+| ROI Post Tax + Appr Ã¢Ë†â€™ Closing Cost | `(netIncome Ã¢Ë†â€™ propertyTax Ã¢Ë†â€™ closingCosts + appreciationValue) / costBasis Ãƒâ€” 100` | Ã¢â‚¬â€ | Ã¢â‚¬â€ |
 
 > **ROI rows and YTD Income ROI card must share the same numerator (`actualYtd.net_income`) and denominator (`cost_basis`).**
 
 ---
 
-### D.5 Admin Financials â€” InvestmentPerformanceTable (Home Performance section)
+### D.5 Admin Financials Ã¢â‚¬â€ InvestmentPerformanceTable (Home Performance section)
 
 | Row | Formula |
 |-----|---------|
 | Purchase Price + Repairs | `cost_basis = home_cost + home_repair_cost + closing_costs` |
 | Current Value | `canonicalMetrics.current_market_value` |
-| Appreciation since purchase | `(current_market_value âˆ’ cost_basis) / cost_basis Ã— 100` |
-| Appreciation YTD (from {Mon}) | `(latest âˆ’ earliest market_estimate in performanceYear) / cost_basis Ã— 100` |
-| Monthly Gain | `appreciation_value / months_owned` â†’ `/ cost_basis Ã— 100` |
-| Annualized Gain | `monthly_gain Ã— 12` â†’ `/ cost_basis Ã— 100` |
+| Appreciation since purchase | `(current_market_value Ã¢Ë†â€™ cost_basis) / cost_basis Ãƒâ€” 100` |
+| Appreciation YTD (from {Mon}) | `(latest Ã¢Ë†â€™ earliest market_estimate in performanceYear) / cost_basis Ãƒâ€” 100` |
+| Monthly Gain | `appreciation_value / months_owned` Ã¢â€ â€™ `/ cost_basis Ãƒâ€” 100` |
+| Annualized Gain | `monthly_gain Ãƒâ€” 12` Ã¢â€ â€™ `/ cost_basis Ãƒâ€” 100` |
 | Months Owned | `DATEDIF(purchase_date, TODAY(), "m")` from canonical metrics |
 
 ---
 
-### D.6 Owner Dashboard â€” InvestmentPerformanceTable
+### D.6 Owner Dashboard Ã¢â‚¬â€ InvestmentPerformanceTable
 
 Same component as admin. Key prop differences:
 
@@ -440,27 +452,27 @@ Same component as admin. Key prop differences:
 |------|---------|-------|
 | `actual.grossIncome` | `metrics.ytd_rent_income` (canonical, inclusive) | Same inclusive logic |
 | `actual.maintenancePct` | `metrics.maintenance_pct` (canonical) | |
-| `roi.preTax` | `metrics.roi_pre_tax` (canonical) | `ytd.net_income / cost_basis Ã— 100` |
+| `roi.preTax` | `metrics.roi_pre_tax` (canonical) | `ytd.net_income / cost_basis Ãƒâ€” 100` |
 | `roi.postTax` | `metrics.roi_post_tax` (canonical) | |
-| `roi.planRoi` | `planNetIncomePeriod / cost_basis Ã— 100` | Period-proportional plan |
-| `roi.yeTargetRoi` | `yeTarget.net_income / cost_basis Ã— 100` | From annual targets table |
-| `plan.pmFee` | `property.planned_pm_fee_monthly Ã— elapsedMonths` | âœ… Included |
+| `roi.planRoi` | `planNetIncomePeriod / cost_basis Ãƒâ€” 100` | Period-proportional plan |
+| `roi.yeTargetRoi` | `yeTarget.net_income / cost_basis Ãƒâ€” 100` | From annual targets table |
+| `plan.pmFee` | `property.planned_pm_fee_monthly Ãƒâ€” elapsedMonths` | Ã¢Å“â€¦ Included |
 | `plan.totalExpenses` | `planMaintenancePeriod + planHoaPoolGardenPeriod + planPmFeePeriod` | All expense lines |
 
 > Owner page plan calculations (`planRentPeriod`, `planHoaPoolGardenPeriod`, `planPmFeePeriod`, `planNetIncomePeriod`) are period-proportional (elapsed months), not full-year. Full-year plan is `annualPlan` in admin financials.
 
 ---
 
-### D.7 Owner Dashboard â€” Gauges, Performance Status & Narrative
+### D.7 Owner Dashboard Ã¢â‚¬â€ Gauges, Performance Status & Narrative
 
 | Output | Formula | Variable |
 |--------|---------|----------|
-| Gauge 1: Projected ROI (Pre-Tax) | `calculateExpectedRoi({rent, pool, garden, hoa, pmFee, costBasis})` = `(annualPlanNet) / costBasis Ã— 100` | `projectedRoi` |
-| Gauge 2: Actual ROI (Period) | `metrics.roi_pre_tax` = `ytd.net_income / cost_basis Ã— 100` | `metrics.roi_pre_tax` |
-| Gauge 3: Total ROI (with Appreciation) | `metrics.roi_with_appreciation` = `(ytd.net_income + appreciation_value) / cost_basis Ã— 100` | `gaugeRoiTotal` |
-| Performance grade | Excellent: `projectedRoi â‰¥5%` AND maint <5%; Good: â‰¥3% AND <7%; else Needs Attention | `performanceStatus` |
-| Narrative: period plan net | `planNetIncomePeriod = planRentPeriod âˆ’ planMaintenancePeriod âˆ’ planHoaPoolGardenPeriod âˆ’ planPmFeePeriod` | Period-proportional |
-| Narrative: period plan ROI | `planRoiPeriod = planNetIncomePeriod / cost_basis Ã— 100` | Period-proportional |
+| Gauge 1: Projected ROI (Pre-Tax) | `calculateExpectedRoi({rent, pool, garden, hoa, pmFee, costBasis})` = `(annualPlanNet) / costBasis Ãƒâ€” 100` | `projectedRoi` |
+| Gauge 2: Actual ROI (Period) | `metrics.roi_pre_tax` = `ytd.net_income / cost_basis Ãƒâ€” 100` | `metrics.roi_pre_tax` |
+| Gauge 3: Total ROI (with Appreciation) | `metrics.roi_with_appreciation` = `(ytd.net_income + appreciation_value) / cost_basis Ãƒâ€” 100` | `gaugeRoiTotal` |
+| Performance grade | Excellent: `projectedRoi Ã¢â€°Â¥5%` AND maint <5%; Good: Ã¢â€°Â¥3% AND <7%; else Needs Attention | `performanceStatus` |
+| Narrative: period plan net | `planNetIncomePeriod = planRentPeriod Ã¢Ë†â€™ planMaintenancePeriod Ã¢Ë†â€™ planHoaPoolGardenPeriod Ã¢Ë†â€™ planPmFeePeriod` | Period-proportional |
+| Narrative: period plan ROI | `planRoiPeriod = planNetIncomePeriod / cost_basis Ãƒâ€” 100` | Period-proportional |
 
 ---
 
@@ -482,9 +494,9 @@ Lives in `app/components/owner/OwnerInvestmentReportsView.tsx`.
 
 ---
 
-### D.8 Planned YTD â€” `plannedYtd` useMemo
+### D.8 Planned YTD Ã¢â‚¬â€ `plannedYtd` useMemo
 
-Lives in `app/admin/financials/page.tsx`. Single source of plan figures for the selected period. **Period-aware** â€” recalculates when `periodType` changes.
+Lives in `app/admin/financials/page.tsx`. Single source of plan figures for the selected period. **Period-aware** Ã¢â‚¬â€ recalculates when `periodType` changes.
 
 **Period range logic:**
 - `YTD`: lease-start month (or Jan 1 if lease started in a prior year) through current month of `performanceYear`
@@ -493,62 +505,62 @@ Lives in `app/admin/financials/page.tsx`. Single source of plan figures for the 
 
 **`rent_income` rules (pure plan, no actual-rent override):**
 - Each month = `target_monthly_rent`
-- Lease-start month prorated: `rentMonthly Ã— (daysRemainingInMonth / daysInMonth)`
+- Lease-start month prorated: `rentMonthly Ãƒâ€” (daysRemainingInMonth / daysInMonth)`
 - Deposit added in lease-start month when `last_month_rent_collected === true`: `+target_monthly_rent`
 
 | Field | Formula |
 |-------|---------|
 | `rent_income` | Sum of pure plan rent per month (see above) |
-| `maintenance` | `rent_income Ã— 0.05` |
-| `pool` | `planned_pool_cost Ã— monthsElapsedPlanned` |
-| `garden` | `planned_garden_cost Ã— monthsElapsedPlanned` |
-| `hoa_payments` | `(calculatedAnnualHoa / 12) Ã— monthsElapsedPlanned` |
-| `pm_fee` | `planned_pm_fee_monthly Ã— monthsElapsedPlanned` |
+| `maintenance` | `rent_income Ãƒâ€” 0.05` |
+| `pool` | `planned_pool_cost Ãƒâ€” monthsElapsedPlanned` |
+| `garden` | `planned_garden_cost Ãƒâ€” monthsElapsedPlanned` |
+| `hoa_payments` | `(calculatedAnnualHoa / 12) Ãƒâ€” monthsElapsedPlanned` |
+| `pm_fee` | `planned_pm_fee_monthly Ãƒâ€” monthsElapsedPlanned` |
 | `total_expenses` | `maintenance + pool + garden + hoa_payments + pm_fee` (NO property_tax) |
-| `net_income` | `rent_income âˆ’ total_expenses` |
+| `net_income` | `rent_income Ã¢Ë†â€™ total_expenses` |
 
 > **Never** use actual `rent_income` from `allMonthlyData` to override plan figures. Plan is plan. Actual is actual. Mixing the two was the root cause of prior inconsistencies.
 
 ---
 
-### D.9 Annual Plan â€” `annualPlan` useMemo
+### D.9 Annual Plan Ã¢â‚¬â€ `annualPlan` useMemo
 
 Full-year plan (not period-proportional). Lives in `app/admin/financials/page.tsx`. Powers the Projected Income Summary table and the Projected ROI (Pre-Tax) card.
 
 | Field | Formula |
 |-------|---------|
-| `rent` | `target_monthly_rent Ã— 12` |
-| `maintenance` | `rent Ã— 0.05` |
-| `pool` | `planned_pool_cost Ã— 12` |
-| `garden` | `planned_garden_cost Ã— 12` |
+| `rent` | `target_monthly_rent Ãƒâ€” 12` |
+| `maintenance` | `rent Ãƒâ€” 0.05` |
+| `pool` | `planned_pool_cost Ãƒâ€” 12` |
+| `garden` | `planned_garden_cost Ãƒâ€” 12` |
 | `hoa` | `calculatedAnnualHoa` (HOA1 + HOA2, adjusted for frequency) |
-| `pmFee` | `planned_pm_fee_monthly Ã— 12` |
+| `pmFee` | `planned_pm_fee_monthly Ãƒâ€” 12` |
 | `totalExpenses` | `maintenance + pool + garden + hoa + pmFee` |
-| `netIncome` | `rent âˆ’ totalExpenses` |
-| **Projected ROI (Pre-Tax)** | `netIncome / calculatedTotalCost Ã— 100` â€” **canonical formula, same across all three locations** |
-| **Projected ROI (Post-Tax)** | `(netIncome âˆ’ propertyTax) / calculatedTotalCost Ã— 100` |
+| `netIncome` | `rent Ã¢Ë†â€™ totalExpenses` |
+| **Projected ROI (Pre-Tax)** | `netIncome / calculatedTotalCost Ãƒâ€” 100` Ã¢â‚¬â€ **canonical formula, same across all three locations** |
+| **Projected ROI (Post-Tax)** | `(netIncome Ã¢Ë†â€™ propertyTax) / calculatedTotalCost Ãƒâ€” 100` |
 
 > The three locations that must show the **same Projected ROI (Pre-Tax)** value:
-> 1. Admin Dashboard card "Projected ROI %" â†’ `calculateExpectedRoi()` with PM fee
-> 2. Admin Financials "Projected ROI (pre-tax)" â†’ `annualPlan.netIncome / calculatedTotalCost Ã— 100`
-> 3. Owner Dashboard Gauge 1 "Projected ROI (Pre-Tax)" â†’ `projectedRoi = calculateExpectedRoi()` with PM fee
+> 1. Admin Dashboard card "Projected ROI %" Ã¢â€ â€™ `calculateExpectedRoi()` with PM fee
+> 2. Admin Financials "Projected ROI (pre-tax)" Ã¢â€ â€™ `annualPlan.netIncome / calculatedTotalCost Ãƒâ€” 100`
+> 3. Owner Dashboard Gauge 1 "Projected ROI (Pre-Tax)" Ã¢â€ â€™ `projectedRoi = calculateExpectedRoi()` with PM fee
 
 ---
 
-### D.10 Formula Accordion (Admin Financials â€” Monthly Performance Tab)
+### D.10 Formula Accordion (Admin Financials Ã¢â‚¬â€ Monthly Performance Tab)
 
 Collapsible reference at the bottom of the Monthly Performance tab (`app/admin/financials/page.tsx`, `showFormulas` state).
 
 | Section | Key Formulas |
 |---------|-------------|
 | **Cost Basis** | `home_cost + home_repair_cost + closing_costs` |
-| **Annual Plan Net Income** | `(rentÃ—12) âˆ’ (maintÃ—12 + poolÃ—12 + gardenÃ—12 + hoa_annual + pmFeeÃ—12)`; maintenance = rentÃ—5% |
-| **Projected ROI (Pre-Tax)** | `annualPlan.netIncome / calculatedTotalCost Ã— 100` |
-| **YTD Income ROI** | `actualYtd.net_income / calculatedTotalCost Ã— 100` (includes deposit in month received) |
-| **Total YTD ROI** | `(actualYtd.net_income + ytdAppreciation.value) / calculatedTotalCost Ã— 100` â€” uses YTD appreciation, not since-purchase |
+| **Annual Plan Net Income** | `(rentÃƒâ€”12) Ã¢Ë†â€™ (maintÃƒâ€”12 + poolÃƒâ€”12 + gardenÃƒâ€”12 + hoa_annual + pmFeeÃƒâ€”12)`; maintenance = rentÃƒâ€”5% |
+| **Projected ROI (Pre-Tax)** | `annualPlan.netIncome / calculatedTotalCost Ãƒâ€” 100` |
+| **YTD Income ROI** | `actualYtd.net_income / calculatedTotalCost Ãƒâ€” 100` (includes deposit in month received) |
+| **Total YTD ROI** | `(actualYtd.net_income + ytdAppreciation.value) / calculatedTotalCost Ãƒâ€” 100` Ã¢â‚¬â€ uses YTD appreciation, not since-purchase |
 | **Deposit / Last-Month Rent** | Included in gross income in the month received; breakdown sub-row shown when `showDepositBreakdown` |
 
-> The accordion is for user reference only â€” do not add accordion sections to owner or admin dashboard pages.
+> The accordion is for user reference only Ã¢â‚¬â€ do not add accordion sections to owner or admin dashboard pages.
 
 ---
 
@@ -569,7 +581,7 @@ Collapsible reference at the bottom of the Monthly Performance tab (`app/admin/f
 **Pending migrations:** `supabase/migrations/20241211_add_roi_and_timestamps.sql`, `supabase/migrations/20260320_add_planned_pm_fee_monthly.sql`
 
 ### 11.3 After Every Session
-Stage specific files, commit with clear message. **Ask user before pushing** â€” never auto-push.
+Stage specific files, commit with clear message. **Ask user before pushing** Ã¢â‚¬â€ never auto-push.
 
 ### 11.4 Guardrails Self-Update
 Add new lessons to Appendix C/D. Update version and Document Control table. Ask user before pushing.
@@ -578,7 +590,7 @@ Add new lessons to Appendix C/D. Update version and Document Control table. Ask 
 
 ## 12. How to Change a Financial Formula (Mandatory Protocol)
 
-Changing a formula is the highest-risk operation in this codebase. A formula exists in multiple layers simultaneously â€” the calculation library, one or more API routes, one or more page components, and Appendix D of this file. Changing it in only one place creates silent divergence that is very hard to find later.
+Changing a formula is the highest-risk operation in this codebase. A formula exists in multiple layers simultaneously Ã¢â‚¬â€ the calculation library, one or more API routes, one or more page components, and Appendix D of this file. Changing it in only one place creates silent divergence that is very hard to find later.
 
 **Follow this checklist in order for every formula change:**
 
@@ -594,24 +606,24 @@ List every file that reads or renders the variable. Do not start coding until th
 
 ### 12.2 Identify the Single Source of Truth
 Every formula must live in exactly one place and be imported everywhere else:
-- **Financial metrics (YTD actuals):** `lib/calculations/canonical-metrics.ts` â†’ `calculateCanonicalMetrics()`
-- **Plan / projected values:** `lib/financial-calculations.ts` â†’ `calculateExpectedRoi()` / `calculateExpectedAnnualNet()`
+- **Financial metrics (YTD actuals):** `lib/calculations/canonical-metrics.ts` Ã¢â€ â€™ `calculateCanonicalMetrics()`
+- **Plan / projected values:** `lib/financial-calculations.ts` Ã¢â€ â€™ `calculateExpectedRoi()` / `calculateExpectedAnnualNet()`
 - **Period elapsed helpers:** `lib/date-only.ts`
 
 If the formula currently exists inline in a page or API route, move it to the appropriate lib file first, then import it. Never compute the same value two different ways in two different files.
 
 ### 12.3 Update All Output Locations in One PR
-Make all changes atomically â€” do not partially update and leave mismatched values in production:
+Make all changes atomically Ã¢â‚¬â€ do not partially update and leave mismatched values in production:
 1. Update the lib function (single source of truth)
-2. Update every API route that calls it (check Supabase `select` fields too â€” new columns must be fetched)
+2. Update every API route that calls it (check Supabase `select` fields too Ã¢â‚¬â€ new columns must be fetched)
 3. Update every page component that renders it
 4. Update every shared component prop type that carries it
 5. Remove any now-dead variables, useMemos, or inline duplicates that the old approach left behind
 
 ### 12.4 Update Appendix D Before Closing
 After code changes are complete:
-1. Update **D.0 Master Variable Table** â€” change the formula text for the affected row(s)
-2. Update the relevant **D.1â€“D.10** section if it describes the changed formula in detail
+1. Update **D.0 Master Variable Table** Ã¢â‚¬â€ change the formula text for the affected row(s)
+2. Update the relevant **D.1Ã¢â‚¬â€œD.10** section if it describes the changed formula in detail
 3. Update the formula accordion text in `app/admin/financials/page.tsx` if the label or formula description changed
 4. Bump the Document Control version
 
@@ -619,7 +631,7 @@ After code changes are complete:
 
 | Mistake | What Went Wrong | Prevention |
 |---------|----------------|------------|
-| PM fee added to `calculateExpectedAnnualNet()` but not passed in API route call | Admin dashboard projected ROI excluded PM fee; admin financials included it â€” two different numbers for the same metric | Always grep for every call site of the function you changed |
+| PM fee added to `calculateExpectedAnnualNet()` but not passed in API route call | Admin dashboard projected ROI excluded PM fee; admin financials included it Ã¢â‚¬â€ two different numbers for the same metric | Always grep for every call site of the function you changed |
 | `displayYtd` introduced to exclude deposit from "recurring" figures | Three variables (`displayYtd`, `depositInCurrentViewData`, `depositAppliesThisView`) diverged across pages; deposit logic inconsistent | One variable per decision (`showDepositBreakdown`); never introduce a parallel "adjusted" copy of an existing metric |
 | `yeTargetRoi` computed as `projectedRoi` (plan formula) instead of from YE target data | YE Target column showed plan values, not actual year-end targets | Actual/Plan/YE Target are three distinct sources; never substitute one for another without explicit design intent |
 | `calculatedYeTarget` useMemo defined but never referenced | Dead code created confusion about what was authoritative | After every change, grep for every symbol you define; remove unused ones immediately |
@@ -627,12 +639,12 @@ After code changes are complete:
 
 ### 12.6 The Formula Change Verification Checklist
 Before marking a formula task done:
-- [ ] Grepped for the variable name across the entire repo â€” no missed locations
-- [ ] Only one lib function computes this value â€” no inline duplicates
+- [ ] Grepped for the variable name across the entire repo Ã¢â‚¬â€ no missed locations
+- [ ] Only one lib function computes this value Ã¢â‚¬â€ no inline duplicates
 - [ ] All API routes fetch the DB columns this formula needs (check `select` queries)
 - [ ] All page components pass the value through to all child components that render it
 - [ ] All dead code from the old approach removed (imports, useMemos, state vars, props)
-- [ ] Appendix D updated â€” D.0 row and relevant detail section
+- [ ] Appendix D updated Ã¢â‚¬â€ D.0 row and relevant detail section
 - [ ] Formula accordion text in admin financials updated if label/formula changed
 - [ ] Document Control version bumped
 
@@ -642,9 +654,11 @@ Before marking a formula task done:
 
 | Field | Value |
 |-------|-------|
-| Version | 3.6 |
+| Version | 3.7 |
 | Status | Active |
-| Last Updated | 2026-04-28 - v3.6: added C.38 to require file-preserving admin document metadata edits with strict property/lease validation. v3.5: added C.37 and updated D.7A so owner charts obey the primary Investment Performance filters only and the filter card stays sticky while scrolling. v3.4: added C.36 and D.7A to require one reconciled owner financial-chart dataset with PM fee included in total expenses and non-redundant statement/breakdown/trend outputs. v3.3: added C.35 to require tenant-sensitive documents to be lease-scoped and legacy unscoped rows to stay owner-visible until reassigned. v3.2: added C.34 to require additive table reads to survive missing migrations by falling back cleanly when new tables are absent. v3.1: added C.33 to require additive lease-agreement rollouts with legacy property fallback and mirrored current lease fields for compatibility. v3.0: added C.32 to require dedicated stacked rows and compact month/year markers in the owner unit timeline so renewal/listing labels stay readable. v2.9: added C.31 to require explicit width for compact admin billing date inputs so due dates stay visible in the tenant billing table. v2.8: added C.30 to require UTF-8 owner portal source files after a production build failed on `app/owner/reports/page.tsx` due to invalid encoding. v2.7: added C.29 to lock the owner dashboard as operational-only and move analytics-heavy content into reusable owner reports. v2.6: added C.28 to lock tenant dashboard multi-line upcoming-payment summaries to the viewer's existing access scope without changing billing visibility rules. v2.5: added C.27 to lock tenant dashboard status-line sourcing and priority rules. v2.4: added C.26 to lock invite form minimum fields and single-property owner invite guidance. v2.3: added C.25 to lock the manual invite workflow and canonical invite URL generation. v2.2: plannedYtd made period-aware (YTD/Lease/Alltime); removed actual-rent override from plan; deposit added to plan gross income in lease-start month when last_month_rent_collected; D.8 rewritten; D.0 Plan Gross Income updated; formula accordion updated. v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist; v2.0: Full variable consistency audit: D.0 Master Variable Table added (Actual/Plan/YE Target for all 10 variables); deposit model changed to inclusive (last-month deposit counted in gross income for the month received); displayYtd removed -> showDepositBreakdown; calculatedYeTarget dead useMemo removed; YE Target monthly table row now includes PM fee; formula accordion updated to deposit-inclusive model; Projected ROI unified to single calculateExpectedRoi() with PM fee across all three locations (admin dashboard, admin financials, owner page) |
+| Last Updated | 2026-04-28 - v3.7: added C.39 to require owner-portal AI cards to be removable at the page level without deleting shared AI components or routes. v3.6: added C.38 to require file-preserving admin document metadata edits with strict property/lease validation. v3.5: added C.37 and updated D.7A so owner charts obey the primary Investment Performance filters only and the filter card stays sticky while scrolling. v3.4: added C.36 and D.7A to require one reconciled owner financial-chart dataset with PM fee included in total expenses and non-redundant statement/breakdown/trend outputs. v3.3: added C.35 to require tenant-sensitive documents to be lease-scoped and legacy unscoped rows to stay owner-visible until reassigned. v3.2: added C.34 to require additive table reads to survive missing migrations by falling back cleanly when new tables are absent. v3.1: added C.33 to require additive lease-agreement rollouts with legacy property fallback and mirrored current lease fields for compatibility. v3.0: added C.32 to require dedicated stacked rows and compact month/year markers in the owner unit timeline so renewal/listing labels stay readable. v2.9: added C.31 to require explicit width for compact admin billing date inputs so due dates stay visible in the tenant billing table. v2.8: added C.30 to require UTF-8 owner portal source files after a production build failed on `app/owner/reports/page.tsx` due to invalid encoding. v2.7: added C.29 to lock the owner dashboard as operational-only and move analytics-heavy content into reusable owner reports. v2.6: added C.28 to lock tenant dashboard multi-line upcoming-payment summaries to the viewer's existing access scope without changing billing visibility rules. v2.5: added C.27 to lock tenant dashboard status-line sourcing and priority rules. v2.4: added C.26 to lock invite form minimum fields and single-property owner invite guidance. v2.3: added C.25 to lock the manual invite workflow and canonical invite URL generation. v2.2: plannedYtd made period-aware (YTD/Lease/Alltime); removed actual-rent override from plan; deposit added to plan gross income in lease-start month when last_month_rent_collected; D.8 rewritten; D.0 Plan Gross Income updated; formula accordion updated. v2.1: Added Section 12 "How to Change a Financial Formula" with full checklist, single-source-of-truth rules, past mistakes table, and 6-point verification checklist; v2.0: Full variable consistency audit: D.0 Master Variable Table added (Actual/Plan/YE Target for all 10 variables); deposit model changed to inclusive (last-month deposit counted in gross income for the month received); displayYtd removed -> showDepositBreakdown; calculatedYeTarget dead useMemo removed; YE Target monthly table row now includes PM fee; formula accordion updated to deposit-inclusive model; Projected ROI unified to single calculateExpectedRoi() with PM fee across all three locations (admin dashboard, admin financials, owner page) |
+
+
 
 
 

@@ -1,8 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/app/context/AuthContext";
-import Image from "next/image";
 import GaugeChart from "@/app/components/charts/GaugeChart";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { calculateExpectedRoi } from "@/lib/financial-calculations";
@@ -118,11 +117,7 @@ export default function OwnerInvestmentReportsView() {
   const [monthly, setMonthly] = useState<MonthlyPerformance[]>([]);
   const [rawMetrics, setRawMetrics] = useState<CalculatedMetrics | null>(null);
   const [yeTarget, setYeTarget] = useState<YeTarget>(null);
-  const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [saleClosingCosts, setSaleClosingCosts] = useState("");
-  const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatError, setChatError] = useState<string | null>(null);
 
   // Period filter hook for YTD vs Lease Term toggle
   const { periodType, setPeriodType, monthsInPeriod, label: periodLabel } = usePeriodFilter({
@@ -329,7 +324,7 @@ export default function OwnerInvestmentReportsView() {
     });
   }, [chronologicalMonthly]);
 
-  // YTD appreciation: earliest → latest market value in selectedYear
+  // YTD appreciation: earliest â†’ latest market value in selectedYear
   const ytdAppreciationData = useMemo(() => {
     const yearData = monthly
       .filter((m) => m.year === selectedYear && (m.property_market_estimate || 0) > 0)
@@ -487,42 +482,6 @@ export default function OwnerInvestmentReportsView() {
     }
   };
 
-  const handleChatSend = async () => {
-    if (!chatInput.trim()) return;
-    const userMessage = { role: "user" as const, content: chatInput.trim() };
-    const systemContext = `
-You are the Luxor Owner Assistant. Be concise.
-Answer only for the selected property (${property?.address || "Unknown"}). If unsure, ask for clarification.
-Use the provided property and document context from the server; do not guess.`;
-
-    setChatMessages((prev) => [...prev, userMessage]);
-    setChatInput("");
-    setChatError(null);
-    setChatLoading(true);
-
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [...chatMessages, userMessage],
-          systemPrompt: systemContext,
-          propertyId: selectedPropertyId,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || "Chat request failed");
-      }
-      const assistantMessage = { role: "assistant" as const, content: data.content || "Sorry, I didn't get that." };
-      setChatMessages((prev) => [...prev, assistantMessage]);
-    } catch (err: any) {
-      console.error(err);
-      setChatError(err.message || "Chat failed");
-    } finally {
-      setChatLoading(false);
-    }
-  };
 
   const loadFinancialData = async () => {
     try {
@@ -665,7 +624,7 @@ Use the provided property and document context from the server; do not guess.`;
     );
   }
 
-  // Projected ROI — canonical single calc: annual plan net income / cost basis
+  // Projected ROI â€” canonical single calc: annual plan net income / cost basis
   // Same formula used in admin dashboard and admin financials page.
   const projectedRoi = calculateExpectedRoi({
     targetMonthlyRent: property.target_monthly_rent || 0,
@@ -747,7 +706,7 @@ Use the provided property and document context from the server; do not guess.`;
 
   return (
     <div className="space-y-8">
-      {/* Header — unchanged */}
+      {/* Header â€” unchanged */}
       <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white px-4 py-5 shadow-sm md:top-4 md:px-8 md:py-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between gap-8 mb-4">
@@ -803,30 +762,30 @@ Use the provided property and document context from the server; do not guess.`;
 
       <div className="max-w-7xl mx-auto p-8 space-y-8">
 
-        {/* 1. ROI Speedometers — top */}
+        {/* 1. ROI Speedometers â€” top */}
         <div>
           <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Return on Investment</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div
               className={`bg-white border-2 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help ${projectedRoi >= 5 ? "border-green-400" : projectedRoi >= 3 ? "border-yellow-400" : "border-red-400"}`}
-              title="Projected ROI (Pre-Tax): Annual Plan Net Income / Cost Basis × 100"
+              title="Projected ROI (Pre-Tax): Annual Plan Net Income / Cost Basis Ã— 100"
             >
               <GaugeChart value={projectedRoi} target={0} label="Projected ROI (Pre-Tax)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
               {activeRole === "admin" && (
                 <div className="mt-1 text-center text-[10px] text-slate-400 leading-tight">
-                  Plan net ÷ {formatCurrency(metrics.cost_basis)}
+                  Plan net Ã· {formatCurrency(metrics.cost_basis)}
                 </div>
               )}
             </div>
             <div
               className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Actual ROI (Period): Period Net Income / Cost Basis × 100"
+              title="Actual ROI (Period): Period Net Income / Cost Basis Ã— 100"
             >
               <GaugeChart value={metrics.roi_pre_tax} target={0} label="Actual ROI (Period)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
             </div>
             <div
               className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Total ROI: (Net Income + Appreciation) / Cost Basis × 100"
+              title="Total ROI: (Net Income + Appreciation) / Cost Basis Ã— 100"
             >
               <GaugeChart value={gaugeRoiTotal} target={0} label="Total ROI (with Appreciation)" unit="%" maxValue={40} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
             </div>
@@ -944,7 +903,7 @@ Use the provided property and document context from the server; do not guess.`;
             </p>
             <p>
               <span className="font-semibold">Operating Income & Expenses: </span>
-              {periodLabel} gross income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 5 ? "text-green-700" : metrics.maintenance_pct < 7 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> — target is under 5%. Other expenses (HOA, pool, garden, PM fee) total {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden + metrics.ytd_pm_fee)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. Projected ROI (pre-tax) is <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)}</span> (annual plan net ÷ cost basis); actual ROI this period is {formatPercentage(metrics.roi_pre_tax)} against a period plan of {formatPercentage(planRoiPeriod)}.
+              {periodLabel} gross income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 5 ? "text-green-700" : metrics.maintenance_pct < 7 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> â€” target is under 5%. Other expenses (HOA, pool, garden, PM fee) total {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden + metrics.ytd_pm_fee)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. Projected ROI (pre-tax) is <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)}</span> (annual plan net Ã· cost basis); actual ROI this period is {formatPercentage(metrics.roi_pre_tax)} against a period plan of {formatPercentage(planRoiPeriod)}.
             </p>
             {metrics.ytd_property_tax > 0 ? (
               <p>
@@ -964,7 +923,7 @@ Use the provided property and document context from the server; do not guess.`;
           </div>
         </div>
 
-        {/* 4. Investment Metrics — Excel A29:I43 layout */}
+        {/* 4. Investment Metrics â€” Excel A29:I43 layout */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Investment Metrics</h2>
@@ -1026,52 +985,16 @@ Use the provided property and document context from the server; do not guess.`;
           />
         </div>
 
-        {/* 5. Performance Thresholds — compact, subdued */}
+        {/* 5. Performance Thresholds â€” compact, subdued */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500 bg-white border border-slate-100 rounded-lg py-3 px-4">
           <span className="font-semibold text-[10px] text-slate-400 uppercase tracking-wide">Thresholds</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Excellent: Proj ROI ≥5%, Maint &lt;5%</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />Good: ≥3%, Maint &lt;7%</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Excellent: Proj ROI â‰¥5%, Maint &lt;5%</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />Good: â‰¥3%, Maint &lt;7%</span>
           <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />Needs Attention: below these</span>
           <span className="ml-auto text-slate-400">
-            Now: {formatPercentage(projectedRoi)} proj · {formatPercentage(metrics.maintenance_pct)} maint{" → "}
+            Now: {formatPercentage(projectedRoi)} proj Â· {formatPercentage(metrics.maintenance_pct)} maint{" â†’ "}
             <span className={`font-semibold ${performanceStatus === "green" ? "text-green-600" : performanceStatus === "yellow" ? "text-yellow-600" : "text-red-600"}`}>{performanceLabel}</span>
           </span>
-        </div>
-
-        {/* 6. Luxor AI */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-lg">
-          <div className="p-6 border-b border-slate-200 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#1f2937] via-[#0f172a] to-[#1e293b] flex items-center justify-center overflow-hidden shadow-sm">
-              <Image src="/luxor-ai.png" alt="Luxor logo" width={52} height={52} className="object-contain mix-blend-lighten opacity-90" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900">Luxor AI</h2>
-              <p className="text-sm text-slate-600">Luxor&apos;s AI-driven Investment Report.</p>
-            </div>
-          </div>
-          <div className="p-5 space-y-3">
-            <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-md p-3 bg-slate-50">
-              {chatMessages.map((m, idx) => (
-                <div key={idx} className={`mb-2 ${m.role === "user" ? "text-slate-900" : "text-slate-800"}`}>
-                  <span className="font-semibold text-xs uppercase mr-2">{m.role === "user" ? "You" : "Assistant"}</span>
-                  <span className="text-sm">{m.content}</span>
-                </div>
-              ))}
-            </div>
-            {chatError && <p className="text-sm text-red-600">{chatError}</p>}
-            <div className="flex gap-2 items-start">
-              <textarea
-                className="flex-1 border border-slate-300 rounded-lg px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                rows={2}
-                placeholder="Ask about your property."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-              />
-              <button onClick={handleChatSend} disabled={chatLoading} className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm h-fit">
-                {chatLoading ? "Sending..." : "Send"}
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* 7. Financial Overview */}
@@ -1392,3 +1315,4 @@ Use the provided property and document context from the server; do not guess.`;
     </div>
   );
 }
+

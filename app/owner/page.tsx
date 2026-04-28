@@ -1,8 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import OwnerAssistantCard from "@/app/components/owner/OwnerAssistantCard";
 import { formatDateOnly } from "@/lib/date-only";
 
 type OverviewRow = {
@@ -82,10 +81,6 @@ export default function OwnerDashboard() {
     });
   }, [data.overviewRows, search, statusFilter]);
 
-  const assistantProperties = useMemo(
-    () => data.overviewRows.map((row) => ({ id: row.propertyId, address: row.address })),
-    [data.overviewRows]
-  );
 
   const statusOptions = [
     { key: "vacant", label: "Vacant", count: counts.vacant, dot: "bg-rose-500" },
@@ -96,8 +91,6 @@ export default function OwnerDashboard() {
 
   return (
     <div className="space-y-8">
-      <OwnerAssistantCard properties={assistantProperties} defaultPropertyId={assistantProperties[0]?.id} />
-
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 md:p-6 space-y-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
@@ -249,3 +242,5 @@ export default function OwnerDashboard() {
     </div>
   );
 }
+
+
