@@ -51,7 +51,14 @@ type AdminUser = {
   name: string | null;
 };
 
+type UserPropertyAssignment = {
+  user_id: string;
+  property_id: string;
+  role: string;
+};
+
 type LeaseFormState = {
+  leaseAgreementId: string | null;
   propertyId: string;
   leaseStartDate: string;
   leaseEndDate: string;
@@ -62,6 +69,7 @@ type LeaseFormState = {
 };
 
 const DEFAULT_LEASE_FORM: LeaseFormState = {
+  leaseAgreementId: null,
   propertyId: "",
   leaseStartDate: "",
   leaseEndDate: "",
@@ -135,6 +143,7 @@ export default function PropertiesPage() {
   const router = useRouter();
   const [properties, setProperties] = useState<Property[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [userProperties, setUserProperties] = useState<UserPropertyAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [savingLease, setSavingLease] = useState(false);
@@ -142,13 +151,13 @@ export default function PropertiesPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [newPropertyAddress, setNewPropertyAddress] = useState("");
   const [leaseForm, setLeaseForm] = useState<LeaseFormState>(DEFAULT_LEASE_FORM);
-  const [leaseMode, setLeaseMode] = useState<"add" | "renew">("add");
+  const [leaseMode, setLeaseMode] = useState<"add" | "renew" | "edit">("add");
   const [expandedPropertyId, setExpandedPropertyId] = useState<string | null>(null);
   const [leaseEditorOpen, setLeaseEditorOpen] = useState(false);
 
   useEffect(() => {
     const load = async () => {
-      await Promise.all([loadProperties(), loadUsers()]);
+      await Promise.all([loadProperties(), loadUsers(), loadUserProperties()]);
     };
     load();
   }, []);
@@ -180,22 +189,55 @@ export default function PropertiesPage() {
     }
   };
 
-  const selectedProperty = useMemo(
-    () => properties.find((property) => property.id === leaseForm.propertyId) || null,
-    [properties, leaseForm.propertyId]
-  );
+  const loadUserProperties = async () => {
+    try {
+      const res = await fetch("/api/admin/user-properties", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load user property access");
+      setUserProperties(
+        (data || []).map((row: any) => ({
+          user_id: row.user_id,
+          property_id: row.property_id,
+          role: row.role,
+        }))
+      );
+    } catch (err: any) {
+      setError(err.message || "Failed to load user property access");
+    }
+  };
 
   const selectedTenantOptions = useMemo(() => {
-    if (!leaseForm.propertyId) return users;
-    const currentLeaseTenantIds = selectedProperty?.current_lease?.tenantIds || [];
+    if (!leaseForm.propertyId) return [];
+    const propertyTenantIds = new Set(
+      userProperties
+        .filter((row) => row.property_id === leaseForm.propertyId && row.role === "tenant")
+        .map((row) => row.user_id)
+    );
+
     return users
-      .filter((user) => user.role === "tenant" || currentLeaseTenantIds.includes(user.id))
+      .filter((user) => propertyTenantIds.has(user.id))
       .sort((a, b) => getUserLabel(a).localeCompare(getUserLabel(b)));
-  }, [leaseForm.propertyId, selectedProperty, users]);
+  }, [leaseForm.propertyId, userProperties, users]);
+
+  useEffect(() => {
+    if (!leaseForm.propertyId) {
+      if (leaseForm.tenantIds.length > 0) {
+        setLeaseForm((prev) => ({ ...prev, tenantIds: [] }));
+      }
+      return;
+    }
+
+    const validTenantIds = new Set(selectedTenantOptions.map((user) => user.id));
+    const filteredTenantIds = leaseForm.tenantIds.filter((tenantId) => validTenantIds.has(tenantId));
+    if (filteredTenantIds.length !== leaseForm.tenantIds.length) {
+      setLeaseForm((prev) => ({ ...prev, tenantIds: filteredTenantIds }));
+    }
+  }, [leaseForm.propertyId, leaseForm.tenantIds, selectedTenantOptions]);
 
   const openAddLease = (property: Property) => {
     setLeaseMode("add");
     setLeaseForm({
+      leaseAgreementId: null,
       propertyId: property.id,
       leaseStartDate: "",
       leaseEndDate: "",
@@ -212,6 +254,7 @@ export default function PropertiesPage() {
     const nextStart = priorLease?.leaseEndDate ? addOneDay(priorLease.leaseEndDate) : "";
     setLeaseMode("renew");
     setLeaseForm({
+      leaseAgreementId: null,
       propertyId: property.id,
       leaseStartDate: nextStart,
       leaseEndDate: nextStart ? addOneYearMinusOneDay(nextStart) : "",
@@ -219,6 +262,21 @@ export default function PropertiesPage() {
       tenantIds: priorLease?.tenantIds || [],
       notes: "",
       priorLeaseId: priorLease?.id || null,
+    });
+    setLeaseEditorOpen(true);
+  };
+
+  const openEditLease = (property: Property, agreement: LeaseAgreement) => {
+    setLeaseMode("edit");
+    setLeaseForm({
+      leaseAgreementId: agreement.id,
+      propertyId: property.id,
+      leaseStartDate: agreement.leaseStartDate,
+      leaseEndDate: agreement.leaseEndDate,
+      monthlyRent: String(agreement.monthlyRent || ""),
+      tenantIds: agreement.tenantIds || [],
+      notes: agreement.notes || "",
+      priorLeaseId: agreement.priorLeaseId,
     });
     setLeaseEditorOpen(true);
   };
@@ -255,9 +313,10 @@ export default function PropertiesPage() {
 
     try {
       const res = await fetch("/api/admin/lease-agreements", {
-        method: "POST",
+        method: leaseMode === "edit" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: leaseForm.leaseAgreementId,
           propertyId: leaseForm.propertyId,
           leaseStartDate: leaseForm.leaseStartDate,
           leaseEndDate: leaseForm.leaseEndDate,
@@ -269,7 +328,13 @@ export default function PropertiesPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save lease agreement");
-      setSuccess(leaseMode === "renew" ? "Lease renewed successfully." : "Lease agreement added successfully.");
+      setSuccess(
+        leaseMode === "renew"
+          ? "Lease renewed successfully."
+          : leaseMode === "edit"
+            ? "Lease agreement updated successfully."
+            : "Lease agreement added successfully."
+      );
       setLeaseEditorOpen(false);
       setLeaseForm(DEFAULT_LEASE_FORM);
       setExpandedPropertyId(leaseForm.propertyId);
@@ -356,11 +421,15 @@ export default function PropertiesPage() {
         <div className="bg-white rounded-lg border border-slate-200 p-6">
           <div className="flex items-center justify-between gap-4 mb-4">
             <div>
-              <h2 className="text-xl font-semibold">{leaseMode === "renew" ? "Renew Lease" : "Add Lease"}</h2>
+              <h2 className="text-xl font-semibold">
+                {leaseMode === "renew" ? "Renew Lease" : leaseMode === "edit" ? "Edit Lease" : "Add Lease"}
+              </h2>
               <p className="text-sm text-slate-500">
                 {leaseMode === "renew"
                   ? "Create a new lease agreement linked to the prior term. Historical leases stay unchanged."
-                  : "Create a new lease agreement and link tenants without overwriting prior history."}
+                  : leaseMode === "edit"
+                    ? "Correct the selected lease term and tenant membership without creating a new lease."
+                    : "Create a new lease agreement and link tenants without overwriting prior history."}
               </p>
             </div>
             <button
@@ -383,6 +452,7 @@ export default function PropertiesPage() {
                   value={leaseForm.propertyId}
                   onChange={(e) => setLeaseForm((prev) => ({ ...prev, propertyId: e.target.value }))}
                   className="w-full border border-slate-300 rounded-md px-3 py-2 bg-white"
+                  disabled={leaseMode === "edit"}
                   required
                 >
                   <option value="">Select property</option>
@@ -431,7 +501,9 @@ export default function PropertiesPage() {
               <label className="block text-sm font-medium mb-2">Tenants / Lessees</label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-lg border border-slate-200 p-3 max-h-64 overflow-y-auto">
                 {selectedTenantOptions.length === 0 ? (
-                  <div className="text-sm text-slate-500">No tenant users available.</div>
+                  <div className="text-sm text-slate-500">
+                    No tenant users are currently linked to this property. Invite or create a tenant first.
+                  </div>
                 ) : (
                   selectedTenantOptions.map((user) => {
                     const checked = leaseForm.tenantIds.includes(user.id);
@@ -478,7 +550,13 @@ export default function PropertiesPage() {
                 disabled={savingLease}
                 className="px-4 py-2 bg-slate-900 text-white rounded-md hover:bg-slate-800 disabled:bg-slate-400"
               >
-                {savingLease ? "Saving..." : leaseMode === "renew" ? "Create Renewal Lease" : "Create Lease Agreement"}
+                {savingLease
+                  ? "Saving..."
+                  : leaseMode === "renew"
+                    ? "Create Renewal Lease"
+                    : leaseMode === "edit"
+                      ? "Save Lease Changes"
+                      : "Create Lease Agreement"}
               </button>
               <button
                 type="button"
@@ -618,7 +696,7 @@ export default function PropertiesPage() {
                       {property.lease_agreements && property.lease_agreements.length > 0 ? (
                         <div className="divide-y divide-slate-100">
                           {property.lease_agreements.map((agreement) => (
-                            <div key={agreement.id} className="px-4 py-4 grid grid-cols-1 lg:grid-cols-[1.1fr_0.8fr_0.9fr_1.1fr] gap-4 text-sm">
+                            <div key={agreement.id} className="px-4 py-4 grid grid-cols-1 lg:grid-cols-[1.1fr_0.8fr_0.9fr_1.1fr_auto] gap-4 text-sm">
                               <div>
                                 <div className="text-xs uppercase tracking-wide text-slate-400">Lease Term</div>
                                 <div className="text-slate-900 font-medium">
@@ -646,6 +724,15 @@ export default function PropertiesPage() {
                                 {agreement.notes && (
                                   <div className="text-xs text-slate-500 mt-1 whitespace-pre-wrap">{agreement.notes}</div>
                                 )}
+                              </div>
+                              <div className="flex items-start justify-start lg:justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditLease(property, agreement)}
+                                  className="px-3 py-2 rounded-md border border-slate-300 text-sm text-slate-700 hover:bg-slate-50"
+                                >
+                                  Edit Lease
+                                </button>
                               </div>
                             </div>
                           ))}
