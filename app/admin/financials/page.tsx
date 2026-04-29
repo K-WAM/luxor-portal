@@ -95,7 +95,7 @@ type RecurringExpenseSchedule = {
   property_id: string;
   expense_type: "hoa" | "pool" | "garden" | "pm_fee";
   amount: number | string;
-  frequency: "monthly" | "annual";
+  frequency: "monthly" | "quarterly" | "annual";
   effective_start_date: string;
   effective_end_date: string | null;
   notes?: string | null;
@@ -106,7 +106,7 @@ type RecurringExpenseSchedule = {
 type RecurringExpenseForm = {
   expenseType: "hoa" | "pool" | "garden" | "pm_fee";
   amount: string;
-  frequency: "monthly" | "annual";
+  frequency: "monthly" | "quarterly" | "annual";
   effectiveStartDate: string;
   effectiveEndDate: string;
   notes: string;
@@ -1849,6 +1849,7 @@ export default function FinancialsPage() {
                                       className="w-full border border-slate-300 rounded px-2 py-1"
                                     >
                                       <option value="monthly">Monthly</option>
+                                      <option value="quarterly">Quarterly</option>
                                       <option value="annual">Annual</option>
                                     </select>
                                   ) : (
@@ -2014,6 +2015,7 @@ export default function FinancialsPage() {
                         className="w-full rounded border border-slate-300 px-3 py-2"
                       >
                         <option value="monthly">Monthly</option>
+                        <option value="quarterly">Quarterly</option>
                         <option value="annual">Annual</option>
                       </select>
                     </label>

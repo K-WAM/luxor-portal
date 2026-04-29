@@ -36,7 +36,7 @@ type PropertyFinancialFallback = {
 type RecurringExpenseScheduleRow = {
   expense_type: "hoa" | "pool" | "garden" | "pm_fee";
   amount: number | string;
-  frequency: "monthly" | "annual";
+  frequency: "monthly" | "quarterly" | "annual";
   effective_start_date: string;
   effective_end_date: string | null;
 };
@@ -228,7 +228,9 @@ const resolveScheduleValue = (
   const amount = toNullableNumber(activeSchedule.amount);
   if (!isNotNullish(amount)) return null;
 
-  return activeSchedule.frequency === "annual" ? amount / 12 : amount;
+  if (activeSchedule.frequency === "annual") return amount / 12;
+  if (activeSchedule.frequency === "quarterly") return amount / 3;
+  return amount;
 };
 
 const buildPaidRentDedupKey = (bill: PaidRentBillRow) => {

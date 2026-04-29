@@ -4,7 +4,7 @@ import { toDateOnlyString } from "@/lib/date-only";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 const ALLOWED_EXPENSE_TYPES = new Set(["hoa", "pool", "garden", "pm_fee"]);
-const ALLOWED_FREQUENCIES = new Set(["monthly", "annual"]);
+const ALLOWED_FREQUENCIES = new Set(["monthly", "quarterly", "annual"]);
 
 const normalizeAmount = (value: unknown) => {
   if (value === undefined || value === null || value === "") return null;
