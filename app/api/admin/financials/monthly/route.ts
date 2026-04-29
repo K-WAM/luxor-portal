@@ -211,7 +211,7 @@ const resolveScheduleValue = (
 ) => {
   const { monthStart } = getMonthBounds(year, month);
 
-  const activeSchedule = schedules
+  const activeSchedules = schedules
     .filter((schedule) => schedule.expense_type === expenseType)
     .filter((schedule) => {
       const start = toDateOnlyString(schedule.effective_start_date);
@@ -223,23 +223,35 @@ const resolveScheduleValue = (
     })
     .sort((a, b) =>
       String(b.effective_start_date).localeCompare(String(a.effective_start_date))
-    )[0];
+    );
 
-  if (!activeSchedule) return null;
+  if (!activeSchedules.length) return null;
 
-  const amount = toNullableNumber(activeSchedule.amount);
-  if (!isNotNullish(amount)) return null;
+  const resolveSingleScheduleAmount = (schedule: RecurringExpenseScheduleRow) => {
+    const amount = toNullableNumber(schedule.amount);
+    if (!isNotNullish(amount)) return null;
 
-  if (activeSchedule.frequency === "annual") return amount / 12;
-  if (activeSchedule.frequency === "quarterly") {
-    const startParts = getDateOnlyParts(activeSchedule.effective_start_date);
-    if (!startParts) return null;
-    const monthsSinceStart =
-      monthIndex(year, month) - monthIndex(startParts.year, startParts.month);
-    if (monthsSinceStart < 0 || monthsSinceStart % 3 !== 0) return 0;
+    if (schedule.frequency === "annual") return amount / 12;
+    if (schedule.frequency === "quarterly") {
+      const startParts = getDateOnlyParts(schedule.effective_start_date);
+      if (!startParts) return null;
+      const monthsSinceStart =
+        monthIndex(year, month) - monthIndex(startParts.year, startParts.month);
+      if (monthsSinceStart < 0 || monthsSinceStart % 3 !== 0) return 0;
+      return amount;
+    }
     return amount;
+  };
+
+  if (expenseType === "hoa") {
+    const activeAmounts = activeSchedules
+      .map(resolveSingleScheduleAmount)
+      .filter(isNotNullish);
+    if (!activeAmounts.length) return null;
+    return activeAmounts.reduce((sum, value) => sum + value, 0);
   }
-  return amount;
+
+  return resolveSingleScheduleAmount(activeSchedules[0]);
 };
 
 const buildPaidRentDedupKey = (bill: PaidRentBillRow) => {

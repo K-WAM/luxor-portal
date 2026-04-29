@@ -2049,7 +2049,7 @@ export default function FinancialsPage() {
                     </label>
                   </div>
                   <p className="text-xs text-slate-500">
-                    Overlapping schedules for the same property and expense type are blocked to preserve clean historical ranges.
+                    Overlapping schedules are blocked for pool, garden, and PM fee. HOA may have multiple concurrent schedules for the same property.
                   </p>
                   <button
                     type="submit"

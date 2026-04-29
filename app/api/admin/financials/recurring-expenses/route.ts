@@ -81,18 +81,20 @@ async function validatePayload({
 
   if (overlapError) throw overlapError;
 
-  const conflictingRow = (existingRows || []).find((row: any) => {
-    if (excludeId && row.id === excludeId) return false;
-    return rangesOverlap(
-      effectiveStartDate,
-      effectiveEndDate,
-      String(row.effective_start_date),
-      row.effective_end_date ? String(row.effective_end_date) : null
-    );
-  });
+  if (expenseType !== "hoa") {
+    const conflictingRow = (existingRows || []).find((row: any) => {
+      if (excludeId && row.id === excludeId) return false;
+      return rangesOverlap(
+        effectiveStartDate,
+        effectiveEndDate,
+        String(row.effective_start_date),
+        row.effective_end_date ? String(row.effective_end_date) : null
+      );
+    });
 
-  if (conflictingRow) {
-    return "This expense type already has an overlapping effective date range for the selected property.";
+    if (conflictingRow) {
+      return "This expense type already has an overlapping effective date range for the selected property.";
+    }
   }
 
   return null;
