@@ -884,12 +884,12 @@ export default function OwnerInvestmentReportsView() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
             {summaryCards.map((card) => (
               <div key={card.title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.title}</div>
                     <div className="mt-3 text-2xl font-semibold text-slate-900">{card.value}</div>
                   </div>
-                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${toneClassMap[card.assessment.tone]}`}>
+                  <span className={`shrink-0 max-w-full rounded-full border px-2.5 py-1 text-center text-xs font-semibold whitespace-normal break-words ${toneClassMap[card.assessment.tone]}`}>
                     {card.assessment.label}
                   </span>
                 </div>
@@ -920,9 +920,9 @@ export default function OwnerInvestmentReportsView() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {interpretationItems.map((item) => (
               <div key={item.title} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold text-slate-900">{item.title}</h3>
-                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${toneClassMap[item.assessment.tone]}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <h3 className="min-w-0 flex-1 text-sm font-semibold text-slate-900">{item.title}</h3>
+                  <span className={`shrink-0 max-w-full rounded-full border px-2.5 py-1 text-center text-xs font-semibold whitespace-normal break-words ${toneClassMap[item.assessment.tone]}`}>
                     {item.assessment.label}
                   </span>
                 </div>
@@ -1035,83 +1035,7 @@ export default function OwnerInvestmentReportsView() {
           )}
         </div>
 
-        {/* 5. Detailed metrics */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-          <details className="group">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Detailed Metrics</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Keep the full numeric table available without making it the first thing owners see.
-                </p>
-              </div>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 group-open:hidden">
-                Show details
-              </span>
-              <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 group-open:inline-flex">
-                Hide details
-              </span>
-            </summary>
-            <div className="mt-5 border-t border-slate-100 pt-5">
-              <InvestmentPerformanceTable
-                actual={{
-                  grossIncome: metrics.ytd_rent_income,
-                  maintenance: metrics.ytd_maintenance,
-                  maintenancePct: metrics.maintenance_pct,
-                  hoaPoolGarden: metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden,
-                  pmFee: metrics.ytd_pm_fee,
-                  totalExpenses: metrics.ytd_total_expenses,
-                  netIncome: metrics.ytd_net_income,
-                  propertyTax: metrics.ytd_property_tax,
-                }}
-                plan={{
-                  grossIncome: planRentPeriod,
-                  maintenance: planMaintenancePeriod,
-                  hoaPoolGarden: planHoaPoolGardenPeriod,
-                  pmFee: planPmFeePeriod,
-                  totalExpenses: planMaintenancePeriod + planHoaPoolGardenPeriod + planPmFeePeriod,
-                  netIncome: planNetIncomePeriod,
-                }}
-                yeTarget={yeTarget ? {
-                  grossIncome: yeTarget.rent_income,
-                  maintenance: yeTarget.maintenance,
-                  hoaPoolGarden: yeTarget.hoa + yeTarget.pool + yeTarget.garden,
-                  pmFee: yeTarget.net_income < yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden
-                    ? yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden - yeTarget.net_income
-                    : 0,
-                  totalExpenses: yeTarget.total_expenses,
-                  netIncome: yeTarget.net_income,
-                  propertyTax: yeTarget.property_tax,
-                } : null}
-                roi={{
-                  preTax: metrics.roi_pre_tax,
-                  postTax: metrics.roi_post_tax,
-                  appreciationPct: metrics.appreciation_pct,
-                  planRoi: planRoiPeriod,
-                  yeTargetRoi: yeTarget && metrics.cost_basis > 0 ? (yeTarget.net_income / metrics.cost_basis) * 100 : null,
-                }}
-                home={{
-                  costBasis: metrics.cost_basis,
-                  currentMarketValue: metrics.current_market_value,
-                  appreciationValue: metrics.appreciation_value,
-                  appreciationPct: metrics.appreciation_pct,
-                  ytdAppreciationValue: ytdAppreciationData.value,
-                  ytdAppreciationPct: metrics.cost_basis > 0 ? (ytdAppreciationData.value / metrics.cost_basis * 100) : 0,
-                  ytdLabel: ytdAppreciationData.label,
-                  monthlyGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned : 0,
-                  monthlyGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned / metrics.cost_basis * 100) : 0,
-                  annualizedGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned * 12 : 0,
-                  annualizedGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned * 12 / metrics.cost_basis * 100) : 0,
-                  monthsOwned: metrics.months_owned,
-                }}
-                closingCosts={saleClosingCosts}
-                onClosingCostsChange={setSaleClosingCosts}
-              />
-            </div>
-          </details>
-        </div>
-
-        {/* 6. Expense summary */}
+        {/* 5. Expense summary */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
@@ -1162,7 +1086,7 @@ export default function OwnerInvestmentReportsView() {
           </div>
         </div>
 
-        {/* 7. Charts */}
+        {/* 6. Charts */}
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-6 flex items-start justify-between gap-4">
@@ -1333,6 +1257,82 @@ export default function OwnerInvestmentReportsView() {
               }}
             />
           </div>
+        </div>
+
+        {/* 7. Detailed metrics */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Detailed Metrics</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  View the full calculation details behind your investment performance.
+                </p>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 group-open:hidden">
+                Show details
+              </span>
+              <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 group-open:inline-flex">
+                Hide details
+              </span>
+            </summary>
+            <div className="mt-5 border-t border-slate-100 pt-5">
+              <InvestmentPerformanceTable
+                actual={{
+                  grossIncome: metrics.ytd_rent_income,
+                  maintenance: metrics.ytd_maintenance,
+                  maintenancePct: metrics.maintenance_pct,
+                  hoaPoolGarden: metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden,
+                  pmFee: metrics.ytd_pm_fee,
+                  totalExpenses: metrics.ytd_total_expenses,
+                  netIncome: metrics.ytd_net_income,
+                  propertyTax: metrics.ytd_property_tax,
+                }}
+                plan={{
+                  grossIncome: planRentPeriod,
+                  maintenance: planMaintenancePeriod,
+                  hoaPoolGarden: planHoaPoolGardenPeriod,
+                  pmFee: planPmFeePeriod,
+                  totalExpenses: planMaintenancePeriod + planHoaPoolGardenPeriod + planPmFeePeriod,
+                  netIncome: planNetIncomePeriod,
+                }}
+                yeTarget={yeTarget ? {
+                  grossIncome: yeTarget.rent_income,
+                  maintenance: yeTarget.maintenance,
+                  hoaPoolGarden: yeTarget.hoa + yeTarget.pool + yeTarget.garden,
+                  pmFee: yeTarget.net_income < yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden
+                    ? yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden - yeTarget.net_income
+                    : 0,
+                  totalExpenses: yeTarget.total_expenses,
+                  netIncome: yeTarget.net_income,
+                  propertyTax: yeTarget.property_tax,
+                } : null}
+                roi={{
+                  preTax: metrics.roi_pre_tax,
+                  postTax: metrics.roi_post_tax,
+                  appreciationPct: metrics.appreciation_pct,
+                  planRoi: planRoiPeriod,
+                  yeTargetRoi: yeTarget && metrics.cost_basis > 0 ? (yeTarget.net_income / metrics.cost_basis) * 100 : null,
+                }}
+                home={{
+                  costBasis: metrics.cost_basis,
+                  currentMarketValue: metrics.current_market_value,
+                  appreciationValue: metrics.appreciation_value,
+                  appreciationPct: metrics.appreciation_pct,
+                  ytdAppreciationValue: ytdAppreciationData.value,
+                  ytdAppreciationPct: metrics.cost_basis > 0 ? (ytdAppreciationData.value / metrics.cost_basis * 100) : 0,
+                  ytdLabel: ytdAppreciationData.label,
+                  monthlyGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned : 0,
+                  monthlyGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned / metrics.cost_basis * 100) : 0,
+                  annualizedGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned * 12 : 0,
+                  annualizedGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned * 12 / metrics.cost_basis * 100) : 0,
+                  monthsOwned: metrics.months_owned,
+                }}
+                closingCosts={saleClosingCosts}
+                onClosingCostsChange={setSaleClosingCosts}
+              />
+            </div>
+          </details>
         </div>
       </div>
 

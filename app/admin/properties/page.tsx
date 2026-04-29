@@ -9,6 +9,8 @@ type LeaseAgreement = {
   leaseStartDate: string;
   leaseEndDate: string;
   monthlyRent: number;
+  deposit: number;
+  lastMonthRentCollected: boolean;
   status: "upcoming" | "active" | "expired" | "terminated";
   priorLeaseId: string | null;
   notes: string | null;
@@ -21,6 +23,8 @@ type CurrentLease = {
   leaseStartDate: string | null;
   leaseEndDate: string | null;
   monthlyRent: number;
+  deposit: number;
+  lastMonthRentCollected: boolean;
   status: "upcoming" | "active" | "expired" | "terminated";
   tenantIds: string[];
   tenantNames: string[];
@@ -63,6 +67,8 @@ type LeaseFormState = {
   leaseStartDate: string;
   leaseEndDate: string;
   monthlyRent: string;
+  securityDeposit: string;
+  lastMonthRentCollected: boolean;
   tenantIds: string[];
   notes: string;
   priorLeaseId: string | null;
@@ -74,6 +80,8 @@ const DEFAULT_LEASE_FORM: LeaseFormState = {
   leaseStartDate: "",
   leaseEndDate: "",
   monthlyRent: "",
+  securityDeposit: "",
+  lastMonthRentCollected: false,
   tenantIds: [],
   notes: "",
   priorLeaseId: null,
@@ -242,6 +250,8 @@ export default function PropertiesPage() {
       leaseStartDate: "",
       leaseEndDate: "",
       monthlyRent: String(property.current_lease?.monthlyRent || property.target_monthly_rent || ""),
+      securityDeposit: property.current_lease?.deposit ? String(property.current_lease.deposit) : "",
+      lastMonthRentCollected: !!property.current_lease?.lastMonthRentCollected,
       tenantIds: property.current_lease?.tenantIds || [],
       notes: "",
       priorLeaseId: null,
@@ -259,6 +269,8 @@ export default function PropertiesPage() {
       leaseStartDate: nextStart,
       leaseEndDate: nextStart ? addOneYearMinusOneDay(nextStart) : "",
       monthlyRent: String(priorLease?.monthlyRent || property.target_monthly_rent || ""),
+      securityDeposit: priorLease?.deposit ? String(priorLease.deposit) : "",
+      lastMonthRentCollected: !!priorLease?.lastMonthRentCollected,
       tenantIds: priorLease?.tenantIds || [],
       notes: "",
       priorLeaseId: priorLease?.id || null,
@@ -274,6 +286,8 @@ export default function PropertiesPage() {
       leaseStartDate: agreement.leaseStartDate,
       leaseEndDate: agreement.leaseEndDate,
       monthlyRent: String(agreement.monthlyRent || ""),
+      securityDeposit: agreement.deposit ? String(agreement.deposit) : "",
+      lastMonthRentCollected: !!agreement.lastMonthRentCollected,
       tenantIds: agreement.tenantIds || [],
       notes: agreement.notes || "",
       priorLeaseId: agreement.priorLeaseId,
@@ -321,6 +335,8 @@ export default function PropertiesPage() {
           leaseStartDate: leaseForm.leaseStartDate,
           leaseEndDate: leaseForm.leaseEndDate,
           monthlyRent: leaseForm.monthlyRent,
+          deposit: leaseForm.securityDeposit,
+          lastMonthRentCollected: leaseForm.lastMonthRentCollected,
           tenantIds: leaseForm.tenantIds,
           notes: leaseForm.notes,
           priorLeaseId: leaseForm.priorLeaseId,
@@ -445,7 +461,7 @@ export default function PropertiesPage() {
           </div>
 
           <form onSubmit={handleSaveLease} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Property</label>
                 <select
@@ -494,6 +510,28 @@ export default function PropertiesPage() {
                   className="w-full border border-slate-300 rounded-md px-3 py-2"
                   required
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Security Deposit</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={leaseForm.securityDeposit}
+                  onChange={(e) => setLeaseForm((prev) => ({ ...prev, securityDeposit: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-md px-3 py-2"
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="xl:col-span-3">
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={leaseForm.lastMonthRentCollected}
+                    onChange={(e) => setLeaseForm((prev) => ({ ...prev, lastMonthRentCollected: e.target.checked }))}
+                  />
+                  <span>Last month rent collected upfront</span>
+                </label>
               </div>
             </div>
 

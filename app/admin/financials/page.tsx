@@ -348,7 +348,7 @@ export default function FinancialsPage() {
 
     if (planMonths.length === 0) return zeroPlan;
 
-    // Pure plan rent: target_monthly_rent Ã— months, prorated for lease-start month.
+    // Pure plan rent: target_monthly_rent x months, prorated for lease-start month.
     // Deposit (last month's rent collected upfront) added to lease-start month when checked.
     let rent_income = 0;
     for (const { year, month } of planMonths) {
@@ -534,7 +534,7 @@ export default function FinancialsPage() {
     return performanceYear === leaseStartYear;
   }, [lastMonthRentBonus, periodType, performanceYear, leaseStartYear]);
 
-  // YTD appreciation: earliest â†’ latest market value entered in performanceYear
+  // YTD appreciation: earliest -> latest market value entered in performanceYear
   const ytdAppreciation = useMemo(() => {
     const yearData = allMonthlyData.filter(
       (m: any) => m.year === performanceYear && m.property_market_estimate && m.property_market_estimate > 0
@@ -1637,8 +1637,8 @@ export default function FinancialsPage() {
                         <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Lease Start</th>
                         <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Lease End</th>
                         <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Monthly Rent</th>
-                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Deposit</th>
-                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Last Month Rent</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Security Deposit</th>
+                        <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Last Month Rent Collected</th>
                         <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Tenants</th>
                         <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Actions</th>
                       </tr>
@@ -1726,7 +1726,7 @@ export default function FinancialsPage() {
                                     onClick={() => beginLeaseMetadataEdit(lease)}
                                     className="px-3 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
                                   >
-                                    Edit deposit / last month
+                                    Edit security deposit / last month
                                   </button>
                                 )
                               ) : (
@@ -1806,9 +1806,9 @@ export default function FinancialsPage() {
                                       }
                                       className="w-full border border-slate-300 rounded px-2 py-1"
                                     >
-                                      <option value="hoa">HOA</option>
-                                      <option value="pool">Pool</option>
-                                      <option value="garden">Garden</option>
+                                      <option value="hoa">{"-> HOA"}</option>
+                                      <option value="pool">{"-> Pool"}</option>
+                                      <option value="garden">{"-> Garden"}</option>
                                       <option value="pm_fee">PM Fee</option>
                                     </select>
                                   ) : (
@@ -1984,9 +1984,9 @@ export default function FinancialsPage() {
                         }
                         className="w-full rounded border border-slate-300 px-3 py-2"
                       >
-                        <option value="hoa">HOA</option>
-                        <option value="pool">Pool</option>
-                        <option value="garden">Garden</option>
+                        <option value="hoa">{"-> HOA"}</option>
+                        <option value="pool">{"-> Pool"}</option>
+                        <option value="garden">{"-> Garden"}</option>
                         <option value="pm_fee">PM Fee</option>
                       </select>
                     </label>
@@ -2092,27 +2092,27 @@ export default function FinancialsPage() {
                   <tr className="bg-green-50">
                     <td className="border border-slate-200 px-4 py-2 font-semibold text-green-800">Projected Gross Income</td>
                     <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-green-800">{formatCurrency(annualPlan.rent)}</td>
-                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-500">{formatCurrency(parseFloat(propertyFinancials.target_monthly_rent) || 0)}/mo Ã— 12</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-500">{formatCurrency(parseFloat(propertyFinancials.target_monthly_rent) || 0)}/mo x 12</td>
                   </tr>
                   <tr>
-                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ Maintenance (5% of rent)</td>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">{"-> Maintenance (5% of rent)"}</td>
                     <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.maintenance)}</td>
                     <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">5% of gross rent</td>
                   </tr>
                   <tr>
-                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ HOA</td>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">{"-> HOA"}</td>
                     <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.hoa)}</td>
                     <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">Annual total (all HOAs)</td>
                   </tr>
                   <tr>
-                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ Garden</td>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">{"-> Garden"}</td>
                     <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.garden)}</td>
-                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_garden_cost) || 0)}/mo Ã— 12</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_garden_cost) || 0)}/mo x 12</td>
                   </tr>
                   <tr>
-                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ Pool</td>
+                    <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">{"-> Pool"}</td>
                     <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.pool)}</td>
-                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_pool_cost) || 0)}/mo Ã— 12</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">{formatCurrency(parseFloat(propertyFinancials.planned_pool_cost) || 0)}/mo x 12</td>
                   </tr>
                   <tr className="bg-red-50">
                     <td className="border border-slate-200 px-4 py-2 font-semibold text-red-800">Projected Total Expenses</td>
@@ -2127,7 +2127,7 @@ export default function FinancialsPage() {
                   {annualPlan.propertyTax > 0 && (
                     <>
                       <tr>
-                        <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">â†³ Property Tax (est.)</td>
+                        <td className="border border-slate-200 px-4 py-2 text-slate-600 pl-8">{"-> Property Tax (est.)"}</td>
                         <td className="border border-slate-200 px-4 py-2 text-right text-slate-700">{formatCurrency(annualPlan.propertyTax)}</td>
                         <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">From YE target input above</td>
                       </tr>
@@ -2143,7 +2143,7 @@ export default function FinancialsPage() {
                     <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-slate-800">
                       {`${(annualPlan.netIncome / calculatedTotalCost * 100).toFixed(2)}%`}
                     </td>
-                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">Net income Ã· cost basis ({formatCurrency(calculatedTotalCost)})</td>
+                    <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">Net income / cost basis ({formatCurrency(calculatedTotalCost)})</td>
                   </tr>
                   {annualPlan.propertyTax > 0 && (
                     <tr className="bg-slate-100">
@@ -2151,7 +2151,7 @@ export default function FinancialsPage() {
                       <td className="border border-slate-200 px-4 py-2 text-right font-semibold text-slate-800">
                         {`${((annualPlan.netIncome - annualPlan.propertyTax) / calculatedTotalCost * 100).toFixed(2)}%`}
                       </td>
-                      <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">After property tax Ã· cost basis</td>
+                      <td className="border border-slate-200 px-4 py-2 text-xs text-slate-400">After property tax / cost basis</td>
                     </tr>
                   )}
                 </tbody>
@@ -2458,7 +2458,7 @@ export default function FinancialsPage() {
                   {
                     label: "YTD Income ROI",
                     value: `${(actualYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
-                    sub: `Net ${formatCurrency(actualYtd.net_income)} Ã· cost basis`,
+                    sub: `Net ${formatCurrency(actualYtd.net_income)} / cost basis`,
                     color: actualYtd.net_income >= 0 ? "text-emerald-700" : "text-red-600",
                   },
                   {
@@ -2483,7 +2483,7 @@ export default function FinancialsPage() {
                       ? `${((actualYtd.net_income + ytdAppreciation.value) / calculatedTotalCost * 100).toFixed(2)}%`
                       : `${(actualYtd.net_income / calculatedTotalCost * 100).toFixed(2)}%`,
                     sub: ytdAppreciation.hasData
-                      ? `Net income + YTD appreciation Ã· cost basis`
+                      ? `Net income + YTD appreciation / cost basis`
                       : "Net income only - no market data this year",
                     color: (actualYtd.net_income + (ytdAppreciation.hasData ? ytdAppreciation.value : 0)) >= 0
                       ? "text-emerald-700" : "text-red-600",
@@ -2517,9 +2517,9 @@ export default function FinancialsPage() {
                     <th className="border border-slate-300 px-3 py-2 text-left font-semibold sticky left-0 bg-slate-100 z-20">Month</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Rent Income</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Maintenance</th>
-                    <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Pool</th>
-                    <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Garden</th>
-                    <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">HOA</th>
+                    <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">{"-> Pool"}</th>
+                    <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">{"-> Garden"}</th>
+                    <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">{"-> HOA"}</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">PM Fee</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Property Tax</th>
                     <th className="border border-slate-300 px-3 py-2 text-right font-semibold bg-slate-100">Market Value</th>
@@ -2824,7 +2824,7 @@ export default function FinancialsPage() {
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Formula Reference
               </span>
-              <span className="text-slate-400 text-sm">{showFormulas ? "â–² Hide" : "â–¼ Show"}</span>
+              <span className="text-slate-400 text-sm">{showFormulas ? "Hide" : "Show"}</span>
             </button>
             {showFormulas && (
               <div className="px-5 py-4 text-xs text-slate-600 space-y-4 bg-white">
@@ -2853,13 +2853,13 @@ export default function FinancialsPage() {
                     <tbody className="divide-y divide-slate-100">
                       {[
                         ["Plan Period", "YTD: lease-start month (or Jan) through current month of selected year. Lease / All-Time: lease-start through today (capped at lease_end for Lease view)."],
-                        ["Plan Gross Income", "target_monthly_rent Ã— months_elapsed. First month prorated by days remaining after lease start. Includes deposit (target_monthly_rent) in lease-start month when last_month_rent_collected is checked. Pure plan - no actual override."],
-                        ["Plan Maintenance", "Plan Gross Income Ã— 5%"],
-                        ["Plan Pool / Garden", "planned_monthly_cost Ã— months_elapsed"],
-                        ["Plan HOA", "(planned_annual_hoa Ã· 12) Ã— months_elapsed"],
-                        ["Plan PM Fee", "planned_pm_fee_monthly Ã— months_elapsed"],
+                        ["Plan Gross Income", "target_monthly_rent x months_elapsed. First month prorated by days remaining after lease start. Includes deposit (target_monthly_rent) in lease-start month when last_month_rent_collected is checked. Pure plan - no actual override."],
+                        ["Plan Maintenance", "Plan Gross Income x 5%"],
+                        ["Plan Pool / Garden", "planned_monthly_cost x months_elapsed"],
+                        ["Plan HOA", "(planned_annual_hoa / 12) x months_elapsed"],
+                        ["Plan PM Fee", "planned_pm_fee_monthly x months_elapsed"],
                         ["Plan Total Expenses", "Maintenance + HOA + Pool + Garden + PM Fee  (property tax excluded)"],
-                        ["Plan Net Income", "Plan Gross Income âˆ’ Plan Total Expenses"],
+                        ["Plan Net Income", "Plan Gross Income - Plan Total Expenses"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2877,9 +2877,9 @@ export default function FinancialsPage() {
                       {[
                         ["Gross Income", "Sum of monthly rent_income for the period. Includes last-month deposit in the month it was physically received."],
                         ["Last-Month Deposit (sub-row)", "target_monthly_rent collected upfront at lease start. Shown as an informational breakdown of Gross Income when the deposit falls within the current view period."],
-                        ["Maintenance %", "Maintenance Ã· Gross Income Ã— 100  |  Target: < 5%"],
+                        ["Maintenance %", "Maintenance / Gross Income x 100  |  Target: < 5%"],
                         ["Total Expenses", "Maintenance + HOA + Pool + Garden + PM Fee  (property tax excluded from this line)"],
-                        ["Net Income", "Gross Income âˆ’ Total Expenses"],
+                        ["Net Income", "Gross Income - Total Expenses"],
                         ["Property Tax", "Actual entered - displayed below the line, not included in Net Income or Total Expenses"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
@@ -2896,11 +2896,11 @@ export default function FinancialsPage() {
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["ROI - Net Income (Pre-Tax)", "Net Income Ã· Cost Basis Ã— 100"],
-                        ["ROI Post Property Tax", "(Net Income âˆ’ Property Tax) Ã· Cost Basis Ã— 100"],
-                        ["Projected ROI (Pre-Tax)", "(target_monthly_rent âˆ’ planned_pool âˆ’ planned_garden âˆ’ planned_hoa âˆ’ planned_pm_fee) Ã— 12 Ã· Cost Basis Ã— 100"],
-                        ["ROI if Sold", "(Net Income âˆ’ Property Tax âˆ’ Est. Closing Costs + Appreciation since purchase) Ã· Cost Basis Ã— 100"],
-                        ["Î” to Plan", "(Actual âˆ’ Plan) Ã· |Plan| Ã— 100  |  Green = favorable, Red = unfavorable"],
+                        ["ROI - Net Income (Pre-Tax)", "Net Income / Cost Basis x 100"],
+                        ["ROI Post Property Tax", "(Net Income - Property Tax) / Cost Basis x 100"],
+                        ["Projected ROI (Pre-Tax)", "(target_monthly_rent - planned_pool - planned_garden - planned_hoa - planned_pm_fee) x 12 / Cost Basis x 100"],
+                        ["ROI if Sold", "(Net Income - Property Tax - Est. Closing Costs + Appreciation since purchase) / Cost Basis x 100"],
+                        ["Delta to Plan", "(Actual - Plan) / |Plan| x 100  |  Green = favorable, Red = unfavorable"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2916,10 +2916,10 @@ export default function FinancialsPage() {
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["Appreciation since purchase", "(Current Market Value âˆ’ Cost Basis) Ã· Cost Basis Ã— 100"],
-                        ["YTD Appreciation", "(Latest âˆ’ Earliest market estimate entered in performance year) Ã· Cost Basis Ã— 100"],
-                        ["Monthly Gain", "Appreciation since purchase ($) Ã· Months Owned"],
-                        ["Annualized Gain", "Monthly Gain Ã— 12"],
+                        ["Appreciation since purchase", "(Current Market Value - Cost Basis) / Cost Basis x 100"],
+                        ["YTD Appreciation", "(Latest - Earliest market estimate entered in performance year) / Cost Basis x 100"],
+                        ["Monthly Gain", "Appreciation since purchase ($) / Months Owned"],
+                        ["Annualized Gain", "Monthly Gain x 12"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2935,10 +2935,10 @@ export default function FinancialsPage() {
                   <table className="w-full border-collapse">
                     <tbody className="divide-y divide-slate-100">
                       {[
-                        ["YTD Income ROI", "Net Income Ã· Cost Basis Ã— 100"],
-                        ["YTD Home Appreciation", "(Latest âˆ’ Earliest market estimate in year) Ã· Cost Basis Ã— 100"],
-                        ["Appreciation Since Purchase", "(Current Market Value âˆ’ Cost Basis) Ã· Cost Basis Ã— 100"],
-                        ["Total YTD ROI", "(Net Income + YTD Appreciation $) Ã· Cost Basis Ã— 100"],
+                        ["YTD Income ROI", "Net Income / Cost Basis x 100"],
+                        ["YTD Home Appreciation", "(Latest - Earliest market estimate in year) / Cost Basis x 100"],
+                        ["Appreciation Since Purchase", "(Current Market Value - Cost Basis) / Cost Basis x 100"],
+                        ["Total YTD ROI", "(Net Income + YTD Appreciation $) / Cost Basis x 100"],
                       ].map(([label, formula]) => (
                         <tr key={label}>
                           <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap w-52">{label}</td>
@@ -2986,9 +2986,7 @@ export default function FinancialsPage() {
                   <td className="border border-slate-300 px-4 py-2">{prop.address}</td>
                   <td className="border border-slate-300 px-4 py-2">
                     {prop.financials_updated_at ? (
-                      <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">
-                        âœ“ Yes
-                      </span>
+                      <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">Yes</span>
                     ) : (
                       <span className="inline-block px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium">
                         No data
