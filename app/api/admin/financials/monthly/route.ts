@@ -140,6 +140,8 @@ const getMonthBounds = (year: number, month: number) => {
   return { monthStart, monthEnd };
 };
 
+const monthIndex = (year: number, month: number) => year * 12 + (month - 1);
+
 const compareMonthKeys = (year: number, month: number, currentYear: number, currentMonth: number) => {
   if (year !== currentYear) return year > currentYear ? 1 : -1;
   if (month !== currentMonth) return month > currentMonth ? 1 : -1;
@@ -229,7 +231,14 @@ const resolveScheduleValue = (
   if (!isNotNullish(amount)) return null;
 
   if (activeSchedule.frequency === "annual") return amount / 12;
-  if (activeSchedule.frequency === "quarterly") return amount / 3;
+  if (activeSchedule.frequency === "quarterly") {
+    const startParts = getDateOnlyParts(activeSchedule.effective_start_date);
+    if (!startParts) return null;
+    const monthsSinceStart =
+      monthIndex(year, month) - monthIndex(startParts.year, startParts.month);
+    if (monthsSinceStart < 0 || monthsSinceStart % 3 !== 0) return 0;
+    return amount;
+  }
   return amount;
 };
 
