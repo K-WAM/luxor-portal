@@ -263,7 +263,7 @@ const aggregatePaidRentByMonth = (
   const monthlyBuckets = new Map<string, Map<string, number>>();
 
   for (const bill of paidBills) {
-    const paidParts = getDateOnlyParts(bill.paid_date);
+    const paidParts = getDateOnlyParts(bill.paid_date) || getDateOnlyParts(bill.due_date);
     if (!paidParts) continue;
 
     const paidMonthKey = toMonthKey(paidParts.year, paidParts.month);
@@ -455,8 +455,7 @@ async function loadComputedMonthlyRows(
         .eq("property_id", propertyId)
         .eq("bill_type", "rent")
         .eq("status", "paid")
-        .gte("paid_date", rangeStart)
-        .lte("paid_date", rangeEnd),
+        .or(`and(paid_date.gte.${rangeStart},paid_date.lte.${rangeEnd}),and(paid_date.is.null,due_date.gte.${rangeStart},due_date.lte.${rangeEnd})`),
       supabaseAdmin
         .from("property_recurring_expense_schedules")
         .select("expense_type, amount, frequency, effective_start_date, effective_end_date")

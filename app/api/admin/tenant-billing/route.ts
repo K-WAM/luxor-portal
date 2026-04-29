@@ -519,6 +519,11 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: `status must be one of ${BILL_STATUSES.join(", ")}` }, { status: 400 });
       }
       updates.status = body.status;
+      if (body.status === "paid") {
+        updates.paid_date = toDateOnlyString(new Date().toISOString());
+      } else if (existingBill.status === "paid") {
+        updates.paid_date = null;
+      }
     }
 
     if (body.amount !== undefined) {
