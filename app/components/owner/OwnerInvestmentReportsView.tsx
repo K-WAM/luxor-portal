@@ -1,8 +1,7 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/app/context/AuthContext";
-import GaugeChart from "@/app/components/charts/GaugeChart";
 import { calculateCanonicalMetrics } from "@/lib/calculations/canonical-metrics";
 import { calculateExpectedRoi } from "@/lib/financial-calculations";
 import InvestmentPerformanceTable from "@/app/components/InvestmentPerformanceTable";
@@ -296,22 +295,6 @@ export default function OwnerInvestmentReportsView() {
     };
   }, [financialAggregate, periodLabel, periodType]);
 
-  const expenseBreakdownTotals = useMemo(() => {
-    const categories = [
-      { label: "Maintenance", amount: financialAggregate.maintenance, color: "#ea580c" },
-      { label: "HOA", amount: financialAggregate.hoa, color: "#eab308" },
-      { label: "Pool", amount: financialAggregate.pool, color: "#3b82f6" },
-      { label: "Garden", amount: financialAggregate.garden, color: "#94a3b8" },
-      { label: "PM Fee", amount: financialAggregate.pmFee, color: "#0f766e" },
-    ];
-
-    if (financialAggregate.otherExpenses > 0) {
-      categories.push({ label: "Other", amount: financialAggregate.otherExpenses, color: "#7c3aed" });
-    }
-
-    return categories;
-  }, [financialAggregate]);
-
   const marketEstimateData = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -324,7 +307,7 @@ export default function OwnerInvestmentReportsView() {
     });
   }, [chronologicalMonthly]);
 
-  // YTD appreciation: earliest â†’ latest market value in selectedYear
+  // YTD appreciation: earliest to latest market value in selectedYear
   const ytdAppreciationData = useMemo(() => {
     const yearData = monthly
       .filter((m) => m.year === selectedYear && (m.property_market_estimate || 0) > 0)
@@ -624,7 +607,7 @@ export default function OwnerInvestmentReportsView() {
     );
   }
 
-  // Projected ROI â€” canonical single calc: annual plan net income / cost basis
+  // Projected ROI: canonical single calc using annual plan net income / cost basis.
   // Same formula used in admin dashboard and admin financials page.
   const projectedRoi = calculateExpectedRoi({
     targetMonthlyRent: property.target_monthly_rent || 0,
@@ -653,16 +636,11 @@ export default function OwnerInvestmentReportsView() {
     ? (planNetIncomePeriod / metrics.cost_basis) * 100
     : 0;
 
-  const fmt$ = formatCurrency;
-  const fmtPct = (v: number) => `${v.toFixed(2)}%`;
-
   // Performance: grade against plan-based projected ROI (same unified calc)
   const performanceStatus =
     projectedRoi >= 5 && metrics.maintenance_pct < 5 ? "green" :
     projectedRoi >= 3 && metrics.maintenance_pct < 7 ? "yellow" : "red";
   const performanceLabel = performanceStatus === "green" ? "Excellent" : performanceStatus === "yellow" ? "Good" : "Needs Attention";
-
-  const gaugeRoiTotal = metrics.roi_with_appreciation;
   const leaseStartDate = parseDateOnly(property.lease_start);
   const leaseEndDate = parseDateOnly(property.lease_end);
   const renewalDate = leaseEndDate ? new Date(leaseEndDate.getTime() - 90 * 24 * 60 * 60 * 1000) : null;
@@ -704,9 +682,137 @@ export default function OwnerInvestmentReportsView() {
             ? "bg-slate-200 text-slate-800 border-slate-300"
             : "bg-slate-100 text-slate-700 border-slate-200";
 
+  const hasOperatingData = filteredMonthly.length > 0;
+  const hasCostBasis = metrics.cost_basis > 0;
+  const hasMarketValue = metrics.current_market_value > 0;
+  const hasMaintenanceRatio = metrics.ytd_rent_income > 0;
+  const hasAppreciationData = hasCostBasis && hasMarketValue;
+  const currentValueDelta = hasAppreciationData ? metrics.current_market_value - metrics.cost_basis : null;
+
+  const formatSignedCurrency = (value: number) => `${value >= 0 ? "+" : "-"}${formatCurrency(Math.abs(value))}`;
+
+  const toneClassMap = {
+    strong: "bg-green-50 text-green-700 border-green-200",
+    stable: "bg-sky-50 text-sky-700 border-sky-200",
+    watch: "bg-amber-50 text-amber-700 border-amber-200",
+    attention: "bg-rose-50 text-rose-700 border-rose-200",
+    neutral: "bg-slate-50 text-slate-600 border-slate-200",
+  } as const;
+
+  const assessNetIncome = () => {
+    if (!hasOperatingData) return { label: "Not enough data yet", tone: "neutral" as const };
+    if (metrics.ytd_net_income >= planNetIncomePeriod && metrics.ytd_net_income > 0) return { label: "Strong", tone: "strong" as const };
+    if (metrics.ytd_net_income >= 0) return { label: "Stable", tone: "stable" as const };
+    if (metrics.ytd_net_income >= -Math.max(planRentPeriod * 0.05, 1)) return { label: "Watch", tone: "watch" as const };
+    return { label: "Needs attention", tone: "attention" as const };
+  };
+
+  const assessRoi = () => {
+    if (!hasCostBasis || !hasOperatingData) return { label: "Not enough data yet", tone: "neutral" as const };
+    if (metrics.roi_pre_tax >= 5) return { label: "Strong", tone: "strong" as const };
+    if (metrics.roi_pre_tax >= 3) return { label: "Stable", tone: "stable" as const };
+    if (metrics.roi_pre_tax >= 0) return { label: "Watch", tone: "watch" as const };
+    return { label: "Needs attention", tone: "attention" as const };
+  };
+
+  const assessMaintenance = () => {
+    if (!hasMaintenanceRatio) return { label: "Not enough data yet", tone: "neutral" as const };
+    if (metrics.maintenance_pct < 5) return { label: "Strong", tone: "strong" as const };
+    if (metrics.maintenance_pct < 7) return { label: "Stable", tone: "stable" as const };
+    if (metrics.maintenance_pct < 10) return { label: "Watch", tone: "watch" as const };
+    return { label: "Needs attention", tone: "attention" as const };
+  };
+
+  const assessAppreciation = () => {
+    if (!hasAppreciationData || currentValueDelta === null) return { label: "Not enough data yet", tone: "neutral" as const };
+    if (currentValueDelta > 0) return { label: "Strong", tone: "strong" as const };
+    if (currentValueDelta === 0) return { label: "Stable", tone: "stable" as const };
+    if (currentValueDelta >= -(metrics.cost_basis * 0.03)) return { label: "Watch", tone: "watch" as const };
+    return { label: "Needs attention", tone: "attention" as const };
+  };
+
+  const assessValuePosition = () => {
+    if (!hasAppreciationData || currentValueDelta === null) return { label: "Not enough data yet", tone: "neutral" as const };
+    if (currentValueDelta >= metrics.cost_basis * 0.1) return { label: "Strong", tone: "strong" as const };
+    if (currentValueDelta >= 0) return { label: "Stable", tone: "stable" as const };
+    if (currentValueDelta >= -(metrics.cost_basis * 0.03)) return { label: "Watch", tone: "watch" as const };
+    return { label: "Needs attention", tone: "attention" as const };
+  };
+
+  const netIncomeAssessment = assessNetIncome();
+  const roiAssessment = assessRoi();
+  const maintenanceAssessment = assessMaintenance();
+  const appreciationAssessment = assessAppreciation();
+  const valueAssessment = assessValuePosition();
+
+  const summaryCards = [
+    {
+      title: "Net income",
+      value: hasOperatingData ? formatCurrency(metrics.ytd_net_income) : "Not enough data yet",
+      detail: hasOperatingData ? `${periodLabel} operating result` : "Waiting for billed rent or recorded monthly activity.",
+      assessment: netIncomeAssessment,
+    },
+    {
+      title: "ROI",
+      value: hasCostBasis && hasOperatingData ? formatPercentage(metrics.roi_pre_tax) : "Not enough data yet",
+      detail: hasCostBasis ? `Projected plan ROI ${formatPercentage(projectedRoi)}` : "Add a cost basis to evaluate return.",
+      assessment: roiAssessment,
+    },
+    {
+      title: "Maintenance burden",
+      value: hasMaintenanceRatio ? formatPercentage(metrics.maintenance_pct) : "Not enough data yet",
+      detail: hasMaintenanceRatio ? `${formatCurrency(metrics.ytd_maintenance)} of ${formatCurrency(metrics.ytd_rent_income)} rent` : "Needs rent and maintenance data in the selected period.",
+      assessment: maintenanceAssessment,
+    },
+    {
+      title: "Appreciation since purchase",
+      value: currentValueDelta !== null ? formatSignedCurrency(currentValueDelta) : "Not enough data yet",
+      detail: hasAppreciationData ? formatPercentage(metrics.appreciation_pct) : "Needs both cost basis and market value.",
+      assessment: appreciationAssessment,
+    },
+    {
+      title: "Current value vs cost basis",
+      value: hasAppreciationData ? `${formatCurrency(metrics.current_market_value)} vs ${formatCurrency(metrics.cost_basis)}` : "Not enough data yet",
+      detail: hasAppreciationData ? `Gap ${formatSignedCurrency(currentValueDelta ?? 0)}` : "Cost basis or current value is still missing.",
+      assessment: valueAssessment,
+    },
+  ];
+
+  const interpretationItems = [
+    {
+      title: "Income performance",
+      assessment: netIncomeAssessment,
+      body: hasOperatingData
+        ? `${periodLabel} net income is ${formatCurrency(metrics.ytd_net_income)} against a plan of ${formatCurrency(planNetIncomePeriod)}.`
+        : "Not enough data yet to compare income against plan.",
+    },
+    {
+      title: "Maintenance pressure",
+      assessment: maintenanceAssessment,
+      body: hasMaintenanceRatio
+        ? `Maintenance is ${formatPercentage(metrics.maintenance_pct)} of rent, with a target below 5%.`
+        : "Not enough data yet to rate maintenance against rent.",
+    },
+    {
+      title: "Property appreciation",
+      assessment: appreciationAssessment,
+      body: hasAppreciationData && currentValueDelta !== null
+        ? `Current value is ${formatCurrency(metrics.current_market_value)} versus a cost basis of ${formatCurrency(metrics.cost_basis)}.`
+        : "Not enough data yet to rate appreciation.",
+    },
+    {
+      title: "Overall status",
+      assessment: {
+        label: performanceLabel === "Needs Attention" ? "Needs attention" : performanceLabel === "Excellent" ? "Strong" : "Stable",
+        tone: performanceStatus === "green" ? "strong" as const : performanceStatus === "yellow" ? "stable" as const : "attention" as const,
+      },
+      body: `Projected ROI is ${formatPercentage(projectedRoi)} and maintenance is ${formatPercentage(metrics.maintenance_pct)} of rent for the selected report window.`,
+    },
+  ];
+
   return (
     <div className="space-y-8">
-      {/* Header â€” unchanged */}
+      {/* Header */}
       <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white px-4 py-5 shadow-sm md:top-4 md:px-8 md:py-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between gap-8 mb-4">
@@ -762,36 +868,81 @@ export default function OwnerInvestmentReportsView() {
 
       <div className="max-w-7xl mx-auto p-8 space-y-8">
 
-        {/* 1. ROI Speedometers â€” top */}
+        {/* 1. Investment summary */}
         <div>
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-4">Return on Investment</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div
-              className={`bg-white border-2 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help ${projectedRoi >= 5 ? "border-green-400" : projectedRoi >= 3 ? "border-yellow-400" : "border-red-400"}`}
-              title="Projected ROI (Pre-Tax): Annual Plan Net Income / Cost Basis Ã— 100"
-            >
-              <GaugeChart value={projectedRoi} target={0} label="Projected ROI (Pre-Tax)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
-              {activeRole === "admin" && (
-                <div className="mt-1 text-center text-[10px] text-slate-400 leading-tight">
-                  Plan net Ã· {formatCurrency(metrics.cost_basis)}
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Investment Performance Summary</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                A short operating summary for the selected property and report window.
+              </p>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+              {periodLabel}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {summaryCards.map((card) => (
+              <div key={card.title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.title}</div>
+                    <div className="mt-3 text-2xl font-semibold text-slate-900">{card.value}</div>
+                  </div>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${toneClassMap[card.assessment.tone]}`}>
+                    {card.assessment.label}
+                  </span>
                 </div>
-              )}
-            </div>
-            <div
-              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Actual ROI (Period): Period Net Income / Cost Basis Ã— 100"
-            >
-              <GaugeChart value={metrics.roi_pre_tax} target={0} label="Actual ROI (Period)" unit="%" maxValue={15} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
-            </div>
-            <div
-              className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-help"
-              title="Total ROI: (Net Income + Appreciation) / Cost Basis Ã— 100"
-            >
-              <GaugeChart value={gaugeRoiTotal} target={0} label="Total ROI (with Appreciation)" unit="%" maxValue={40} colorThresholds={{ green: 80, yellow: 60 }} showTarget={false} />
-            </div>
+                <p className="mt-3 text-sm text-slate-500">{card.detail}</p>
+              </div>
+            ))}
           </div>
         </div>
 
+        {/* 2. Plain-English interpretation */}
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Plain-English Interpretation</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Short takeaways tied to the same underlying metrics shown below.
+              </p>
+            </div>
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+              performanceStatus === "green" ? "bg-green-50 border-green-200 text-green-700" :
+              performanceStatus === "yellow" ? "bg-yellow-50 border-yellow-200 text-yellow-700" :
+              "bg-red-50 border-red-200 text-red-700"
+            }`}>
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${performanceStatus === "green" ? "bg-green-500" : performanceStatus === "yellow" ? "bg-yellow-500" : "bg-red-500"}`} />
+              {performanceLabel}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {interpretationItems.map((item) => (
+              <div key={item.title} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-slate-900">{item.title}</h3>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${toneClassMap[item.assessment.tone]}`}>
+                    {item.assessment.label}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Performance thresholds */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-slate-100 bg-white px-4 py-3 text-xs text-slate-500">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Thresholds</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />Excellent: ROI &gt;= 5%, Maintenance &lt; 5%</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-yellow-500" />Good: ROI &gt;= 3%, Maintenance &lt; 7%</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />Needs Attention: below target</span>
+          <span className="ml-auto text-slate-400">
+            Now: {formatPercentage(projectedRoi)} projected ROI | {formatPercentage(metrics.maintenance_pct)} maintenance{" -> "}
+            <span className={`font-semibold ${performanceStatus === "green" ? "text-green-600" : performanceStatus === "yellow" ? "text-yellow-600" : "text-red-600"}`}>{performanceLabel}</span>
+          </span>
+        </div>
         {/* 2. Unit Timeline */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
           <div className="flex items-center justify-between gap-3 mb-5">
@@ -884,279 +1035,202 @@ export default function OwnerInvestmentReportsView() {
           )}
         </div>
 
-        {/* 3. Investment Report Narrative */}
+        {/* 5. Detailed metrics */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Investment Report</h2>
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
-              performanceStatus === "green" ? "bg-green-50 border-green-200 text-green-700" :
-              performanceStatus === "yellow" ? "bg-yellow-50 border-yellow-200 text-yellow-700" :
-              "bg-red-50 border-red-200 text-red-700"
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full inline-block ${performanceStatus === "green" ? "bg-green-500" : performanceStatus === "yellow" ? "bg-yellow-500" : "bg-red-500"}`} />
-              {performanceLabel}
-            </span>
-          </div>
-          <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
-            <p>
-              Investment performance is rated <span className={`font-semibold ${performanceStatus === "green" ? "text-green-700" : performanceStatus === "yellow" ? "text-yellow-700" : "text-red-700"}`}>{performanceLabel}</span> based on income, maintenance, expenses, and asset appreciation.
-            </p>
-            <p>
-              <span className="font-semibold">Operating Income & Expenses: </span>
-              {periodLabel} gross income is <span className="font-medium">{formatCurrency(metrics.ytd_rent_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planRentPeriod)}</span>. Maintenance is <span className={`font-medium ${metrics.maintenance_pct < 5 ? "text-green-700" : metrics.maintenance_pct < 7 ? "text-yellow-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_maintenance)} ({formatPercentage(metrics.maintenance_pct)} of rent)</span> â€” target is under 5%. Other expenses (HOA, pool, garden, PM fee) total {formatCurrency(metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden + metrics.ytd_pm_fee)}, leaving a net income of <span className={`font-semibold ${metrics.ytd_net_income >= 0 ? "text-green-700" : "text-red-700"}`}>{formatCurrency(metrics.ytd_net_income)}</span> against a plan of <span className="font-medium">{formatCurrency(planNetIncomePeriod)}</span>. Projected ROI (pre-tax) is <span className={`font-semibold ${projectedRoi >= 5 ? "text-green-700" : projectedRoi >= 3 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(projectedRoi)}</span> (annual plan net Ã· cost basis); actual ROI this period is {formatPercentage(metrics.roi_pre_tax)} against a period plan of {formatPercentage(planRoiPeriod)}.
-            </p>
-            {metrics.ytd_property_tax > 0 ? (
-              <p>
-                <span className="font-semibold">Property Taxes: </span>
-                Property taxes of {formatCurrency(metrics.ytd_property_tax)} have been collected this period, reducing after-tax net income to {formatCurrency(metrics.ytd_net_income - metrics.ytd_property_tax)}.
-              </p>
-            ) : (
-              <p>
-                <span className="font-semibold">Property Taxes: </span>
-                Property taxes have not been collected yet this period and are not reflected in the figures above.
-              </p>
-            )}
-            <p>
-              <span className="font-semibold">Home Value: </span>
-              The property was acquired for {formatCurrency(metrics.cost_basis)} and is currently valued at <span className="font-medium">{formatCurrency(metrics.current_market_value)}</span>{metrics.appreciation_value !== 0 ? `, ${metrics.appreciation_value >= 0 ? "an increase" : "a decrease"} of ${formatCurrency(Math.abs(metrics.appreciation_value))} (${formatPercentage(Math.abs(metrics.appreciation_pct))})` : ""}{ metrics.months_owned > 0 ? ` over ${metrics.months_owned} months of ownership` : ""}. Total return including appreciation is <span className={`font-semibold ${metrics.roi_with_appreciation >= 10 ? "text-green-700" : metrics.roi_with_appreciation >= 5 ? "text-yellow-700" : "text-red-700"}`}>{formatPercentage(metrics.roi_with_appreciation)}</span>.
-            </p>
-          </div>
-        </div>
-
-        {/* 4. Investment Metrics â€” Excel A29:I43 layout */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Investment Metrics</h2>
-            <span className="text-xs text-slate-400">{periodLabel}</span>
-          </div>
-          <InvestmentPerformanceTable
-            actual={{
-              grossIncome: metrics.ytd_rent_income,
-              maintenance: metrics.ytd_maintenance,
-              maintenancePct: metrics.maintenance_pct,
-              hoaPoolGarden: metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden,
-              pmFee: metrics.ytd_pm_fee,
-              totalExpenses: metrics.ytd_total_expenses,
-              netIncome: metrics.ytd_net_income,
-              propertyTax: metrics.ytd_property_tax,
-            }}
-            plan={{
-              grossIncome: planRentPeriod,
-              maintenance: planMaintenancePeriod,
-              hoaPoolGarden: planHoaPoolGardenPeriod,
-              pmFee: planPmFeePeriod,
-              totalExpenses: planMaintenancePeriod + planHoaPoolGardenPeriod + planPmFeePeriod,
-              netIncome: planNetIncomePeriod,
-            }}
-            yeTarget={yeTarget ? {
-              grossIncome: yeTarget.rent_income,
-              maintenance: yeTarget.maintenance,
-              hoaPoolGarden: yeTarget.hoa + yeTarget.pool + yeTarget.garden,
-              pmFee: yeTarget.net_income < yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden
-                ? yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden - yeTarget.net_income
-                : 0,
-              totalExpenses: yeTarget.total_expenses,
-              netIncome: yeTarget.net_income,
-              propertyTax: yeTarget.property_tax,
-            } : null}
-            roi={{
-              preTax: metrics.roi_pre_tax,
-              postTax: metrics.roi_post_tax,
-              appreciationPct: metrics.appreciation_pct,
-              planRoi: planRoiPeriod,
-              yeTargetRoi: yeTarget && metrics.cost_basis > 0 ? (yeTarget.net_income / metrics.cost_basis) * 100 : null,
-            }}
-            home={{
-              costBasis: metrics.cost_basis,
-              currentMarketValue: metrics.current_market_value,
-              appreciationValue: metrics.appreciation_value,
-              appreciationPct: metrics.appreciation_pct,
-              ytdAppreciationValue: ytdAppreciationData.value,
-              ytdAppreciationPct: metrics.cost_basis > 0 ? (ytdAppreciationData.value / metrics.cost_basis * 100) : 0,
-              ytdLabel: ytdAppreciationData.label,
-              monthlyGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned : 0,
-              monthlyGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned / metrics.cost_basis * 100) : 0,
-              annualizedGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned * 12 : 0,
-              annualizedGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned * 12 / metrics.cost_basis * 100) : 0,
-              monthsOwned: metrics.months_owned,
-            }}
-            closingCosts={saleClosingCosts}
-            onClosingCostsChange={setSaleClosingCosts}
-          />
-        </div>
-
-        {/* 5. Performance Thresholds â€” compact, subdued */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500 bg-white border border-slate-100 rounded-lg py-3 px-4">
-          <span className="font-semibold text-[10px] text-slate-400 uppercase tracking-wide">Thresholds</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />Excellent: Proj ROI â‰¥5%, Maint &lt;5%</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />Good: â‰¥3%, Maint &lt;7%</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />Needs Attention: below these</span>
-          <span className="ml-auto text-slate-400">
-            Now: {formatPercentage(projectedRoi)} proj Â· {formatPercentage(metrics.maintenance_pct)} maint{" â†’ "}
-            <span className={`font-semibold ${performanceStatus === "green" ? "text-green-600" : performanceStatus === "yellow" ? "text-yellow-600" : "text-red-600"}`}>{performanceLabel}</span>
-          </span>
-        </div>
-
-        {/* 7. Financial Overview */}
-        <div className="space-y-6">
-          <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Financial Overview</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                One reconciled reporting set for statement, expense allocation, and performance trend.
-              </p>
-            </div>
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Active report filter: {periodLabel}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                    {`Income Statement - ${periodLabel}`}
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {`Aggregated across the currently selected ${periodLabel.toLowerCase()} reporting window.`}
-                  </p>
-                </div>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                  financialStatementRow.netIncome >= 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-                }`}>
-                  {financialStatementRow.netIncome >= 0 ? "Positive Net" : "Negative Net"}
-                </span>
-              </div>
-              <Bar
-                data={{
-                  labels: ["Gross Income", "Total Expenses", "Net Income"],
-                  datasets: [{
-                    data: [
-                      financialStatementRow.grossIncome,
-                      financialStatementRow.totalExpenses,
-                      financialStatementRow.netIncome,
-                    ],
-                    backgroundColor: [
-                      "#0f766e",
-                      "#c2410c",
-                      financialStatementRow.netIncome >= 0 ? "#15803d" : "#dc2626",
-                    ],
-                    borderRadius: 6,
-                  }]
-                }}
-                options={{
-                  devicePixelRatio: 2,
-                  responsive: true,
-                  maintainAspectRatio: true,
-                  plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                      backgroundColor: "rgba(15,23,42,0.92)",
-                      titleColor: "#f8fafc",
-                      bodyColor: "#e2e8f0",
-                      padding: 10,
-                      callbacks: {
-                        label: (context) => `${context.label}: ${formatCurrency(context.parsed.y || 0)}`,
-                      }
-                    }
-                  },
-                  scales: {
-                    y: {
-                      beginAtZero: true,
-                      ticks: {
-                        color: "#64748b",
-                        font: { size: 11 },
-                        callback: (value) => "$" + value.toLocaleString(),
-                      },
-                      grid: { color: "#f1f5f9" }
-                    },
-                    x: {
-                      ticks: { color: "#64748b", font: { size: 10 } },
-                      grid: { display: false }
-                    }
-                  }
-                }}
-              />
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                  {isAllTimeReport ? "Expense Breakdown - All Time" : "Monthly Expense Breakdown"}
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  {isAllTimeReport
-                    ? "Cumulative expense totals by category across the full selected all-time history."
-                    : "Monthly stacked expense allocation bounded by the selected report period."}
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Detailed Metrics</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Keep the full numeric table available without making it the first thing owners see.
                 </p>
               </div>
-              <Bar
-                data={!isAllTimeReport
-                  ? {
-                      labels: financialRowsForView.map((row) => row.label),
-                      datasets: [
-                        { label: "Maintenance", data: financialRowsForView.map((row) => row.maintenance), backgroundColor: "#ea580c", borderRadius: 2 },
-                        { label: "HOA", data: financialRowsForView.map((row) => row.hoa), backgroundColor: "#eab308", borderRadius: 2 },
-                        { label: "Pool", data: financialRowsForView.map((row) => row.pool), backgroundColor: "#3b82f6", borderRadius: 2 },
-                        { label: "Garden", data: financialRowsForView.map((row) => row.garden), backgroundColor: "#94a3b8", borderRadius: 2 },
-                        { label: "PM Fee", data: financialRowsForView.map((row) => row.pmFee), backgroundColor: "#0f766e", borderRadius: 2 },
-                        ...(financialAggregate.otherExpenses > 0
-                          ? [{ label: "Other", data: financialRowsForView.map((row) => row.otherExpenses), backgroundColor: "#7c3aed", borderRadius: 2 }]
-                          : []),
-                      ],
-                    }
-                  : {
-                      labels: expenseBreakdownTotals.map((category) => category.label),
-                      datasets: [{
-                        label: "Amount",
-                        data: expenseBreakdownTotals.map((category) => category.amount),
-                        backgroundColor: expenseBreakdownTotals.map((category) => category.color),
-                        borderRadius: 6,
-                      }],
-                    }}
-                options={{
-                  devicePixelRatio: 2,
-                  responsive: true,
-                  maintainAspectRatio: true,
-                  plugins: {
-                    legend: {
-                      display: true,
-                      position: "bottom",
-                      labels: { color: "#64748b", font: { size: 10 }, boxWidth: 12, padding: 12 }
-                    },
-                    tooltip: {
-                      backgroundColor: "rgba(15,23,42,0.92)",
-                      titleColor: "#f8fafc",
-                      bodyColor: "#e2e8f0",
-                      padding: 10,
-                      callbacks: {
-                        label: (context) => `${context.dataset.label === "Amount" ? context.label : context.dataset.label}: ${formatCurrency(context.parsed.y || 0)}`,
-                      }
-                    }
-                  },
-                  scales: {
-                    y: {
-                      beginAtZero: true,
-                      stacked: !isAllTimeReport,
-                      ticks: {
-                        color: "#64748b",
-                        font: { size: 11 },
-                        callback: (value) => "$" + value.toLocaleString(),
-                      },
-                      grid: { color: "#f1f5f9" }
-                    },
-                    x: {
-                      stacked: !isAllTimeReport,
-                      ticks: { color: "#64748b", font: { size: 10 } },
-                      grid: { display: false }
-                    }
-                  }
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 group-open:hidden">
+                Show details
+              </span>
+              <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 group-open:inline-flex">
+                Hide details
+              </span>
+            </summary>
+            <div className="mt-5 border-t border-slate-100 pt-5">
+              <InvestmentPerformanceTable
+                actual={{
+                  grossIncome: metrics.ytd_rent_income,
+                  maintenance: metrics.ytd_maintenance,
+                  maintenancePct: metrics.maintenance_pct,
+                  hoaPoolGarden: metrics.ytd_hoa + metrics.ytd_pool + metrics.ytd_garden,
+                  pmFee: metrics.ytd_pm_fee,
+                  totalExpenses: metrics.ytd_total_expenses,
+                  netIncome: metrics.ytd_net_income,
+                  propertyTax: metrics.ytd_property_tax,
                 }}
+                plan={{
+                  grossIncome: planRentPeriod,
+                  maintenance: planMaintenancePeriod,
+                  hoaPoolGarden: planHoaPoolGardenPeriod,
+                  pmFee: planPmFeePeriod,
+                  totalExpenses: planMaintenancePeriod + planHoaPoolGardenPeriod + planPmFeePeriod,
+                  netIncome: planNetIncomePeriod,
+                }}
+                yeTarget={yeTarget ? {
+                  grossIncome: yeTarget.rent_income,
+                  maintenance: yeTarget.maintenance,
+                  hoaPoolGarden: yeTarget.hoa + yeTarget.pool + yeTarget.garden,
+                  pmFee: yeTarget.net_income < yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden
+                    ? yeTarget.rent_income - yeTarget.maintenance - yeTarget.hoa - yeTarget.pool - yeTarget.garden - yeTarget.net_income
+                    : 0,
+                  totalExpenses: yeTarget.total_expenses,
+                  netIncome: yeTarget.net_income,
+                  propertyTax: yeTarget.property_tax,
+                } : null}
+                roi={{
+                  preTax: metrics.roi_pre_tax,
+                  postTax: metrics.roi_post_tax,
+                  appreciationPct: metrics.appreciation_pct,
+                  planRoi: planRoiPeriod,
+                  yeTargetRoi: yeTarget && metrics.cost_basis > 0 ? (yeTarget.net_income / metrics.cost_basis) * 100 : null,
+                }}
+                home={{
+                  costBasis: metrics.cost_basis,
+                  currentMarketValue: metrics.current_market_value,
+                  appreciationValue: metrics.appreciation_value,
+                  appreciationPct: metrics.appreciation_pct,
+                  ytdAppreciationValue: ytdAppreciationData.value,
+                  ytdAppreciationPct: metrics.cost_basis > 0 ? (ytdAppreciationData.value / metrics.cost_basis * 100) : 0,
+                  ytdLabel: ytdAppreciationData.label,
+                  monthlyGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned : 0,
+                  monthlyGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned / metrics.cost_basis * 100) : 0,
+                  annualizedGain: metrics.months_owned > 0 ? metrics.appreciation_value / metrics.months_owned * 12 : 0,
+                  annualizedGainPct: metrics.months_owned > 0 && metrics.cost_basis > 0 ? (metrics.appreciation_value / metrics.months_owned * 12 / metrics.cost_basis * 100) : 0,
+                  monthsOwned: metrics.months_owned,
+                }}
+                closingCosts={saleClosingCosts}
+                onClosingCostsChange={setSaleClosingCosts}
               />
             </div>
-          </div>
+          </details>
+        </div>
 
+        {/* 6. Expense summary */}
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                {`Expense Summary - ${periodLabel}`}
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                One consolidated expense breakdown for the selected reporting window.
+              </p>
+            </div>
+            <span className="text-xs font-medium text-slate-500">
+              Gross {formatCurrency(financialStatementRow.grossIncome)} - Expenses {formatCurrency(financialStatementRow.totalExpenses)} = Net {formatCurrency(financialStatementRow.netIncome)}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-2 pr-4 font-semibold">Category</th>
+                  <th className="py-2 font-semibold">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-slate-100">
+                  <td className="py-3 pr-4 text-slate-700">Maintenance</td>
+                  <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.maintenance)}</td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="py-3 pr-4 text-slate-700">HOA / Pool / Garden</td>
+                  <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.hoa + financialStatementRow.pool + financialStatementRow.garden)}</td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="py-3 pr-4 text-slate-700">PM Fee</td>
+                  <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.pmFee)}</td>
+                </tr>
+                {financialStatementRow.otherExpenses > 0 ? (
+                  <tr className="border-b border-slate-100">
+                    <td className="py-3 pr-4 text-slate-700">Other</td>
+                    <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.otherExpenses)}</td>
+                  </tr>
+                ) : null}
+                <tr>
+                  <td className="py-3 pr-4 font-semibold text-slate-900">Total Expenses</td>
+                  <td className="py-3 font-semibold text-slate-900">{formatCurrency(financialStatementRow.totalExpenses)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* 7. Charts */}
+        <div className="space-y-6">
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                  {`Income Statement - ${periodLabel}`}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {`Aggregated across the currently selected ${periodLabel.toLowerCase()} reporting window.`}
+                </p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                financialStatementRow.netIncome >= 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+              }`}>
+                {financialStatementRow.netIncome >= 0 ? "Positive Net" : "Negative Net"}
+              </span>
+            </div>
+            <Bar
+              data={{
+                labels: ["Gross Income", "Total Expenses", "Net Income"],
+                datasets: [{
+                  data: [
+                    financialStatementRow.grossIncome,
+                    financialStatementRow.totalExpenses,
+                    financialStatementRow.netIncome,
+                  ],
+                  backgroundColor: [
+                    "#0f766e",
+                    "#c2410c",
+                    financialStatementRow.netIncome >= 0 ? "#15803d" : "#dc2626",
+                  ],
+                  borderRadius: 6,
+                }]
+              }}
+              options={{
+                devicePixelRatio: 2,
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    backgroundColor: "rgba(15,23,42,0.92)",
+                    titleColor: "#f8fafc",
+                    bodyColor: "#e2e8f0",
+                    padding: 10,
+                    callbacks: {
+                      label: (context) => `${context.label}: ${formatCurrency(context.parsed.y || 0)}`,
+                    }
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      color: "#64748b",
+                      font: { size: 11 },
+                      callback: (value) => "$" + value.toLocaleString(),
+                    },
+                    grid: { color: "#f1f5f9" }
+                  },
+                  x: {
+                    ticks: { color: "#64748b", font: { size: 10 } },
+                    grid: { display: false }
+                  }
+                }
+              }}
+            />
+          </div>
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-6">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Financial Performance Trend</h3>
@@ -1226,56 +1300,6 @@ export default function OwnerInvestmentReportsView() {
                 }
               }}
             />
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                  {`Expense Summary - ${periodLabel}`}
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Summary table aligned to the same expense totals shown in the charts above.
-                </p>
-              </div>
-              <span className="text-xs font-medium text-slate-500">
-                Gross {formatCurrency(financialStatementRow.grossIncome)} - Expenses {formatCurrency(financialStatementRow.totalExpenses)} = Net {formatCurrency(financialStatementRow.netIncome)}
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="py-2 pr-4 font-semibold">Category</th>
-                    <th className="py-2 font-semibold">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-slate-100">
-                    <td className="py-3 pr-4 text-slate-700">Maintenance</td>
-                    <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.maintenance)}</td>
-                  </tr>
-                  <tr className="border-b border-slate-100">
-                    <td className="py-3 pr-4 text-slate-700">HOA / Pool / Garden</td>
-                    <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.hoa + financialStatementRow.pool + financialStatementRow.garden)}</td>
-                  </tr>
-                  <tr className="border-b border-slate-100">
-                    <td className="py-3 pr-4 text-slate-700">PM Fee</td>
-                    <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.pmFee)}</td>
-                  </tr>
-                  {financialStatementRow.otherExpenses > 0 ? (
-                    <tr className="border-b border-slate-100">
-                      <td className="py-3 pr-4 text-slate-700">Other</td>
-                      <td className="py-3 text-slate-900">{formatCurrency(financialStatementRow.otherExpenses)}</td>
-                    </tr>
-                  ) : null}
-                  <tr>
-                    <td className="py-3 pr-4 font-semibold text-slate-900">Total Expenses</td>
-                    <td className="py-3 font-semibold text-slate-900">{formatCurrency(financialStatementRow.totalExpenses)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
