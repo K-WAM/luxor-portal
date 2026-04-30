@@ -4,25 +4,74 @@ import { stripe } from "@/lib/stripe/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { SERVICES_BILLING_SCOPE, SERVICES_PLATFORM_SCOPE } from "@/lib/services-billing";
 
+const getWebhookSecrets = () => {
+  const secrets = [
+    {
+      label: "platform",
+      value: String(process.env.STRIPE_WEBHOOK_SECRET_PLATFORM || "").trim(),
+    },
+    {
+      label: "connected",
+      value: String(process.env.STRIPE_WEBHOOK_SECRET_CONNECTED || "").trim(),
+    },
+    {
+      label: "legacy",
+      value: String(process.env.STRIPE_WEBHOOK_SECRET || "").trim(),
+    },
+  ].filter((entry) => entry.value);
+
+  const seen = new Set<string>();
+  return secrets.filter((entry) => {
+    if (seen.has(entry.value)) return false;
+    seen.add(entry.value);
+    return true;
+  });
+};
+
 export async function POST(request: NextRequest) {
   const signature = request.headers.get("stripe-signature");
   if (!signature) {
     return NextResponse.json({ error: "Missing stripe-signature" }, { status: 400 });
   }
 
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
+  const webhookSecrets = getWebhookSecrets();
+  if (!webhookSecrets.length) {
     return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
   }
 
   let event: Stripe.Event;
+  let verifiedWith: string | null = null;
   try {
     const body = await request.text();
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    let lastError: unknown = null;
+
+    for (const secret of webhookSecrets) {
+      try {
+        event = stripe.webhooks.constructEvent(body, signature, secret.value);
+        verifiedWith = secret.label;
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!verifiedWith || !event!) {
+      throw lastError || new Error("No webhook secret matched the signature");
+    }
   } catch (err) {
-    console.error("Stripe webhook signature verification failed:", err);
+    console.error("Stripe webhook signature verification failed.", {
+      configuredSecretCount: webhookSecrets.length,
+      errorType: err instanceof Error ? err.name : "UnknownError",
+    });
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
+
+  const eventAccountScope = event.account ? "connected" : "platform";
+  console.log("Stripe webhook verified", {
+    eventType: event.type,
+    eventAccountScope,
+    verifiedWith,
+  });
 
   if (
     event.type === "checkout.session.completed" ||
