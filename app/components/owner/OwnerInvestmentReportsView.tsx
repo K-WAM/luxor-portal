@@ -653,6 +653,8 @@ export default function OwnerInvestmentReportsView() {
     date.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
   const formatTimelineYear = (date: Date) =>
     date.toLocaleDateString("en-US", { year: "2-digit" });
+  const formatTimelineMonthYearCompact = (date: Date) =>
+    date.toLocaleDateString("en-US", { month: "2-digit", year: "2-digit" });
   const timelineRangeStartBase = leaseStartDate || renewalDate || listingDate || leaseEndDate || todayDate;
   const timelineRangeEndBase = leaseEndDate || listingDate || renewalDate || leaseStartDate || todayDate;
   const timelineRangeStart = getMonthStart(addMonths(timelineRangeStartBase, -1));
@@ -670,6 +672,14 @@ export default function OwnerInvestmentReportsView() {
   ) {
     timelineMonths.push(new Date(cursor));
   }
+  const mobileTimelineTickStep = timelineMonths.length <= 6 ? 1 : timelineMonths.length <= 12 ? 3 : 6;
+  const mobileTimelineMonths = timelineMonths.filter((month, index) => {
+    return (
+      index === 0 ||
+      index === timelineMonths.length - 1 ||
+      index % mobileTimelineTickStep === 0
+    );
+  });
   const activeRole = (meInfo?.role || role || "unknown") as string;
   const roleBadgeClass =
     activeRole === "admin"
@@ -813,33 +823,33 @@ export default function OwnerInvestmentReportsView() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white px-4 py-5 shadow-sm md:top-4 md:px-8 md:py-6">
+      <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm md:top-4 md:px-8 md:py-6">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between gap-8 mb-4">
-            <div className="flex items-center gap-3">
+          <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
               <div>
                 <h1 className="text-2xl font-semibold text-slate-900 mb-1">
                   Investment Performance
                 </h1>
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-slate-600 break-words">
                   {property?.address || "Select a property"} - {periodLabel}
                 </p>
               </div>
             </div>
-            <div className="flex flex-col items-end gap-2">
-              <div className="flex items-center gap-2 text-xs text-slate-700">
-                <span className="px-2 py-1 rounded-full bg-slate-100 border border-slate-200">
+            <div className="w-full lg:w-auto lg:min-w-[22rem]">
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-700 lg:justify-end">
+                <span className="max-w-full truncate rounded-full border border-slate-200 bg-slate-100 px-2 py-1">
                   {meInfo?.email || user?.email || "Signed out"}
                 </span>
-                <span className={`px-2 py-1 rounded-full border text-[11px] font-semibold ${roleBadgeClass}`}>
+                <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${roleBadgeClass}`}>
                   {activeRole.toUpperCase()}
                 </span>
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3">
                 <select
                   value={selectedPropertyId}
                   onChange={(e) => setSelectedPropertyId(e.target.value)}
-                  className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {properties.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -847,26 +857,53 @@ export default function OwnerInvestmentReportsView() {
                     </option>
                   ))}
                 </select>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  disabled={periodType !== "ytd"}
-                  className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  {availableYears.map((year) => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
-                <PeriodToggle value={periodType} onChange={setPeriodType} />
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    disabled={periodType !== "ytd"}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 sm:w-auto sm:min-w-[7rem]"
+                  >
+                    {availableYears.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="grid grid-cols-3 gap-2 sm:hidden">
+                    {[
+                      { value: "ytd", label: "YTD" },
+                      { value: "lease", label: "Lease Term" },
+                      { value: "alltime", label: "All Time" },
+                    ].map((option) => {
+                      const active = periodType === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setPeriodType(option.value as "ytd" | "lease" | "alltime")}
+                          className={`rounded-lg px-3 py-2 text-sm font-medium ${
+                            active
+                              ? "border border-slate-900 bg-slate-900 text-white"
+                              : "border border-slate-300 bg-slate-50 text-slate-700"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="hidden min-w-0 sm:block">
+                    <PeriodToggle value={periodType} onChange={setPeriodType} />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-8 space-y-8">
+      <div className="mx-auto max-w-7xl space-y-8 p-4 sm:p-6 lg:p-8">
 
         {/* 1. Investment summary */}
         <div>
@@ -971,8 +1008,8 @@ export default function OwnerInvestmentReportsView() {
                   <div className="font-medium text-slate-900">{formatDateOnly(property.lease_end)}</div>
                 </div>
               </div>
-              <div className="relative h-52 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden px-4 py-4">
-                <div className="absolute inset-x-4 top-3">
+              <div className="relative h-56 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 px-3 py-4 md:h-52 md:px-4">
+                <div className="absolute inset-x-3 top-3 hidden md:block md:inset-x-4">
                   {timelineMonths.map((month) => (
                     <div
                       key={`${month.getFullYear()}-${month.getMonth()}`}
@@ -987,33 +1024,47 @@ export default function OwnerInvestmentReportsView() {
                     </div>
                   ))}
                 </div>
+                <div className="absolute inset-x-3 top-3 md:hidden">
+                  {mobileTimelineMonths.map((month) => (
+                    <div
+                      key={`mobile-${month.getFullYear()}-${month.getMonth()}`}
+                      className="absolute -translate-x-1/2"
+                      style={{ left: `${getTimelinePercent(month)}%` }}
+                    >
+                      <div className="whitespace-nowrap text-[10px] font-semibold tracking-wide text-slate-700">
+                        {formatTimelineMonthYearCompact(month)}
+                      </div>
+                      <div className="absolute left-1/2 top-6 h-36 w-px -translate-x-1/2 bg-slate-200" />
+                    </div>
+                  ))}
+                </div>
                 <div
-                  className="absolute top-14 h-9 rounded-md bg-emerald-300/80"
+                  className="absolute top-12 h-9 rounded-md bg-emerald-300/80 md:top-14"
                   style={{
                     left: `${getTimelinePercent(leaseStartDate)}%`,
                     width: `${Math.max(getTimelinePercent(leaseEndDate) - getTimelinePercent(leaseStartDate), 6)}%`,
                     minWidth: "4rem",
                   }}
                 />
-                <div className="absolute left-6 top-[4.6rem] text-xs font-medium uppercase tracking-wide text-emerald-900">
+                <div className="absolute left-4 top-[4.1rem] text-[11px] font-medium uppercase tracking-wide text-emerald-900 md:left-6 md:top-[4.6rem] md:text-xs">
                   Lease Term
                 </div>
                 <div
-                  className="absolute top-28 flex min-h-[2.75rem] items-center justify-center rounded-md bg-slate-300/90 px-2 text-center text-[11px] font-medium leading-tight text-slate-700"
+                  className="absolute top-28 flex min-h-[3rem] items-center justify-center rounded-md bg-slate-300/90 px-2 text-center text-[10px] font-medium leading-tight text-slate-700 md:min-h-[2.75rem] md:text-[11px]"
                   style={{
                     left: `${getTimelinePercent(renewalDate)}%`,
                     width: `${Math.max(getTimelinePercent(leaseEndDate) - getTimelinePercent(renewalDate), 6)}%`,
-                    minWidth: "4.5rem",
+                    minWidth: "4rem",
                   }}
                 >
                   <span>Renewal<br />Period</span>
                 </div>
                 <div
-                  className="absolute top-40 flex min-h-[2.75rem] items-center justify-center rounded-md bg-slate-800/90 px-2 text-center text-[11px] font-medium leading-tight text-white"
+                  className="absolute top-[10.5rem] flex min-h-[3rem] items-center justify-center rounded-md bg-slate-800/90 px-2 text-center text-[10px] font-medium leading-tight text-white md:top-40 md:min-h-[2.75rem] md:text-[11px]"
                   style={{
                     left: `${getTimelinePercent(listingDate)}%`,
                     width: `${Math.max(getTimelinePercent(leaseEndDate) - getTimelinePercent(listingDate), 6)}%`,
-                    minWidth: "4.5rem",
+                    minWidth: "4rem",
                   }}
                 >
                   <span>Listing<br />Period</span>
