@@ -113,7 +113,6 @@ export default function AdminBilling() {
   const [leaseBillGenerationSuccess, setLeaseBillGenerationSuccess] = useState<string | null>(null);
   const [tenantInvoiceFile, setTenantInvoiceFile] = useState<File | null>(null);
   const [tenantInvoiceUploading, setTenantInvoiceUploading] = useState<Record<string, boolean>>({});
-  const [tenantStripeRefreshLoading, setTenantStripeRefreshLoading] = useState<Record<string, boolean>>({});
   const [showDesktopSite, setShowDesktopSite] = useState(false);
   const [showGenerateLeaseBillsMobile, setShowGenerateLeaseBillsMobile] = useState(false);
   const [showCreateTenantBillMobile, setShowCreateTenantBillMobile] = useState(false);
@@ -570,42 +569,6 @@ export default function AdminBilling() {
       await loadTenantBills(showVoidedTenantBills);
     } catch (err: any) {
       setTenantBillsError(err.message || "Failed to update tenant bill");
-    }
-  };
-
-  const handleRefreshTenantBillAchStatus = async (bill: TenantBillRow) => {
-    if (!bill.stripeSessionId && !bill.stripePaymentIntentId) {
-      setTenantBillsNotice("No Stripe payment found");
-      return;
-    }
-    const confirmed = window.confirm(
-      "This will re-check Stripe and update this bill’s status if needed. Continue?"
-    );
-    if (!confirmed) return;
-
-    try {
-      setTenantBillsError(null);
-      setTenantBillsNotice(null);
-      setTenantStripeRefreshLoading((prev) => ({ ...prev, [bill.id]: true }));
-
-      const res = await fetch(`/api/admin/billing/tenant-bills/${bill.id}/refresh-stripe-status`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to refresh ACH status");
-
-      if (data?.ok && data?.status) {
-        setTenantBills((prev) =>
-          prev.map((row) =>
-            row.id === bill.id ? { ...row, status: data.status } : row
-          )
-        );
-      }
-      setTenantBillsNotice(data?.message || "No change");
-    } catch (err: any) {
-      setTenantBillsError(err.message || "Failed to refresh ACH status");
-    } finally {
-      setTenantStripeRefreshLoading((prev) => ({ ...prev, [bill.id]: false }));
     }
   };
 
@@ -1492,18 +1455,6 @@ export default function AdminBilling() {
                                 className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
                               >
                                 Paid
-                              </button>
-                              <button
-                                onClick={() => handleRefreshTenantBillAchStatus(bill)}
-                                disabled={
-                                  tenantStripeRefreshLoading[bill.id] ||
-                                  (!bill.stripeSessionId && !bill.stripePaymentIntentId)
-                                }
-                                className="text-xs px-2 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                              >
-                                {tenantStripeRefreshLoading[bill.id]
-                                  ? "Refreshing..."
-                                  : "Refresh ACH"}
                               </button>
                               <button
                                 onClick={() => handleVoidTenantBill(bill.id)}
