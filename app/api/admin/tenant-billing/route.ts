@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import { getDateOnlyParts, toDateOnlyString } from "@/lib/date-only";
 import { buildLeaseBillDrafts, buildLeaseBillIdentityKey } from "@/lib/billing/lease-bill-generation";
+import { sendManualTenantBillPaidConfirmation } from "@/lib/billing/stripe-status-sync";
 
 const BILL_TYPES = ["rent", "fee", "late_fee", "security_deposit", "hoa", "maintenance", "other"] as const;
 const BILL_STATUSES = ["due", "paid", "overdue", "pending", "processing", "voided"] as const;
@@ -637,6 +638,10 @@ export async function PATCH(request: Request) {
       .single();
 
     if (error) throw error;
+
+    if (body.status === "paid" && existingBill.status !== "paid") {
+      await sendManualTenantBillPaidConfirmation(id);
+    }
 
     return NextResponse.json({ bill: data });
   } catch (error) {

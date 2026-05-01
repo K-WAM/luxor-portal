@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
 import { toDateOnlyString } from "@/lib/date-only";
+import { sendManualOwnerInvoicePaidConfirmation } from "@/lib/billing/stripe-status-sync";
 
 const OWNER_BILL_CATEGORIES = [
   "maintenance",
@@ -275,6 +276,16 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const { data: existingInvoice, error: existingInvoiceError } = await supabaseAdmin
+      .from("billing_invoices")
+      .select("id, status")
+      .eq("id", id)
+      .maybeSingle();
+    if (existingInvoiceError) throw existingInvoiceError;
+    if (!existingInvoice) {
+      return NextResponse.json({ error: "Billing invoice not found" }, { status: 404 });
+    }
+
     const updates: any = {};
     if (status) updates.status = status;
     if (description !== undefined) updates.description = description;
@@ -321,6 +332,10 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    if (status === "paid" && existingInvoice.status !== "paid") {
+      await sendManualOwnerInvoicePaidConfirmation(id);
+    }
 
     return NextResponse.json(data);
   } catch (error) {
