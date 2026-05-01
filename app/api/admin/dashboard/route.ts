@@ -8,6 +8,71 @@ import { calculateExpectedAnnualNet, calculateExpectedRoi } from "@/lib/financia
 const toUtcDateOnlyString = (date: Date) => date.toISOString().slice(0, 10);
 const getJoinedPropertyAddress = (joined: any) =>
   Array.isArray(joined) ? joined[0]?.address || "" : joined?.address || "";
+const toMonthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, "0")}`;
+
+type PaidRentBillRow = {
+  id: string;
+  amount: number | string | null;
+  paid_date: string | null;
+  due_date: string | null;
+  year: number | null;
+  month: number | null;
+  bill_scope?: string | null;
+  lease_agreement_id?: string | null;
+};
+
+const toNumber = (value: unknown, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const buildPaidRentDedupKey = (bill: PaidRentBillRow) => {
+  const dueParts = getDateOnlyParts(bill.due_date);
+  const billedYear =
+    Number.isFinite(bill.year as number) && bill.year ? Number(bill.year) : dueParts?.year;
+  const billedMonth =
+    Number.isFinite(bill.month as number) && bill.month ? Number(bill.month) : dueParts?.month;
+
+  if (String(bill.bill_scope || "").toLowerCase() === "lease" && bill.lease_agreement_id) {
+    return `lease:${bill.lease_agreement_id}:${billedYear || "na"}-${billedMonth || "na"}`;
+  }
+
+  return `tenant:${billedYear || "na"}-${billedMonth || "na"}`;
+};
+
+const aggregatePaidRentByMonth = (paidBills: PaidRentBillRow[], monthKeys: Set<string>) => {
+  const monthlyBuckets = new Map<string, Map<string, number>>();
+
+  for (const bill of paidBills) {
+    const dueParts = getDateOnlyParts(bill.due_date);
+    const billedYear =
+      Number.isFinite(bill.year as number) && bill.year ? Number(bill.year) : dueParts?.year;
+    const billedMonth =
+      Number.isFinite(bill.month as number) && bill.month ? Number(bill.month) : dueParts?.month;
+    if (!billedYear || !billedMonth) continue;
+
+    const billedMonthKey = toMonthKey(billedYear, billedMonth);
+    if (!monthKeys.has(billedMonthKey)) continue;
+
+    const dedupKey = buildPaidRentDedupKey(bill);
+    const amount = toNumber(bill.amount, 0);
+    if (amount <= 0) continue;
+
+    const monthBucket = monthlyBuckets.get(billedMonthKey) || new Map<string, number>();
+    monthBucket.set(dedupKey, Math.max(monthBucket.get(dedupKey) || 0, amount));
+    monthlyBuckets.set(billedMonthKey, monthBucket);
+  }
+
+  const totals = new Map<string, number>();
+  for (const [monthKey, bucket] of monthlyBuckets.entries()) {
+    totals.set(
+      monthKey,
+      Array.from(bucket.values()).reduce((sum, value) => sum + value, 0)
+    );
+  }
+
+  return totals;
+};
 
 export async function GET(request: Request) {
   try {
@@ -20,6 +85,7 @@ export async function GET(request: Request) {
     const yearParam = searchParams.get("year");
     const currentYear = yearParam ? parseInt(yearParam, 10) || new Date().getFullYear() : new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
+    const currentMonthKey = toMonthKey(currentYear, currentMonth);
     const now = new Date();
     const monthAfterNextStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1));
     const endOfNextMonth = new Date(Date.UTC(monthAfterNextStart.getUTCFullYear(), monthAfterNextStart.getUTCMonth(), 0));
@@ -72,6 +138,20 @@ export async function GET(request: Request) {
           .eq("property_id", property.id)
           .eq("year", currentYear)
           .order("month", { ascending: false });
+
+        const currentMonthStart = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
+        const currentMonthEndDate = new Date(Date.UTC(currentYear, currentMonth, 0));
+        const currentMonthEnd = `${currentMonthEndDate.getUTCFullYear()}-${String(
+          currentMonthEndDate.getUTCMonth() + 1
+        ).padStart(2, "0")}-${String(currentMonthEndDate.getUTCDate()).padStart(2, "0")}`;
+        const { data: currentMonthPaidRentBills } = await supabaseAdmin
+          .from("tenant_bills")
+          .select("id, amount, paid_date, due_date, year, month, bill_scope, lease_agreement_id")
+          .eq("property_id", property.id)
+          .eq("bill_type", "rent")
+          .eq("status", "paid")
+          .gte("due_date", currentMonthStart)
+          .lte("due_date", currentMonthEnd);
 
         // Get last month rent was paid across all years
         const { data: lastRentRow } = await supabaseAdmin
@@ -170,9 +250,14 @@ export async function GET(request: Request) {
           }
         }
 
-        // Current month rent paid
+        const currentMonthPaidRentMap = aggregatePaidRentByMonth(
+          (currentMonthPaidRentBills || []) as PaidRentBillRow[],
+          new Set([currentMonthKey])
+        );
+        const currentMonthBillingRent = currentMonthPaidRentMap.get(currentMonthKey) || 0;
         const currentMonthRow = (monthlyData || []).find(r => r.month === currentMonth);
-        const current_month_rent_paid = (currentMonthRow?.rent_income || 0) > 0;
+        const current_month_rent_paid =
+          currentMonthBillingRent > 0 || (currentMonthRow?.rent_income || 0) > 0;
 
         // Performance status: grade against plan-based projected ROI (same unified calc)
         const performance_status: "green" | "yellow" | "red" =

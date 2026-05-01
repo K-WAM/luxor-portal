@@ -275,19 +275,23 @@ const aggregatePaidRentByMonth = (
   const monthlyBuckets = new Map<string, Map<string, number>>();
 
   for (const bill of paidBills) {
-    const paidParts = getDateOnlyParts(bill.paid_date) || getDateOnlyParts(bill.due_date);
-    if (!paidParts) continue;
+    const dueParts = getDateOnlyParts(bill.due_date);
+    const billedYear =
+      Number.isFinite(bill.year as number) && bill.year ? Number(bill.year) : dueParts?.year;
+    const billedMonth =
+      Number.isFinite(bill.month as number) && bill.month ? Number(bill.month) : dueParts?.month;
+    if (!billedYear || !billedMonth) continue;
 
-    const paidMonthKey = toMonthKey(paidParts.year, paidParts.month);
-    if (!monthKeys.has(paidMonthKey)) continue;
+    const billedMonthKey = toMonthKey(billedYear, billedMonth);
+    if (!monthKeys.has(billedMonthKey)) continue;
 
     const dedupKey = buildPaidRentDedupKey(bill);
     const amount = toNumber(bill.amount, 0);
     if (amount <= 0) continue;
 
-    const monthBucket = monthlyBuckets.get(paidMonthKey) || new Map<string, number>();
+    const monthBucket = monthlyBuckets.get(billedMonthKey) || new Map<string, number>();
     monthBucket.set(dedupKey, Math.max(monthBucket.get(dedupKey) || 0, amount));
-    monthlyBuckets.set(paidMonthKey, monthBucket);
+    monthlyBuckets.set(billedMonthKey, monthBucket);
   }
 
   const totals = new Map<string, number>();
@@ -467,7 +471,8 @@ async function loadComputedMonthlyRows(
         .eq("property_id", propertyId)
         .eq("bill_type", "rent")
         .eq("status", "paid")
-        .or(`and(paid_date.gte.${rangeStart},paid_date.lte.${rangeEnd}),and(paid_date.is.null,due_date.gte.${rangeStart},due_date.lte.${rangeEnd})`),
+        .gte("due_date", rangeStart)
+        .lte("due_date", rangeEnd),
       supabaseAdmin
         .from("property_recurring_expense_schedules")
         .select("expense_type, amount, frequency, effective_start_date, effective_end_date")
