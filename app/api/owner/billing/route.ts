@@ -55,9 +55,6 @@ export async function GET(request: NextRequest) {
     if (propertyIds.length) {
       query = query.in("property_id", propertyIds);
     }
-    if (!isAdminRole) {
-      query = query.eq("owner_id", user.id);
-    }
 
     const { data, error } = await query;
 
