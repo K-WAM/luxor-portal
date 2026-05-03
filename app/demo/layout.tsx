@@ -28,19 +28,11 @@ export default async function DemoLayout({
             <div className="text-sm font-semibold text-amber-900">
               Demo Mode - Sample data only. No real client or payment data is shown.
             </div>
-            <div className="text-xs text-amber-800">
-              Admin-only demonstration environment. All payment state resets on refresh.
-            </div>
+            <div className="text-xs text-amber-800">Admin-only demonstration environment. All payment state resets on refresh.</div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/demo" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
               Demo Home
-            </Link>
-            <Link href="/demo/owner" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Owner Demo
-            </Link>
-            <Link href="/demo/tenant" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Tenant Demo
             </Link>
             <Link href="/admin" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
               Back to Admin
@@ -48,7 +40,7 @@ export default async function DemoLayout({
           </div>
         </div>
       </div>
-      <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">{children}</div>
+      {children}
     </div>
   );
 }

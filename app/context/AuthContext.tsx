@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { User, Session } from "@supabase/supabase-js";
+import { useDemoMode } from "@/lib/demo/demo-context";
 
 type UserRole = "tenant" | "owner" | "admin" | null;
 
@@ -149,4 +150,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const auth = useContext(AuthContext);
+  const demo = useDemoMode();
+
+  if (!demo.active) {
+    return auth;
+  }
+
+  return {
+    ...auth,
+    user: {
+      id: `demo-${demo.authOverride.role}`,
+      email: demo.authOverride.email,
+      user_metadata: {
+        name: demo.authOverride.name,
+        role: demo.authOverride.role,
+      },
+    } as unknown as User,
+    session: null,
+    role: demo.authOverride.role,
+    loading: false,
+    signIn: auth.signIn,
+    signOut: async () => {
+      window.location.href = "/demo";
+    },
+  };
+};

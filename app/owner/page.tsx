@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatDateOnly } from "@/lib/date-only";
+import { useDemoMode } from "@/lib/demo/demo-context";
 
 type OverviewRow = {
   propertyId: string;
@@ -36,6 +37,7 @@ const getInitials = (value: string) =>
     .toUpperCase();
 
 export default function OwnerDashboard() {
+  const { withDemoPath } = useDemoMode();
   const [data, setData] = useState<ReportsPayload>({ overviewRows: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +100,7 @@ export default function OwnerDashboard() {
             <p className="text-sm text-slate-600 mt-1">Search by property or tenant and review active lease visibility across your portfolio.</p>
           </div>
           <Link
-            href="/owner/reports"
+            href={withDemoPath("/owner/reports")}
             className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Open Reports

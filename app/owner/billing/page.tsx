@@ -115,6 +115,7 @@ export default function OwnerBilling() {
   const [checkoutLoading, setCheckoutLoading] = useState<"bank" | "card" | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showCheckoutSuccessBanner, setShowCheckoutSuccessBanner] = useState(false);
+  const [demoPaymentNotice, setDemoPaymentNotice] = useState<string | null>(null);
   const [showPaidInvoices, setShowPaidInvoices] = useState(false);
   const [ownerBillingRows, setOwnerBillingRows] = useState<OwnerBillingRecipient[]>([]);
 
@@ -252,6 +253,23 @@ export default function OwnerBilling() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start checkout");
+      if (data?.demoMode) {
+        setBills((data.bills || []).map((b: any) => ({
+          id: b.id,
+          propertyId: b.propertyId,
+          propertyAddress: b.propertyAddress,
+          description: b.description,
+          amount: b.amount,
+          dueDate: b.dueDate,
+          status: b.status,
+          invoiceUrl: b.invoiceUrl,
+          paymentLinkUrl: b.paymentLinkUrl,
+          voidedAt: b.voidedAt,
+        })));
+        setDemoPaymentNotice(data.message || null);
+        setShowCheckoutSuccessBanner(false);
+        return;
+      }
       if (data?.url) {
         window.location.href = data.url;
       }
@@ -290,6 +308,11 @@ export default function OwnerBilling() {
             <div className="text-sm text-blue-800">
               Your bank transfer has been initiated and is processing. This can take 2–5 business days. If it doesn’t complete, you’ll be able to try again.
             </div>
+          </div>
+        )}
+        {demoPaymentNotice && (
+          <div className="md:col-span-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {demoPaymentNotice}
           </div>
         )}
         <div className="md:col-span-2">

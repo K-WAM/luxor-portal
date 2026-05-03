@@ -53,6 +53,7 @@ export default function TenantPayments() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [onlinePaymentAvailable, setOnlinePaymentAvailable] = useState(true);
   const [showCheckoutSuccessBanner, setShowCheckoutSuccessBanner] = useState(false);
+  const [demoPaymentNotice, setDemoPaymentNotice] = useState<string | null>(null);
   const [showPaidBills, setShowPaidBills] = useState(false);
 
   useEffect(() => {
@@ -285,6 +286,24 @@ export default function TenantPayments() {
       if (!res.ok) {
         throw new Error(data.error || "Failed to start checkout");
       }
+      if (data?.demoMode) {
+        setBills((data.bills || []).map((bill: any) => ({
+          id: bill.id,
+          property_id: bill.propertyId,
+          bill_type: bill.bill_type,
+          description: bill.description,
+          amount: bill.amount,
+          due_date: bill.due_date,
+          status: bill.status,
+          month: bill.month,
+          year: bill.year,
+          invoice_url: bill.invoice_url,
+          payment_link_url: bill.payment_link_url,
+        })));
+        setDemoPaymentNotice(data.message || null);
+        setShowCheckoutSuccessBanner(false);
+        return;
+      }
       if (data?.payment_available === false) {
         setOnlinePaymentAvailable(false);
         return;
@@ -336,6 +355,11 @@ export default function TenantPayments() {
               <div className="text-sm text-blue-800">
                 Your bank transfer has been initiated and is processing. This can take 2–5 business days. If it doesn’t complete, you’ll be able to try again.
               </div>
+            </div>
+          )}
+          {demoPaymentNotice && (
+            <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {demoPaymentNotice}
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

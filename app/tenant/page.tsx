@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { formatDateOnly, parseDateOnly } from "@/lib/date-only";
 import { getShortPropertyName } from "@/lib/property-short-name";
+import { useDemoMode } from "@/lib/demo/demo-context";
 
 type Property = {
   id: string;
@@ -40,6 +41,7 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 export default function TenantPortal() {
+  const { withDemoPath } = useDemoMode();
   const [properties, setProperties] = useState<Property[]>([]);
   const [bills, setBills] = useState<TenantBill[]>([]);
   const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
@@ -161,7 +163,7 @@ export default function TenantPortal() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Link
-          href="/tenant/documents"
+          href={withDemoPath("/tenant/documents")}
           className="bg-white border rounded-lg p-6 hover:shadow-lg transition-shadow"
         >
           <h3 className="text-xl font-semibold mb-2">Documents</h3>
@@ -171,7 +173,7 @@ export default function TenantPortal() {
         </Link>
 
         <Link
-          href="/tenant/payments"
+          href={withDemoPath("/tenant/payments")}
           className="bg-white border rounded-lg p-6 hover:shadow-lg transition-shadow"
         >
           <h3 className="text-xl font-semibold mb-2">Payment</h3>
@@ -188,7 +190,7 @@ export default function TenantPortal() {
         </Link>
 
         <Link
-          href="/tenant/maintenance"
+          href={withDemoPath("/tenant/maintenance")}
           className="bg-white border rounded-lg p-6 hover:shadow-lg transition-shadow"
         >
           <h3 className="text-xl font-semibold mb-2">Request Maintenance</h3>
