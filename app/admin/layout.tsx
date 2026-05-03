@@ -8,6 +8,7 @@ import { useAuth } from "@/app/context/AuthContext";
 
 const adminNav = [
   { href: "/admin", label: "Dashboard" },
+  { href: "/demo", label: "Demo Mode" },
   { href: "/admin/properties", label: "Properties" },
   { href: "/admin/financials", label: "Financials" },
   { href: "/admin/maintenance", label: "Maintenance Requests" },

@@ -295,12 +295,20 @@ export default function AdminDashboard() {
               Portfolio financials, maintenance requests, and user access.
             </p>
           </div>
-          <button
-            onClick={loadDashboard}
-            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-800"
-          >
-            Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => router.push("/demo")}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              Demo Mode
+            </button>
+            <button
+              onClick={loadDashboard}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-800"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         {loading && (

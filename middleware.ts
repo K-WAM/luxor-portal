@@ -3,7 +3,14 @@ import type { NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { resolveEffectiveRole, type UserRole } from "@/lib/auth/effective-role";
 
-const PROTECTED_MATCHERS = ["/owner", "/tenant", "/admin"];
+const PROTECTED_MATCHERS = ["/owner", "/tenant", "/admin", "/demo"];
+
+function getDefaultDashboardPath(role: UserRole) {
+  if (role === "admin") return "/admin";
+  if (role === "owner") return "/owner";
+  if (role === "tenant") return "/tenant";
+  return "/";
+}
 
 export async function middleware(request: NextRequest) {
   // Only guard protected paths
@@ -50,6 +57,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
+  if (path.startsWith("/demo") && role !== "admin") {
+    return NextResponse.redirect(new URL(getDefaultDashboardPath(role), request.url));
+  }
+
   if (path.startsWith("/owner") && role !== "owner" && role !== "admin") {
     return NextResponse.redirect(new URL("/", request.url));
   }
@@ -62,5 +73,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/owner/:path*", "/tenant/:path*", "/admin/:path*"],
+  matcher: ["/owner/:path*", "/tenant/:path*", "/admin/:path*", "/demo/:path*"],
 };
