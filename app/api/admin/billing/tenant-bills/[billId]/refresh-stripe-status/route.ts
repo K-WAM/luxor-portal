@@ -1,15 +1,6 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
-import { stripe } from "@/lib/stripe/server";
-import { supabaseAdmin } from "@/lib/supabase/server";
 import { getAuthContext, isAdmin } from "@/lib/auth/route-helpers";
-import { resolveTenantBillConnectedAccount } from "@/lib/billing/tenant-connected-account";
-
-const mapPaymentIntentStatus = (status: Stripe.PaymentIntent.Status): "paid" | "processing" | "due" => {
-  if (status === "succeeded") return "paid";
-  if (status === "canceled" || status === "requires_payment_method") return "due";
-  return "processing";
-};
+import { refreshTenantBillStripeStatus } from "@/lib/billing/stripe-status-sync";
 
 export async function POST(
   _request: Request,
@@ -26,125 +17,31 @@ export async function POST(
       return NextResponse.json({ error: "billId is required" }, { status: 400 });
     }
 
-    const { data: bill, error: billError } = await supabaseAdmin
-      .from("tenant_bills")
-      .select("id, property_id, status, stripe_session_id, stripe_payment_intent_id, processing_started_at")
-      .eq("id", billId)
-      .single();
-
-    if (billError || !bill) {
-      return NextResponse.json({ error: "Bill not found" }, { status: 404 });
-    }
-
-    const routing = await resolveTenantBillConnectedAccount(bill.property_id);
-    if (!routing.paymentAvailable || !routing.connectedAccountId) {
-      return NextResponse.json({
-        ok: false,
-        message: "Online payments are not configured for this property.",
-      });
-    }
-
-    const stripeSessionId = bill.stripe_session_id as string | null;
-    const stripePaymentIntentId = bill.stripe_payment_intent_id as string | null;
-    if (!stripeSessionId && !stripePaymentIntentId) {
-      return NextResponse.json({
-        ok: false,
-        message: "No Stripe payment found for this bill.",
-      });
-    }
-
-    let nextStatus: "paid" | "processing" | "due" | null = null;
-    let hasStripePayment = false;
-
-    if (stripePaymentIntentId) {
-      try {
-        const paymentIntent = await stripe.paymentIntents.retrieve(
-          stripePaymentIntentId,
-          {},
-          { stripeAccount: routing.connectedAccountId }
-        );
-        hasStripePayment = true;
-        nextStatus = mapPaymentIntentStatus(paymentIntent.status);
-      } catch (error: unknown) {
-        const code = typeof error === "object" && error && "code" in error ? (error as { code?: string }).code : undefined;
-        if (code !== "resource_missing") throw error;
-      }
-    }
-
-    if (!nextStatus && stripeSessionId) {
-      try {
-        const session = await stripe.checkout.sessions.retrieve(
-          stripeSessionId,
-          { expand: ["payment_intent"] },
-          { stripeAccount: routing.connectedAccountId }
-        );
-        hasStripePayment = true;
-
-        if (typeof session.payment_intent === "object" && session.payment_intent?.status) {
-          nextStatus = mapPaymentIntentStatus(session.payment_intent.status);
-        } else if (session.payment_status === "paid") {
-          nextStatus = "paid";
-        } else if (session.status === "expired") {
-          nextStatus = "due";
-        } else {
-          nextStatus = "processing";
-        }
-      } catch (error: unknown) {
-        const code = typeof error === "object" && error && "code" in error ? (error as { code?: string }).code : undefined;
-        if (code !== "resource_missing") throw error;
-      }
-    }
-
-    if (!hasStripePayment || !nextStatus) {
-      return NextResponse.json({
-        ok: false,
-        message: "No Stripe payment found for this bill.",
-      });
-    }
-
-    const currentStatus = String(bill.status || "").toLowerCase();
-    if (currentStatus === nextStatus) {
-      return NextResponse.json({
-        ok: true,
-        status: nextStatus,
-        message: "No change",
-      });
-    }
-
-    const nowIso = new Date().toISOString();
-    const updates: Record<string, string | null> = {
-      status: nextStatus,
-      updated_at: nowIso,
-    };
-    if (nextStatus === "paid") {
-      updates.paid_date = nowIso.split("T")[0];
-      updates.payment_link_url = null;
-      updates.processing_started_at = null;
-    } else if (nextStatus === "processing") {
-      updates.processing_started_at = bill.processing_started_at || nowIso;
-    } else {
-      updates.processing_started_at = null;
-    }
-
-    const { error: updateError } = await supabaseAdmin
-      .from("tenant_bills")
-      .update(updates)
-      .eq("id", billId);
-
-    if (updateError) {
-      return NextResponse.json({ error: "Failed to update tenant bill" }, { status: 500 });
+    const result = await refreshTenantBillStripeStatus(billId);
+    if (!result.ok) {
+      const message =
+        result.reason === "not_found"
+          ? "Bill not found"
+          : result.reason === "payment_unavailable"
+            ? "Online payments are not configured for this property."
+            : result.reason === "missing_stripe_ids"
+              ? "No Stripe payment found for this bill."
+              : "No Stripe payment found for this bill.";
+      return NextResponse.json({ ok: false, message }, { status: result.reason === "not_found" ? 404 : 200 });
     }
 
     const message =
-      nextStatus === "paid"
+      result.status === "paid"
         ? "Updated to Paid"
-        : nextStatus === "processing"
-        ? "Updated to Processing"
-        : "Updated to Due";
+        : result.status === "processing"
+          ? "Updated to Processing"
+          : result.changed
+            ? "Updated to Due"
+            : "No change";
 
     return NextResponse.json({
       ok: true,
-      status: nextStatus,
+      status: result.status,
       message,
     });
   } catch (error) {

@@ -5,7 +5,9 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { SERVICES_BILLING_SCOPE, SERVICES_PLATFORM_SCOPE } from "@/lib/services-billing";
 import {
   syncOwnerInvoicesFromCheckoutSession,
+  syncOwnerInvoicesFromPaymentIntent,
   syncTenantBillsFromCheckoutSession,
+  syncTenantBillsFromPaymentIntent,
 } from "@/lib/billing/stripe-status-sync";
 
 const getWebhookSecrets = () => {
@@ -80,7 +82,8 @@ export async function POST(request: NextRequest) {
   if (
     event.type === "checkout.session.completed" ||
     event.type === "checkout.session.async_payment_succeeded" ||
-    event.type === "checkout.session.async_payment_failed"
+    event.type === "checkout.session.async_payment_failed" ||
+    event.type === "checkout.session.expired"
   ) {
     const session = event.data.object as Stripe.Checkout.Session;
     const isServicesBillingSession =
@@ -119,7 +122,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (nextStatus && !(currentStatus === "paid" && nextStatus === "paid")) {
-          const updates: Record<string, any> = {
+          const updates: Record<string, string | null> = {
             stripe_session_id: session.id,
             stripe_payment_intent_id: currentPaymentIntentId,
           };
@@ -153,7 +156,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const tenantSync = await syncTenantBillsFromCheckoutSession(session, event.type);
+    const tenantSync = await syncTenantBillsFromCheckoutSession(session, event.type, event.id);
     console.log("Stripe webhook tenant status sync", {
       eventType: event.type,
       tenantUpdated: tenantSync.updated,
@@ -164,11 +167,29 @@ export async function POST(request: NextRequest) {
   if (
     event.type === "checkout.session.completed" ||
     event.type === "checkout.session.async_payment_succeeded" ||
-    event.type === "checkout.session.async_payment_failed"
+    event.type === "checkout.session.async_payment_failed" ||
+    event.type === "checkout.session.expired"
   ) {
     const session = event.data.object as Stripe.Checkout.Session;
-    const ownerSync = await syncOwnerInvoicesFromCheckoutSession(session, event.type);
+    const ownerSync = await syncOwnerInvoicesFromCheckoutSession(session, event.type, event.id);
     console.log("Stripe webhook owner status sync", {
+      eventType: event.type,
+      ownerUpdated: ownerSync.updated,
+      ownerSkipped: ownerSync.skipped,
+    });
+  }
+
+  if (event.type === "payment_intent.payment_failed" || event.type === "payment_intent.canceled") {
+    const paymentIntent = event.data.object as Stripe.PaymentIntent;
+    const tenantSync = await syncTenantBillsFromPaymentIntent(paymentIntent, event.type, event.id, event.account || null);
+    console.log("Stripe webhook tenant payment intent failure sync", {
+      eventType: event.type,
+      tenantUpdated: tenantSync.updated,
+      tenantSkipped: tenantSync.skipped,
+    });
+
+    const ownerSync = await syncOwnerInvoicesFromPaymentIntent(paymentIntent, event.type, event.id);
+    console.log("Stripe webhook owner payment intent failure sync", {
       eventType: event.type,
       ownerUpdated: ownerSync.updated,
       ownerSkipped: ownerSync.skipped,

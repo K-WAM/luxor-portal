@@ -7,6 +7,7 @@ import { getShortPropertyName } from "@/lib/property-short-name";
 import { CANONICAL_PORTAL_URL } from "@/lib/email/payments-due-soon";
 
 type StripeSyncStatus = "paid" | "processing" | "due";
+type FailedPaymentStatus = "failed" | "canceled" | "expired" | "requires_payment_method";
 
 type TenantBillRow = {
   id: string;
@@ -22,6 +23,9 @@ type TenantBillRow = {
   stripe_payment_intent_id: string | null;
   processing_started_at: string | null;
   payment_link_url: string | null;
+  failed_payment_email_sent_at: string | null;
+  failed_payment_email_last_status: string | null;
+  failed_payment_email_event_id: string | null;
   properties?: { address?: string | null } | { address?: string | null }[] | null;
 };
 
@@ -39,6 +43,9 @@ type OwnerInvoiceRow = {
   stripe_payment_intent_id: string | null;
   processing_started_at: string | null;
   payment_link_url: string | null;
+  failed_payment_email_sent_at: string | null;
+  failed_payment_email_last_status: string | null;
+  failed_payment_email_event_id: string | null;
   properties?: { address?: string | null } | { address?: string | null }[] | null;
 };
 
@@ -58,6 +65,11 @@ type StatusChangeNotification = {
   connectedAccountId?: string | null;
   billId: string;
   paymentMethod: "ach" | "card" | "manual" | "online";
+};
+
+type FailedPaymentNotification = Omit<StatusChangeNotification, "newStatus"> & {
+  failedStatus: FailedPaymentStatus;
+  retryUrl: string;
 };
 
 type RefreshResult = {
@@ -111,6 +123,18 @@ const mapPaymentIntentStatus = (status: Stripe.PaymentIntent.Status): StripeSync
   return "processing";
 };
 
+const mapPaymentIntentFailureStatus = (status: Stripe.PaymentIntent.Status): FailedPaymentStatus | null => {
+  if (status === "canceled") return "canceled";
+  if (status === "requires_payment_method") return "requires_payment_method";
+  return null;
+};
+
+const getCheckoutSessionFailureStatus = (eventType: string): FailedPaymentStatus | null => {
+  if (eventType === "checkout.session.async_payment_failed") return "failed";
+  if (eventType === "checkout.session.expired") return "expired";
+  return null;
+};
+
 const mapCheckoutSessionEventToStatus = (
   eventType: string,
   session: Stripe.Checkout.Session
@@ -122,6 +146,9 @@ const mapCheckoutSessionEventToStatus = (
     return "paid";
   }
   if (eventType === "checkout.session.async_payment_failed") {
+    return "due";
+  }
+  if (eventType === "checkout.session.expired") {
     return "due";
   }
   return null;
@@ -161,7 +188,10 @@ const getLeaseTenantContacts = async (leaseAgreementId: string | null) => {
 
   if (error) throw error;
 
-  const userInfoMap = await getUserInfoMap((tenantLinks || []).map((row: any) => row.user_id).filter(Boolean));
+  const tenantUserIds = ((tenantLinks || []) as { user_id?: string | null }[])
+    .map((row) => row.user_id)
+    .filter((value): value is string => Boolean(value));
+  const userInfoMap = await getUserInfoMap(tenantUserIds);
   const names = Array.from(userInfoMap.values())
     .map((entry) => entry.name)
     .filter((value): value is string => Boolean(value));
@@ -362,6 +392,159 @@ const sendCustomerPaymentStatusEmail = async (payload: StatusChangeNotification)
   });
 };
 
+const buildFailedPaymentEmail = (payload: FailedPaymentNotification) => {
+  const propertyShortName = getShortPropertyName(payload.propertyAddress);
+  const amountLabel = formatCurrency(payload.amount);
+  const paymentMethodLabel = getPaymentMethodLabel(payload.paymentMethod);
+  const firstName = getFirstName(payload.contactName, payload.recipientEmails[0] || null);
+  const subject = "Payment Could Not Be Completed";
+  const logoUrl = `${CANONICAL_PORTAL_URL}/luxor-logo.png`;
+  const ctaLabel = "REVIEW PAYMENT";
+  const billLabel = payload.description || "Payment";
+  const statusLabel =
+    payload.failedStatus === "expired"
+      ? "Expired"
+      : payload.failedStatus === "canceled"
+        ? "Canceled"
+        : "Failed";
+
+  const html = `
+    <div style="background-color: #ffffff; padding: 0; margin: 0;">
+      <div style="max-width: 600px; margin: 0 auto; padding: 0 20px 32px;">
+        <div style="background-color: #0f172a; height: 8px;"></div>
+        <div style="padding: 16px 0;">
+          <img src="${logoUrl}" alt="Luxor Developments" style="height: 32px;" />
+        </div>
+        <h1 style="font-size: 24px; margin: 0 0 6px; color: #0f172a;">${subject}</h1>
+        <h2 style="font-size: 18px; margin: 0 0 18px; color: #334155;">Please review your payment method or submit payment again.</h2>
+        <p style="margin: 0 0 20px; font-size: 14px; color: #0f172a;">Hi ${firstName},</p>
+        <a href="${payload.retryUrl}" style="display: block; text-align: center; background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 600;">
+          ${ctaLabel}
+        </a>
+        <div style="margin: 22px 0 0;">
+          <div style="border-left: 4px solid #fecaca; padding-left: 12px;">
+            <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; background: #ffffff;">
+              <div style="font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 10px;">
+                ${propertyShortName} - ${payload.propertyAddress || "Unknown property"}
+              </div>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tbody>
+                  <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 130px; vertical-align: top;">Bill:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${billLabel}</td></tr>
+                  <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 130px; vertical-align: top;">Amount:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${amountLabel}</td></tr>
+                  <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 130px; vertical-align: top;">Status:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${statusLabel}</td></tr>
+                  <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 130px; vertical-align: top;">Payment Method:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${paymentMethodLabel}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <p style="margin: 20px 0 0; font-size: 14px; color: #334155;">Your account has not been credited for this payment attempt.</p>
+        <p style="margin: 20px 0 0; font-size: 14px; color: #334155;">Thank you,<br />Luxor Developments</p>
+        <p style="margin: 24px 0 0; font-size: 12px; color: #64748b;">${EMAIL_FOOTER}</p>
+      </div>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    "Please review your payment method or submit payment again.",
+    "",
+    `Hi ${firstName},`,
+    "",
+    `Property: ${propertyShortName} - ${payload.propertyAddress || "Unknown property"}`,
+    `Bill: ${billLabel}`,
+    `Amount: ${amountLabel}`,
+    `Status: ${statusLabel}`,
+    `Payment Method: ${paymentMethodLabel}`,
+    "",
+    "Your account has not been credited for this payment attempt.",
+    "",
+    ctaLabel,
+    payload.retryUrl,
+    "",
+    "Thank you,",
+    "Luxor Developments",
+    "",
+    EMAIL_FOOTER,
+  ].join("\n");
+
+  return { subject, html, text };
+};
+
+const sendFailedPaymentEmail = async (payload: FailedPaymentNotification) => {
+  const transport = createTransport();
+  if (!transport) {
+    console.warn("Skipping failed payment email; SMTP configuration missing.", {
+      billKind: payload.billKind,
+      billId: payload.billId,
+      failedStatus: payload.failedStatus,
+    });
+    return false;
+  }
+
+  const recipientEmails = Array.from(new Set(payload.recipientEmails.filter(Boolean)));
+  if (!recipientEmails.length) {
+    console.warn("Skipping failed payment email; recipient email missing.", {
+      billKind: payload.billKind,
+      billId: payload.billId,
+      failedStatus: payload.failedStatus,
+    });
+    return false;
+  }
+
+  const emailContent = buildFailedPaymentEmail({
+    ...payload,
+    recipientEmails,
+  });
+
+  await transport.transporter.sendMail({
+    from: transport.from,
+    to: recipientEmails,
+    cc: INTERNAL_PAYMENT_EMAIL,
+    subject: emailContent.subject,
+    html: emailContent.html,
+    text: emailContent.text,
+  });
+
+  return true;
+};
+
+const getFailedPaymentKey = (input: {
+  eventId?: string | null;
+  stripePaymentIntentId?: string | null;
+  stripeSessionId?: string | null;
+  failedStatus: FailedPaymentStatus;
+  billId: string;
+}) =>
+  input.eventId ||
+  input.stripePaymentIntentId ||
+  input.stripeSessionId ||
+  `${input.billId}:${input.failedStatus}`;
+
+const wasFailedPaymentEmailSent = (
+  row: Pick<TenantBillRow | OwnerInvoiceRow, "failed_payment_email_event_id" | "failed_payment_email_last_status">,
+  failedStatus: FailedPaymentStatus,
+  failedPaymentKey: string
+) => row.failed_payment_email_event_id === failedPaymentKey && row.failed_payment_email_last_status === failedStatus;
+
+const markFailedPaymentEmailSent = async (input: {
+  billKind: StatusChangeNotification["billKind"];
+  billId: string;
+  failedStatus: FailedPaymentStatus;
+  failedPaymentKey: string;
+}) => {
+  const table = input.billKind === "tenant" ? "tenant_bills" : "billing_invoices";
+  const { error } = await supabaseAdmin
+    .from(table)
+    .update({
+      failed_payment_email_sent_at: new Date().toISOString(),
+      failed_payment_email_last_status: input.failedStatus,
+      failed_payment_email_event_id: input.failedPaymentKey,
+    })
+    .eq("id", input.billId);
+  if (error) throw error;
+};
+
 const shouldSendLandlordTenantPaymentEmail = (payload: StatusChangeNotification) => {
   if (payload.billKind !== "tenant") return false;
   if (payload.newStatus === "processing") return payload.paymentMethod === "ach";
@@ -527,12 +710,14 @@ const updateTenantBillStatus = async (bill: TenantBillRow, nextStatus: StripeSyn
   stripePaymentIntentId: string | null;
   connectedAccountId: string | null;
   paymentMethod: StatusChangeNotification["paymentMethod"];
+  failedStatus?: FailedPaymentStatus | null;
+  eventId?: string | null;
 }) => {
   const currentStatus = normalizeStatus(bill.status);
   if (currentStatus === "paid") {
     return { id: bill.id, changed: false, oldStatus: currentStatus, newStatus: nextStatus } satisfies RefreshResult;
   }
-  if (currentStatus === nextStatus) {
+  if (currentStatus === nextStatus && !(nextStatus === "due" && context.failedStatus)) {
     return { id: bill.id, changed: false, oldStatus: currentStatus, newStatus: nextStatus } satisfies RefreshResult;
   }
 
@@ -610,6 +795,43 @@ const updateTenantBillStatus = async (bill: TenantBillRow, nextStatus: StripeSyn
     paymentMethod: context.paymentMethod,
   });
 
+  if (nextStatus === "due" && context.failedStatus) {
+    const failedPaymentKey = getFailedPaymentKey({
+      eventId: context.eventId,
+      stripePaymentIntentId: context.stripePaymentIntentId,
+      stripeSessionId: context.stripeSessionId,
+      failedStatus: context.failedStatus,
+      billId: bill.id,
+    });
+    if (!wasFailedPaymentEmailSent(bill, context.failedStatus, failedPaymentKey)) {
+      const sent = await sendFailedPaymentEmail({
+        billKind: "tenant",
+        billId: bill.id,
+        propertyAddress: getPropertyAddress(bill.properties),
+        contactName,
+        recipientEmails,
+        amount: bill.amount,
+        description: bill.description || bill.bill_type,
+        dueDate: bill.due_date,
+        oldStatus: currentStatus,
+        failedStatus: context.failedStatus,
+        stripeSessionId: context.stripeSessionId,
+        stripePaymentIntentId: context.stripePaymentIntentId,
+        connectedAccountId: context.connectedAccountId,
+        paymentMethod: context.paymentMethod,
+        retryUrl: `${CANONICAL_PORTAL_URL}/tenant/payments`,
+      });
+      if (sent) {
+        await markFailedPaymentEmailSent({
+          billKind: "tenant",
+          billId: bill.id,
+          failedStatus: context.failedStatus,
+          failedPaymentKey,
+        });
+      }
+    }
+  }
+
   return { id: bill.id, changed: true, oldStatus: currentStatus, newStatus: nextStatus } satisfies RefreshResult;
 };
 
@@ -617,12 +839,14 @@ const updateOwnerInvoiceStatus = async (invoice: OwnerInvoiceRow, nextStatus: St
   stripeSessionId: string | null;
   stripePaymentIntentId: string | null;
   paymentMethod: StatusChangeNotification["paymentMethod"];
+  failedStatus?: FailedPaymentStatus | null;
+  eventId?: string | null;
 }) => {
   const currentStatus = normalizeStatus(invoice.status);
   if (currentStatus === "paid") {
     return { id: invoice.id, changed: false, oldStatus: currentStatus, newStatus: nextStatus } satisfies RefreshResult;
   }
-  if (currentStatus === nextStatus) {
+  if (currentStatus === nextStatus && !(nextStatus === "due" && context.failedStatus)) {
     return { id: invoice.id, changed: false, oldStatus: currentStatus, newStatus: nextStatus } satisfies RefreshResult;
   }
 
@@ -675,10 +899,51 @@ const updateOwnerInvoiceStatus = async (invoice: OwnerInvoiceRow, nextStatus: St
     paymentMethod: context.paymentMethod,
   });
 
+  if (nextStatus === "due" && context.failedStatus) {
+    const failedPaymentKey = getFailedPaymentKey({
+      eventId: context.eventId,
+      stripePaymentIntentId: context.stripePaymentIntentId,
+      stripeSessionId: context.stripeSessionId,
+      failedStatus: context.failedStatus,
+      billId: invoice.id,
+    });
+    if (!wasFailedPaymentEmailSent(invoice, context.failedStatus, failedPaymentKey)) {
+      const sent = await sendFailedPaymentEmail({
+        billKind: "owner",
+        billId: invoice.id,
+        propertyAddress: getPropertyAddress(invoice.properties),
+        contactName,
+        recipientEmails,
+        amount: invoice.total_due ?? invoice.fee_amount,
+        description: invoice.description || invoice.category,
+        dueDate: invoice.due_date,
+        oldStatus: currentStatus,
+        failedStatus: context.failedStatus,
+        stripeSessionId: context.stripeSessionId,
+        stripePaymentIntentId: context.stripePaymentIntentId,
+        connectedAccountId: null,
+        paymentMethod: context.paymentMethod,
+        retryUrl: `${CANONICAL_PORTAL_URL}/owner/billing`,
+      });
+      if (sent) {
+        await markFailedPaymentEmailSent({
+          billKind: "owner",
+          billId: invoice.id,
+          failedStatus: context.failedStatus,
+          failedPaymentKey,
+        });
+      }
+    }
+  }
+
   return { id: invoice.id, changed: true, oldStatus: currentStatus, newStatus: nextStatus } satisfies RefreshResult;
 };
 
-export const syncTenantBillsFromCheckoutSession = async (session: Stripe.Checkout.Session, eventType: string) => {
+export const syncTenantBillsFromCheckoutSession = async (
+  session: Stripe.Checkout.Session,
+  eventType: string,
+  eventId?: string | null
+) => {
   const tenantBillIds = session.metadata?.billIds
     ? session.metadata.billIds.split(",").map((id) => id.trim()).filter(Boolean)
     : [];
@@ -694,7 +959,7 @@ export const syncTenantBillsFromCheckoutSession = async (session: Stripe.Checkou
 
   const { data, error } = await supabaseAdmin
     .from("tenant_bills")
-    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, properties(address)")
+    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .in("id", tenantBillIds);
 
   if (error) throw error;
@@ -704,14 +969,17 @@ export const syncTenantBillsFromCheckoutSession = async (session: Stripe.Checkou
     sessionPaymentMethodTypes: session.payment_method_types || null,
     paymentLinkUrl: null,
   });
+  const failedStatus = getCheckoutSessionFailureStatus(eventType);
   let updated = 0;
   for (const bill of (data || []) as TenantBillRow[]) {
     const routing = await resolveTenantBillConnectedAccount(bill.property_id);
     const result = await updateTenantBillStatus(bill, nextStatus, {
-      stripeSessionId: nextStatus === "due" ? null : session.id,
-      stripePaymentIntentId: nextStatus === "due" ? null : currentPaymentIntentId,
+      stripeSessionId: session.id,
+      stripePaymentIntentId: currentPaymentIntentId,
       connectedAccountId: routing.connectedAccountId,
       paymentMethod,
+      failedStatus,
+      eventId,
     });
     if (result.changed) updated += 1;
   }
@@ -719,7 +987,11 @@ export const syncTenantBillsFromCheckoutSession = async (session: Stripe.Checkou
   return { updated, skipped: tenantBillIds.length - updated };
 };
 
-export const syncOwnerInvoicesFromCheckoutSession = async (session: Stripe.Checkout.Session, eventType: string) => {
+export const syncOwnerInvoicesFromCheckoutSession = async (
+  session: Stripe.Checkout.Session,
+  eventType: string,
+  eventId?: string | null
+) => {
   const invoiceIds = session.metadata?.luxor_invoice_ids
     ? session.metadata.luxor_invoice_ids.split(",").map((id) => id.trim()).filter(Boolean)
     : [];
@@ -735,7 +1007,7 @@ export const syncOwnerInvoicesFromCheckoutSession = async (session: Stripe.Check
 
   const { data, error } = await supabaseAdmin
     .from("billing_invoices")
-    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, properties(address)")
+    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .in("id", invoiceIds);
 
   if (error) throw error;
@@ -745,12 +1017,15 @@ export const syncOwnerInvoicesFromCheckoutSession = async (session: Stripe.Check
     sessionPaymentMethodTypes: session.payment_method_types || null,
     paymentLinkUrl: null,
   });
+  const failedStatus = getCheckoutSessionFailureStatus(eventType);
   let updated = 0;
   for (const invoice of (data || []) as OwnerInvoiceRow[]) {
     const result = await updateOwnerInvoiceStatus(invoice, nextStatus, {
-      stripeSessionId: nextStatus === "due" ? null : session.id,
-      stripePaymentIntentId: nextStatus === "due" ? null : currentPaymentIntentId,
+      stripeSessionId: session.id,
+      stripePaymentIntentId: currentPaymentIntentId,
       paymentMethod,
+      failedStatus,
+      eventId,
     });
     if (result.changed) updated += 1;
   }
@@ -758,10 +1033,85 @@ export const syncOwnerInvoicesFromCheckoutSession = async (session: Stripe.Check
   return { updated, skipped: invoiceIds.length - updated };
 };
 
+export const syncTenantBillsFromPaymentIntent = async (
+  paymentIntent: Stripe.PaymentIntent,
+  eventType: string,
+  eventId?: string | null,
+  connectedAccountId?: string | null
+) => {
+  const failedStatus =
+    eventType === "payment_intent.payment_failed" ? "failed" : mapPaymentIntentFailureStatus(paymentIntent.status);
+  if (!failedStatus) {
+    return { updated: 0, skipped: 0 };
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("tenant_bills")
+    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .eq("stripe_payment_intent_id", paymentIntent.id);
+
+  if (error) throw error;
+
+  const paymentMethod = getStripePaymentMethodCategory({
+    paymentIntentPaymentMethodTypes: paymentIntent.payment_method_types,
+  });
+  let updated = 0;
+  for (const bill of (data || []) as TenantBillRow[]) {
+    const routing = connectedAccountId ? { connectedAccountId } : await resolveTenantBillConnectedAccount(bill.property_id);
+    const result = await updateTenantBillStatus(bill, "due", {
+      stripeSessionId: bill.stripe_session_id,
+      stripePaymentIntentId: paymentIntent.id,
+      connectedAccountId: routing.connectedAccountId,
+      paymentMethod,
+      failedStatus,
+      eventId,
+    });
+    if (result.changed) updated += 1;
+  }
+
+  return { updated, skipped: (data || []).length - updated };
+};
+
+export const syncOwnerInvoicesFromPaymentIntent = async (
+  paymentIntent: Stripe.PaymentIntent,
+  eventType: string,
+  eventId?: string | null
+) => {
+  const failedStatus =
+    eventType === "payment_intent.payment_failed" ? "failed" : mapPaymentIntentFailureStatus(paymentIntent.status);
+  if (!failedStatus) {
+    return { updated: 0, skipped: 0 };
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("billing_invoices")
+    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .eq("stripe_payment_intent_id", paymentIntent.id);
+
+  if (error) throw error;
+
+  const paymentMethod = getStripePaymentMethodCategory({
+    paymentIntentPaymentMethodTypes: paymentIntent.payment_method_types,
+  });
+  let updated = 0;
+  for (const invoice of (data || []) as OwnerInvoiceRow[]) {
+    const result = await updateOwnerInvoiceStatus(invoice, "due", {
+      stripeSessionId: invoice.stripe_session_id,
+      stripePaymentIntentId: paymentIntent.id,
+      paymentMethod,
+      failedStatus,
+      eventId,
+    });
+    if (result.changed) updated += 1;
+  }
+
+  return { updated, skipped: (data || []).length - updated };
+};
+
 export const refreshTenantBillStripeStatus = async (billId: string) => {
   const { data, error } = await supabaseAdmin
     .from("tenant_bills")
-    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, properties(address)")
+    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("id", billId)
     .maybeSingle();
 
@@ -787,6 +1137,7 @@ export const refreshTenantBillStripeStatus = async (billId: string) => {
   let paymentMethod: StatusChangeNotification["paymentMethod"] = getStripePaymentMethodCategory({
     paymentLinkUrl: bill.payment_link_url,
   });
+  let failedStatus: FailedPaymentStatus | null = null;
 
   if (bill.stripe_payment_intent_id) {
     try {
@@ -798,6 +1149,7 @@ export const refreshTenantBillStripeStatus = async (billId: string) => {
       hasStripePayment = true;
       latestPaymentIntentId = paymentIntent.id;
       nextStatus = mapPaymentIntentStatus(paymentIntent.status);
+      failedStatus = mapPaymentIntentFailureStatus(paymentIntent.status);
       paymentMethod = getStripePaymentMethodCategory({
         paymentIntentPaymentMethodTypes: paymentIntent.payment_method_types,
         paymentLinkUrl: bill.payment_link_url,
@@ -821,6 +1173,7 @@ export const refreshTenantBillStripeStatus = async (billId: string) => {
       if (typeof session.payment_intent === "object" && session.payment_intent?.status) {
         latestPaymentIntentId = session.payment_intent.id;
         nextStatus = mapPaymentIntentStatus(session.payment_intent.status);
+        failedStatus = mapPaymentIntentFailureStatus(session.payment_intent.status);
         paymentMethod = getStripePaymentMethodCategory({
           sessionPaymentMethodTypes: session.payment_method_types || null,
           paymentIntentPaymentMethodTypes: session.payment_intent.payment_method_types,
@@ -834,6 +1187,7 @@ export const refreshTenantBillStripeStatus = async (billId: string) => {
         });
       } else if (session.status === "expired") {
         nextStatus = "due";
+        failedStatus = "expired";
       } else {
         nextStatus = "processing";
         paymentMethod = getStripePaymentMethodCategory({
@@ -856,6 +1210,7 @@ export const refreshTenantBillStripeStatus = async (billId: string) => {
     stripePaymentIntentId: latestPaymentIntentId,
     connectedAccountId: routing.connectedAccountId,
     paymentMethod,
+    failedStatus,
   });
 
   return {
@@ -868,7 +1223,7 @@ export const refreshTenantBillStripeStatus = async (billId: string) => {
 export const refreshOwnerInvoiceStripeStatus = async (invoiceId: string) => {
   const { data, error } = await supabaseAdmin
     .from("billing_invoices")
-    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, properties(address)")
+    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("id", invoiceId)
     .maybeSingle();
 
@@ -889,6 +1244,7 @@ export const refreshOwnerInvoiceStripeStatus = async (invoiceId: string) => {
   let paymentMethod: StatusChangeNotification["paymentMethod"] = getStripePaymentMethodCategory({
     paymentLinkUrl: invoice.payment_link_url,
   });
+  let failedStatus: FailedPaymentStatus | null = null;
 
   if (invoice.stripe_payment_intent_id) {
     try {
@@ -896,6 +1252,7 @@ export const refreshOwnerInvoiceStripeStatus = async (invoiceId: string) => {
       hasStripePayment = true;
       latestPaymentIntentId = paymentIntent.id;
       nextStatus = mapPaymentIntentStatus(paymentIntent.status);
+      failedStatus = mapPaymentIntentFailureStatus(paymentIntent.status);
       paymentMethod = getStripePaymentMethodCategory({
         paymentIntentPaymentMethodTypes: paymentIntent.payment_method_types,
         paymentLinkUrl: invoice.payment_link_url,
@@ -917,6 +1274,7 @@ export const refreshOwnerInvoiceStripeStatus = async (invoiceId: string) => {
       if (typeof session.payment_intent === "object" && session.payment_intent?.status) {
         latestPaymentIntentId = session.payment_intent.id;
         nextStatus = mapPaymentIntentStatus(session.payment_intent.status);
+        failedStatus = mapPaymentIntentFailureStatus(session.payment_intent.status);
         paymentMethod = getStripePaymentMethodCategory({
           sessionPaymentMethodTypes: session.payment_method_types || null,
           paymentIntentPaymentMethodTypes: session.payment_intent.payment_method_types,
@@ -930,6 +1288,7 @@ export const refreshOwnerInvoiceStripeStatus = async (invoiceId: string) => {
         });
       } else if (session.status === "expired") {
         nextStatus = "due";
+        failedStatus = "expired";
       } else {
         nextStatus = "processing";
         paymentMethod = getStripePaymentMethodCategory({
@@ -951,6 +1310,7 @@ export const refreshOwnerInvoiceStripeStatus = async (invoiceId: string) => {
     stripeSessionId: latestSessionId,
     stripePaymentIntentId: latestPaymentIntentId,
     paymentMethod,
+    failedStatus,
   });
 
   return {
@@ -1018,7 +1378,7 @@ export const refreshStripePaymentStatuses = async (): Promise<CronRefreshSummary
 export const sendManualTenantBillPaidConfirmation = async (billId: string) => {
   const { data, error } = await supabaseAdmin
     .from("tenant_bills")
-    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, properties(address)")
+    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("id", billId)
     .maybeSingle();
   if (error) throw error;
@@ -1080,7 +1440,7 @@ export const sendManualTenantBillPaidConfirmation = async (billId: string) => {
 export const sendManualOwnerInvoicePaidConfirmation = async (invoiceId: string) => {
   const { data, error } = await supabaseAdmin
     .from("billing_invoices")
-    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, properties(address)")
+    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("id", invoiceId)
     .maybeSingle();
   if (error) throw error;
