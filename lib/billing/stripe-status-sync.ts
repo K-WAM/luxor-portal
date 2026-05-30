@@ -45,6 +45,7 @@ type OwnerInvoiceRow = {
 type StatusChangeNotification = {
   billKind: "tenant" | "owner";
   propertyAddress: string;
+  tenantName?: string | null;
   contactName?: string | null;
   recipientEmails: string[];
   amount: number | null;
@@ -169,6 +170,37 @@ const getLeaseTenantContacts = async (leaseAgreementId: string | null) => {
     .filter((value): value is string => Boolean(value));
 
   return { names, emails };
+};
+
+const getPropertyOwnerContacts = async (propertyId: string) => {
+  const normalizedPropertyId = String(propertyId || "").trim();
+  if (!normalizedPropertyId) {
+    return { names: [] as string[], emails: [] as string[] };
+  }
+
+  const { data: ownerLinks, error } = await supabaseAdmin
+    .from("user_properties")
+    .select("user_id")
+    .eq("property_id", normalizedPropertyId)
+    .eq("role", "owner");
+
+  if (error) throw error;
+
+  const ownerUserIds = ((ownerLinks || []) as { user_id?: string | null }[])
+    .map((row) => row.user_id)
+    .filter((value): value is string => Boolean(value));
+  const userInfoMap = await getUserInfoMap(ownerUserIds);
+  const names = Array.from(userInfoMap.values())
+    .map((entry) => entry.name)
+    .filter((value): value is string => Boolean(value));
+  const emails = Array.from(userInfoMap.values())
+    .map((entry) => entry.email)
+    .filter((value): value is string => Boolean(value));
+
+  return {
+    names: Array.from(new Set(names)),
+    emails: Array.from(new Set(emails)),
+  };
 };
 
 const formatCurrency = (amount: number | null) =>
@@ -330,6 +362,150 @@ const sendCustomerPaymentStatusEmail = async (payload: StatusChangeNotification)
   });
 };
 
+const shouldSendLandlordTenantPaymentEmail = (payload: StatusChangeNotification) => {
+  if (payload.billKind !== "tenant") return false;
+  if (payload.newStatus === "processing") return payload.paymentMethod === "ach";
+  if (payload.newStatus === "paid") {
+    return payload.paymentMethod === "card" || payload.paymentMethod === "manual" || payload.paymentMethod === "online";
+  }
+  return false;
+};
+
+const buildLandlordTenantPaymentEmail = (payload: StatusChangeNotification) => {
+  const propertyShortName = getShortPropertyName(payload.propertyAddress);
+  const amountLabel = formatCurrency(payload.amount);
+  const paymentMethodLabel = getPaymentMethodLabel(payload.paymentMethod);
+  const statusLabel = payload.newStatus === "processing" ? "Processing" : "Paid";
+  const tenantLabel = payload.tenantName || "Tenant";
+  const billLabel = payload.description || "Payment";
+  const propertyLabel = `${propertyShortName} - ${payload.propertyAddress || "Unknown property"}`;
+  const logoUrl = `${CANONICAL_PORTAL_URL}/luxor-logo.png`;
+
+  let subject = "Tenant Payment Confirmed";
+  let intro = "A tenant payment has been successfully received and confirmed.";
+  let detail = "The tenant's account has been updated accordingly.";
+  let payoutNote =
+    "Stripe releases card payment funds according to the connected account's payout schedule. Actual deposit timing depends on the owner's Stripe payout settings and receiving bank.";
+
+  if (payload.newStatus === "processing" && payload.paymentMethod === "ach") {
+    subject = "Tenant Payment Received - Processing";
+    intro = "A tenant payment has been received and is currently processing.";
+    detail = "ACH payments typically take approximately 2-4 business days to be confirmed.";
+    payoutNote =
+      "After ACH settlement, Stripe releases funds according to the connected account's payout schedule. Actual deposit timing depends on the owner's Stripe payout settings and receiving bank.";
+  } else if (payload.newStatus === "paid" && payload.paymentMethod === "manual") {
+    subject = "Tenant Payment Recorded";
+    intro = "A tenant payment has been recorded and marked as paid.";
+    detail =
+      "This payment was made outside Stripe and has been applied to the tenant's account based on payment confirmation received.";
+    payoutNote =
+      "No Stripe processing or payout applies. Fund availability depends on the external payment method and the receiving financial institution.";
+  } else if (payload.newStatus === "paid" && payload.paymentMethod === "online") {
+    payoutNote =
+      "Stripe releases online payment funds according to the connected account's payout schedule. Actual deposit timing depends on the owner's Stripe payout settings and receiving bank.";
+  }
+
+  const summaryRows = `
+    <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 140px; vertical-align: top;">Property:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${propertyLabel}</td></tr>
+    <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 140px; vertical-align: top;">Tenant:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${tenantLabel}</td></tr>
+    <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 140px; vertical-align: top;">Bill:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${billLabel}</td></tr>
+    <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 140px; vertical-align: top;">Amount:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${amountLabel}</td></tr>
+    <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 140px; vertical-align: top;">Status:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${statusLabel}</td></tr>
+    <tr><td style="padding: 4px 0; color: #475569; font-size: 14px; width: 140px; vertical-align: top;">Payment Method:</td><td style="padding: 4px 0; color: #0f172a; font-size: 14px;">${paymentMethodLabel}</td></tr>
+  `;
+
+  const html = `
+    <div style="background-color: #ffffff; padding: 0; margin: 0;">
+      <div style="max-width: 600px; margin: 0 auto; padding: 0 20px 32px;">
+        <div style="background-color: #0f172a; height: 8px;"></div>
+        <div style="padding: 16px 0;">
+          <img src="${logoUrl}" alt="Luxor Developments" style="height: 32px;" />
+        </div>
+        <h1 style="font-size: 24px; margin: 0 0 6px; color: #0f172a;">${subject}</h1>
+        <p style="margin: 0 0 20px; font-size: 14px; color: #0f172a;">Hello,</p>
+        <p style="margin: 0 0 18px; font-size: 14px; color: #334155;">${intro}</p>
+        <div style="border-left: 4px solid ${payload.newStatus === "processing" ? "#bfdbfe" : "#86efac"}; padding-left: 12px; margin: 0 0 20px;">
+          <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; background: #ffffff;">
+            <div style="font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 10px;">Payment Summary</div>
+            <table style="width: 100%; border-collapse: collapse;"><tbody>${summaryRows}</tbody></table>
+          </div>
+        </div>
+        <p style="margin: 0 0 16px; font-size: 14px; color: #334155;">${detail}</p>
+        <p style="margin: 0 0 6px; font-size: 14px; color: #0f172a; font-weight: 600;">Payout Note:</p>
+        <p style="margin: 0 0 20px; font-size: 14px; color: #334155;">${payoutNote}</p>
+        <p style="margin: 20px 0 0; font-size: 14px; color: #334155;">Thank you,<br />Luxor Property Management</p>
+        <p style="margin: 24px 0 0; font-size: 12px; color: #64748b;">${EMAIL_FOOTER}</p>
+      </div>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    "",
+    "Hello,",
+    "",
+    intro,
+    "",
+    `Property: ${propertyLabel}`,
+    `Tenant: ${tenantLabel}`,
+    `Bill: ${billLabel}`,
+    `Amount: ${amountLabel}`,
+    `Status: ${statusLabel}`,
+    `Payment Method: ${paymentMethodLabel}`,
+    "",
+    detail,
+    "",
+    "Payout Note:",
+    payoutNote,
+    "",
+    "Thank you,",
+    "Luxor Property Management",
+    "",
+    EMAIL_FOOTER,
+  ].join("\n");
+
+  return { subject, html, text };
+};
+
+const sendLandlordTenantPaymentStatusEmail = async (payload: StatusChangeNotification) => {
+  if (!shouldSendLandlordTenantPaymentEmail(payload)) {
+    return;
+  }
+
+  const transport = createTransport();
+  if (!transport) {
+    console.warn("Skipping landlord tenant payment email; SMTP configuration missing.", {
+      billId: payload.billId,
+      newStatus: payload.newStatus,
+    });
+    return;
+  }
+
+  const recipientEmails = Array.from(new Set(payload.recipientEmails.filter(Boolean)));
+  if (!recipientEmails.length) {
+    console.warn("Skipping landlord tenant payment email; owner recipient email missing.", {
+      billId: payload.billId,
+      propertyAddress: payload.propertyAddress,
+      newStatus: payload.newStatus,
+    });
+    return;
+  }
+
+  const emailContent = buildLandlordTenantPaymentEmail({
+    ...payload,
+    recipientEmails,
+  });
+
+  await transport.transporter.sendMail({
+    from: transport.from,
+    to: recipientEmails,
+    cc: INTERNAL_PAYMENT_EMAIL,
+    subject: emailContent.subject,
+    html: emailContent.html,
+    text: emailContent.text,
+  });
+};
+
 const getStripePaymentMethodCategory = (input: {
   sessionPaymentMethodTypes?: string[] | null;
   paymentIntentPaymentMethodTypes?: string[] | null;
@@ -396,12 +572,33 @@ const updateTenantBillStatus = async (bill: TenantBillRow, nextStatus: StripeSyn
     recipientEmails = leaseContact.emails;
   }
 
+  const tenantName = contactName || recipientEmails[0] || null;
   await sendCustomerPaymentStatusEmail({
     billKind: "tenant",
     billId: bill.id,
     propertyAddress: getPropertyAddress(bill.properties),
+    tenantName,
     contactName,
     recipientEmails,
+    amount: bill.amount,
+    description: bill.description || bill.bill_type,
+    dueDate: bill.due_date,
+    oldStatus: currentStatus,
+    newStatus: nextStatus,
+    stripeSessionId: context.stripeSessionId,
+    stripePaymentIntentId: context.stripePaymentIntentId,
+    connectedAccountId: context.connectedAccountId,
+    paymentMethod: context.paymentMethod,
+  });
+
+  const ownerContacts = await getPropertyOwnerContacts(bill.property_id);
+  await sendLandlordTenantPaymentStatusEmail({
+    billKind: "tenant",
+    billId: bill.id,
+    propertyAddress: getPropertyAddress(bill.properties),
+    tenantName,
+    contactName: ownerContacts.names[0] || null,
+    recipientEmails: ownerContacts.emails,
     amount: bill.amount,
     description: bill.description || bill.bill_type,
     dueDate: bill.due_date,
@@ -841,12 +1038,33 @@ export const sendManualTenantBillPaidConfirmation = async (billId: string) => {
     recipientEmails = leaseContact.emails;
   }
 
+  const tenantName = contactName || recipientEmails[0] || null;
   await sendCustomerPaymentStatusEmail({
     billKind: "tenant",
     billId: bill.id,
     propertyAddress: getPropertyAddress(bill.properties),
+    tenantName,
     contactName,
     recipientEmails,
+    amount: bill.amount,
+    description: bill.description || bill.bill_type,
+    dueDate: bill.due_date,
+    oldStatus: bill.status,
+    newStatus: "paid",
+    stripeSessionId: bill.stripe_session_id,
+    stripePaymentIntentId: bill.stripe_payment_intent_id,
+    connectedAccountId: null,
+    paymentMethod: "manual",
+  });
+
+  const ownerContacts = await getPropertyOwnerContacts(bill.property_id);
+  await sendLandlordTenantPaymentStatusEmail({
+    billKind: "tenant",
+    billId: bill.id,
+    propertyAddress: getPropertyAddress(bill.properties),
+    tenantName,
+    contactName: ownerContacts.names[0] || null,
+    recipientEmails: ownerContacts.emails,
     amount: bill.amount,
     description: bill.description || bill.bill_type,
     dueDate: bill.due_date,
