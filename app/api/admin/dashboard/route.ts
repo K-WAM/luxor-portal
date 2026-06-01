@@ -10,7 +10,7 @@ const getJoinedPropertyAddress = (joined: any) =>
   Array.isArray(joined) ? joined[0]?.address || "" : joined?.address || "";
 const toMonthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, "0")}`;
 
-type PaidRentBillRow = {
+type CoveredRentBillRow = {
   id: string;
   amount: number | string | null;
   paid_date: string | null;
@@ -26,7 +26,7 @@ const toNumber = (value: unknown, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const buildPaidRentDedupKey = (bill: PaidRentBillRow) => {
+const buildRentDedupKey = (bill: CoveredRentBillRow) => {
   const dueParts = getDateOnlyParts(bill.due_date);
   const billedYear =
     Number.isFinite(bill.year as number) && bill.year ? Number(bill.year) : dueParts?.year;
@@ -40,10 +40,10 @@ const buildPaidRentDedupKey = (bill: PaidRentBillRow) => {
   return `tenant:${billedYear || "na"}-${billedMonth || "na"}`;
 };
 
-const aggregatePaidRentByMonth = (paidBills: PaidRentBillRow[], monthKeys: Set<string>) => {
+const aggregateCoveredRentByMonth = (coveredBills: CoveredRentBillRow[], monthKeys: Set<string>) => {
   const monthlyBuckets = new Map<string, Map<string, number>>();
 
-  for (const bill of paidBills) {
+  for (const bill of coveredBills) {
     const dueParts = getDateOnlyParts(bill.due_date);
     const billedYear =
       Number.isFinite(bill.year as number) && bill.year ? Number(bill.year) : dueParts?.year;
@@ -54,7 +54,7 @@ const aggregatePaidRentByMonth = (paidBills: PaidRentBillRow[], monthKeys: Set<s
     const billedMonthKey = toMonthKey(billedYear, billedMonth);
     if (!monthKeys.has(billedMonthKey)) continue;
 
-    const dedupKey = buildPaidRentDedupKey(bill);
+    const dedupKey = buildRentDedupKey(bill);
     const amount = toNumber(bill.amount, 0);
     if (amount <= 0) continue;
 
@@ -83,11 +83,15 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const yearParam = searchParams.get("year");
-    const currentYear = yearParam ? parseInt(yearParam, 10) || new Date().getFullYear() : new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
-    const currentMonthKey = toMonthKey(currentYear, currentMonth);
+    const monthParam = searchParams.get("month");
     const now = new Date();
-    const monthAfterNextStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1));
+    const currentYear = yearParam ? parseInt(yearParam, 10) || now.getFullYear() : now.getFullYear();
+    const parsedMonth = monthParam ? parseInt(monthParam, 10) : NaN;
+    const currentMonth = Number.isFinite(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12
+      ? parsedMonth
+      : now.getMonth() + 1;
+    const currentMonthKey = toMonthKey(currentYear, currentMonth);
+    const monthAfterNextStart = new Date(Date.UTC(currentYear, currentMonth + 1, 1));
     const endOfNextMonth = new Date(Date.UTC(monthAfterNextStart.getUTCFullYear(), monthAfterNextStart.getUTCMonth(), 0));
     const endOfNextMonthDate = toUtcDateOnlyString(endOfNextMonth);
     const monthAfterNextStartDate = toUtcDateOnlyString(monthAfterNextStart);
@@ -144,12 +148,12 @@ export async function GET(request: Request) {
         const currentMonthEnd = `${currentMonthEndDate.getUTCFullYear()}-${String(
           currentMonthEndDate.getUTCMonth() + 1
         ).padStart(2, "0")}-${String(currentMonthEndDate.getUTCDate()).padStart(2, "0")}`;
-        const { data: currentMonthPaidRentBills } = await supabaseAdmin
+        const { data: currentMonthCoveredRentBills } = await supabaseAdmin
           .from("tenant_bills")
           .select("id, amount, paid_date, due_date, year, month, bill_scope, lease_agreement_id")
           .eq("property_id", property.id)
           .eq("bill_type", "rent")
-          .eq("status", "paid")
+          .in("status", ["paid", "processing"])
           .gte("due_date", currentMonthStart)
           .lte("due_date", currentMonthEnd);
 
@@ -250,11 +254,11 @@ export async function GET(request: Request) {
           }
         }
 
-        const currentMonthPaidRentMap = aggregatePaidRentByMonth(
-          (currentMonthPaidRentBills || []) as PaidRentBillRow[],
+        const currentMonthCoveredRentMap = aggregateCoveredRentByMonth(
+          (currentMonthCoveredRentBills || []) as CoveredRentBillRow[],
           new Set([currentMonthKey])
         );
-        const currentMonthBillingRent = currentMonthPaidRentMap.get(currentMonthKey) || 0;
+        const currentMonthBillingRent = currentMonthCoveredRentMap.get(currentMonthKey) || 0;
         const currentMonthRow = (monthlyData || []).find(r => r.month === currentMonth);
         const current_month_rent_paid =
           currentMonthBillingRent > 0 || (currentMonthRow?.rent_income || 0) > 0;

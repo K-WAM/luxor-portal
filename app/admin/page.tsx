@@ -95,8 +95,17 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const currentMonthName = new Date().toLocaleString("en-US", { month: "long" });
-  const nextMonthName = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toLocaleString("en-US", { month: "long" });
+  const dashboardMonth = useMemo(() => {
+    const now = new Date();
+    return {
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+      currentMonthName: now.toLocaleString("en-US", { month: "long" }),
+      nextMonthName: new Date(now.getFullYear(), now.getMonth() + 1, 1).toLocaleString("en-US", { month: "long" }),
+    };
+  }, []);
+  const currentMonthName = dashboardMonth.currentMonthName;
+  const nextMonthName = dashboardMonth.nextMonthName;
   const [currentMonthPropertyFilter, setCurrentMonthPropertyFilter] = useState("all");
   const [currentMonthBillTypeFilter, setCurrentMonthBillTypeFilter] = useState("all");
   const [currentMonthStatusFilter, setCurrentMonthStatusFilter] = useState("all");
@@ -220,7 +229,7 @@ export default function AdminDashboard() {
   const loadDashboard = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/admin/dashboard");
+      const res = await fetch(`/api/admin/dashboard?year=${dashboardMonth.year}&month=${dashboardMonth.month}`);
       const dashboardData = await res.json();
 
       if (!res.ok) {
