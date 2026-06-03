@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 
 type InviteData = {
   id: string;
@@ -21,7 +21,9 @@ type InviteData = {
 export default function InviteAcceptPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const token = params.token as string;
+  const nextPath = searchParams.get("next");
 
   const [invite, setInvite] = useState<InviteData | null>(null);
   const [password, setPassword] = useState("");
@@ -82,7 +84,10 @@ export default function InviteAcceptPage() {
       }
 
       // Redirect to sign in page
-      router.push("/?message=Account created successfully. Please sign in.");
+      const nextQuery = nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
+        ? `&next=${encodeURIComponent(nextPath)}`
+        : "";
+      router.push(`/?message=Account created successfully. Please sign in.${nextQuery}`);
     } catch (err: any) {
       setError(err.message || "Failed to create account");
     } finally {

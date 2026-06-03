@@ -124,13 +124,17 @@ export const buildPaymentReminderDigestEmail = (params: {
   recipientType: ReminderRecipientType;
   sections: Partial<Record<ReminderSectionKey, ReminderBill[]>>;
   logoUrl?: string | null;
+  ctaUrl?: string | null;
+  ctaLabel?: string | null;
 }): PaymentsDueSoonEmail => {
   const firstName = toFirstName(params.recipientName);
   const greeting = `Hi ${firstName},`;
   const ctaUrl =
-    params.recipientType === "owner"
+    params.ctaUrl ||
+    (params.recipientType === "owner"
       ? `${CANONICAL_PORTAL_URL}/owner/billing`
-      : `${CANONICAL_PORTAL_URL}/tenant/payments`;
+      : `${CANONICAL_PORTAL_URL}/tenant/payments`);
+  const ctaLabel = params.ctaLabel || CTA_LABEL;
 
   const logoUrl = params.logoUrl || `${CANONICAL_PORTAL_URL}/luxor-logo.png`;
   const logoBlock = logoUrl
@@ -170,7 +174,7 @@ export const buildPaymentReminderDigestEmail = (params: {
         <p style="margin: 0 0 12px; font-size: 14px; color: #334155;">Please review the payment items below.</p>
         <p style="margin: 0 0 20px; font-size: 14px; color: #334155;">${BODY_2}</p>
         <a href="${ctaUrl}" style="display: block; text-align: center; background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 600;">
-          ${CTA_LABEL}
+          ${ctaLabel}
         </a>
         ${sectionHtml}
         <p style="margin: 24px 0 0; font-size: 12px; color: #64748b;">${FOOTER}</p>
@@ -186,7 +190,7 @@ export const buildPaymentReminderDigestEmail = (params: {
     "Please review the payment items below.",
     BODY_2,
     "",
-    CTA_LABEL,
+    ctaLabel,
     ctaUrl,
     "",
     ...textSections,

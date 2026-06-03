@@ -15,6 +15,30 @@ const OWNER_BILL_CATEGORIES = [
   "repairs",
   "other",
 ];
+const RECIPIENT_SOURCES = ["auth_user", "pending_invite", "manual"] as const;
+
+const normalizeRecipientSource = (value: unknown) => {
+  const normalized = String(value || "").trim();
+  return RECIPIENT_SOURCES.includes(normalized as any) ? normalized : null;
+};
+
+const buildRecipientPayload = (body: any) => {
+  const source = normalizeRecipientSource(body?.recipientSource);
+  const email = body?.recipientEmail ? String(body.recipientEmail).trim() : null;
+  const name = body?.recipientName ? String(body.recipientName).trim() : null;
+  const inviteId = body?.recipientInviteId ? String(body.recipientInviteId).trim() : null;
+  const userId = body?.recipientUserId ? String(body.recipientUserId).trim() : null;
+
+  if (!source && !email && !name && !inviteId && !userId) return {};
+
+  return {
+    recipient_email: email || null,
+    recipient_name: name || null,
+    recipient_source: source,
+    recipient_invite_id: inviteId || null,
+    recipient_user_id: userId || null,
+  };
+};
 
 // GET: list all invoices (admin only)
 // Query params: includeVoided=true to include voided bills
@@ -79,6 +103,11 @@ export async function GET(request: NextRequest) {
         invoiceUrl: row.invoice_url,
         invoiceNumber: row.invoice_number,
         paymentLinkUrl: row.payment_link_url,
+        recipientEmail: row.recipient_email,
+        recipientName: row.recipient_name,
+        recipientSource: row.recipient_source,
+        recipientInviteId: row.recipient_invite_id,
+        recipientUserId: row.recipient_user_id,
         stripeSessionId: row.stripe_session_id,
         stripePaymentIntentId: row.stripe_payment_intent_id,
         category: row.category,
@@ -114,6 +143,11 @@ export async function POST(request: NextRequest) {
       dueDate,
       category,
       paymentLinkUrl,
+      recipientEmail,
+      recipientName,
+      recipientSource,
+      recipientInviteId,
+      recipientUserId,
     } = body || {};
 
     if (!propertyId) {
@@ -195,6 +229,7 @@ export async function POST(request: NextRequest) {
         status: "due",
         category: category || "pm_fee",
         payment_link_url: paymentLinkUrl || null,
+        ...buildRecipientPayload({ recipientEmail, recipientName, recipientSource, recipientInviteId, recipientUserId }),
       })
       .select()
       .single();
@@ -244,6 +279,11 @@ export async function PATCH(request: NextRequest) {
       action,
       voidReason,
       ownerId,
+      recipientEmail,
+      recipientName,
+      recipientSource,
+      recipientInviteId,
+      recipientUserId,
     } = body || {};
 
     if (!id) {
@@ -293,6 +333,7 @@ export async function PATCH(request: NextRequest) {
     if (paymentLinkUrl !== undefined) updates.payment_link_url = paymentLinkUrl || null;
     if (category !== undefined) updates.category = category;
     if (ownerId !== undefined) updates.owner_id = ownerId;
+    Object.assign(updates, buildRecipientPayload({ recipientEmail, recipientName, recipientSource, recipientInviteId, recipientUserId }));
     if (dueDate !== undefined) {
       updates.due_date = toDateOnlyString(dueDate);
     }

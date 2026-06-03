@@ -8,6 +8,7 @@ import { sendManualTenantBillPaidConfirmation } from "@/lib/billing/stripe-statu
 const BILL_TYPES = ["rent", "fee", "late_fee", "security_deposit", "hoa", "maintenance", "other"] as const;
 const BILL_STATUSES = ["due", "paid", "overdue", "pending", "processing", "voided"] as const;
 const BILL_SCOPES = ["tenant", "lease"] as const;
+const RECIPIENT_SOURCES = ["auth_user", "pending_invite", "manual"] as const;
 
 type TenantBillScope = (typeof BILL_SCOPES)[number];
 
@@ -32,6 +33,29 @@ const normalizeBillScope = (value?: string | null): TenantBillScope =>
 const parsePositiveAmount = (amount: unknown) => {
   const parsed = parseFloat(String(amount));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeRecipientSource = (value: unknown) => {
+  const normalized = String(value || "").trim();
+  return RECIPIENT_SOURCES.includes(normalized as any) ? normalized : null;
+};
+
+const buildRecipientPayload = (body: any) => {
+  const source = normalizeRecipientSource(body?.recipientSource);
+  const email = body?.recipientEmail ? String(body.recipientEmail).trim() : null;
+  const name = body?.recipientName ? String(body.recipientName).trim() : null;
+  const inviteId = body?.recipientInviteId ? String(body.recipientInviteId).trim() : null;
+  const userId = body?.recipientUserId ? String(body.recipientUserId).trim() : null;
+
+  if (!source && !email && !name && !inviteId && !userId) return {};
+
+  return {
+    recipient_email: email || null,
+    recipient_name: name || null,
+    recipient_source: source,
+    recipient_invite_id: inviteId || null,
+    recipient_user_id: userId || null,
+  };
 };
 
 const getNormalizedDueDateParts = (dueDate: unknown) => {
@@ -95,6 +119,7 @@ const buildBillPayload = (input: {
   dueDate: string;
   notifyTenant: boolean;
   paymentLinkUrl?: string | null;
+  recipient?: Record<string, any>;
 }) => {
   const due = getNormalizedDueDateParts(input.dueDate);
   if (!due) return null;
@@ -111,6 +136,7 @@ const buildBillPayload = (input: {
     status: "due",
     notify_tenant: input.billScope === "tenant" ? !!input.notifyTenant : false,
     payment_link_url: input.paymentLinkUrl || null,
+    ...(input.recipient || {}),
     month: due.parts.month,
     year: due.parts.year,
   };
@@ -139,6 +165,11 @@ export async function GET(request: Request) {
       notify_tenant,
       invoice_url,
       payment_link_url,
+      recipient_email,
+      recipient_name,
+      recipient_source,
+      recipient_invite_id,
+      recipient_user_id,
       month,
       year,
       created_at,
@@ -165,6 +196,11 @@ export async function GET(request: Request) {
       notify_tenant,
       invoice_url,
       payment_link_url,
+      recipient_email,
+      recipient_name,
+      recipient_source,
+      recipient_invite_id,
+      recipient_user_id,
       stripe_session_id,
       stripe_payment_intent_id,
       month,
@@ -275,6 +311,11 @@ export async function GET(request: Request) {
         notify_tenant: bill.notify_tenant,
         invoiceUrl: bill.invoice_url,
         paymentLinkUrl: bill.payment_link_url,
+        recipientEmail: bill.recipient_email,
+        recipientName: bill.recipient_name,
+        recipientSource: bill.recipient_source,
+        recipientInviteId: bill.recipient_invite_id,
+        recipientUserId: bill.recipient_user_id,
         stripeSessionId: bill.stripe_session_id,
         stripePaymentIntentId: bill.stripe_payment_intent_id,
         month: bill.month,
@@ -413,6 +454,7 @@ export async function POST(request: Request) {
     const description = body?.description;
     const notifyTenant = !!body?.notifyTenant;
     const paymentLinkUrl = body?.paymentLinkUrl;
+    const recipient = buildRecipientPayload(body);
 
     if (!propertyId || !billType || !body?.dueDate) {
       return NextResponse.json({ error: "propertyId, billType, and dueDate are required" }, { status: 400 });
@@ -455,6 +497,7 @@ export async function POST(request: Request) {
       dueDate: body?.dueDate,
       notifyTenant,
       paymentLinkUrl,
+      recipient,
     });
 
     if (!payload) {
@@ -607,6 +650,8 @@ export async function PATCH(request: Request) {
     if (body.invoiceUrl !== undefined) {
       updates.invoice_url = body.invoiceUrl || null;
     }
+
+    Object.assign(updates, buildRecipientPayload(body));
 
     if (nextBillScope === "lease") {
       const nextBillType = String(updates.bill_type || existingBill.bill_type || "").trim().toLowerCase();

@@ -5,6 +5,11 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveTenantBillConnectedAccount } from "@/lib/billing/tenant-connected-account";
 import { getShortPropertyName } from "@/lib/property-short-name";
 import { CANONICAL_PORTAL_URL } from "@/lib/email/payments-due-soon";
+import {
+  BillingRecipientSource,
+  logBillingEmailAudit,
+  resolveBillingRecipient,
+} from "@/lib/billing/email-recipients";
 
 type StripeSyncStatus = "paid" | "processing" | "due";
 type FailedPaymentStatus = "failed" | "canceled" | "expired" | "requires_payment_method";
@@ -23,6 +28,11 @@ type TenantBillRow = {
   stripe_payment_intent_id: string | null;
   processing_started_at: string | null;
   payment_link_url: string | null;
+  recipient_email: string | null;
+  recipient_name: string | null;
+  recipient_source: string | null;
+  recipient_invite_id: string | null;
+  recipient_user_id: string | null;
   failed_payment_email_sent_at: string | null;
   failed_payment_email_last_status: string | null;
   failed_payment_email_event_id: string | null;
@@ -43,6 +53,11 @@ type OwnerInvoiceRow = {
   stripe_payment_intent_id: string | null;
   processing_started_at: string | null;
   payment_link_url: string | null;
+  recipient_email: string | null;
+  recipient_name: string | null;
+  recipient_source: string | null;
+  recipient_invite_id: string | null;
+  recipient_user_id: string | null;
   failed_payment_email_sent_at: string | null;
   failed_payment_email_last_status: string | null;
   failed_payment_email_event_id: string | null;
@@ -65,6 +80,8 @@ type StatusChangeNotification = {
   connectedAccountId?: string | null;
   billId: string;
   paymentMethod: "ach" | "card" | "manual" | "online";
+  ctaUrl?: string | null;
+  recipientSource?: BillingRecipientSource | null;
 };
 
 type FailedPaymentNotification = Omit<StatusChangeNotification, "newStatus"> & {
@@ -178,7 +195,7 @@ const getUserInfoMap = async (ids: string[]) => {
 
 const getLeaseTenantContacts = async (leaseAgreementId: string | null) => {
   if (!leaseAgreementId) {
-    return { names: [] as string[], emails: [] as string[] };
+    return { names: [] as string[], emails: [] as string[], userIds: [] as string[] };
   }
 
   const { data: tenantLinks, error } = await supabaseAdmin
@@ -199,7 +216,7 @@ const getLeaseTenantContacts = async (leaseAgreementId: string | null) => {
     .map((entry) => entry.email)
     .filter((value): value is string => Boolean(value));
 
-  return { names, emails };
+  return { names, emails, userIds: tenantUserIds };
 };
 
 const getPropertyOwnerContacts = async (propertyId: string) => {
@@ -253,6 +270,12 @@ const getPaymentMethodLabel = (paymentMethod: StatusChangeNotification["paymentM
 const getPortalPath = (billKind: StatusChangeNotification["billKind"]) =>
   billKind === "owner" ? "/owner/billing" : "/tenant/payments";
 
+const getBillTypeForAudit = (billKind: StatusChangeNotification["billKind"]) =>
+  billKind === "owner" ? "owner_invoice" : "tenant_bill";
+
+const getCustomerEmailType = (payload: StatusChangeNotification) =>
+  payload.newStatus === "processing" ? "payment_processing" : "payment_confirmation";
+
 const buildCustomerPaymentEmail = (payload: StatusChangeNotification) => {
   const propertyShortName = getShortPropertyName(payload.propertyAddress);
   const amountLabel = formatCurrency(payload.amount);
@@ -261,7 +284,7 @@ const buildCustomerPaymentEmail = (payload: StatusChangeNotification) => {
   const subjectPrefix = payload.newStatus === "processing" ? "Payment Processing" : "Payment Confirmed";
   const subject = `${subjectPrefix} — ${propertyShortName} — ${amountLabel}`;
   const logoUrl = `${CANONICAL_PORTAL_URL}/luxor-logo.png`;
-  const ctaUrl = `${CANONICAL_PORTAL_URL}${getPortalPath(payload.billKind)}`;
+  const ctaUrl = payload.ctaUrl || `${CANONICAL_PORTAL_URL}${getPortalPath(payload.billKind)}`;
   const ctaLabel = payload.newStatus === "processing" ? "VIEW PAYMENT STATUS" : "VIEW PAYMENT DETAILS";
   const introTitle = payload.newStatus === "processing" ? "Payment Processing" : "Payment Confirmed";
   const introSubtitle =
@@ -356,6 +379,7 @@ const sendCustomerPaymentStatusEmail = async (payload: StatusChangeNotification)
   if (!shouldSendCustomerPaymentEmail(payload)) {
     return;
   }
+  const emailType = getCustomerEmailType(payload);
 
   const transport = createTransport();
   if (!transport) {
@@ -363,6 +387,15 @@ const sendCustomerPaymentStatusEmail = async (payload: StatusChangeNotification)
       billKind: payload.billKind,
       billId: payload.billId,
       newStatus: payload.newStatus,
+    });
+    await logBillingEmailAudit({
+      billType: getBillTypeForAudit(payload.billKind),
+      billId: payload.billId,
+      emailType,
+      recipientEmail: payload.recipientEmails[0] || null,
+      recipientSource: payload.recipientSource || null,
+      status: "skipped",
+      skipReason: "smtp_configuration_missing",
     });
     return;
   }
@@ -374,6 +407,14 @@ const sendCustomerPaymentStatusEmail = async (payload: StatusChangeNotification)
       billId: payload.billId,
       newStatus: payload.newStatus,
     });
+    await logBillingEmailAudit({
+      billType: getBillTypeForAudit(payload.billKind),
+      billId: payload.billId,
+      emailType,
+      recipientSource: payload.recipientSource || null,
+      status: "skipped",
+      skipReason: "missing_recipient",
+    });
     return;
   }
 
@@ -382,13 +423,56 @@ const sendCustomerPaymentStatusEmail = async (payload: StatusChangeNotification)
     recipientEmails,
   });
 
-  await transport.transporter.sendMail({
-    from: transport.from,
-    to: recipientEmails,
-    cc: INTERNAL_PAYMENT_EMAIL,
-    subject: emailContent.subject,
-    html: emailContent.html,
-    text: emailContent.text,
+  try {
+    await transport.transporter.sendMail({
+      from: transport.from,
+      to: recipientEmails,
+      cc: INTERNAL_PAYMENT_EMAIL,
+      subject: emailContent.subject,
+      html: emailContent.html,
+      text: emailContent.text,
+    });
+    for (const email of recipientEmails) {
+      await logBillingEmailAudit({
+        billType: getBillTypeForAudit(payload.billKind),
+        billId: payload.billId,
+        emailType,
+        recipientEmail: email,
+        recipientSource: payload.recipientSource || null,
+        status: "sent",
+      });
+    }
+  } catch (error: any) {
+    await logBillingEmailAudit({
+      billType: getBillTypeForAudit(payload.billKind),
+      billId: payload.billId,
+      emailType,
+      recipientEmail: recipientEmails[0] || null,
+      recipientSource: payload.recipientSource || null,
+      status: "failed",
+      errorMessage: error?.message || "Send failed",
+    });
+    throw error;
+  }
+};
+
+const logSkippedCustomerPaymentStatusEmail = async (
+  payload: StatusChangeNotification,
+  skipReason: string,
+  recipientEmail?: string | null,
+  recipientSource?: BillingRecipientSource | null
+) => {
+  if (!shouldSendCustomerPaymentEmail(payload)) {
+    return;
+  }
+  await logBillingEmailAudit({
+    billType: getBillTypeForAudit(payload.billKind),
+    billId: payload.billId,
+    emailType: getCustomerEmailType(payload),
+    recipientEmail: recipientEmail || null,
+    recipientSource: recipientSource || null,
+    status: "skipped",
+    skipReason,
   });
 };
 
@@ -472,12 +556,22 @@ const buildFailedPaymentEmail = (payload: FailedPaymentNotification) => {
 };
 
 const sendFailedPaymentEmail = async (payload: FailedPaymentNotification) => {
+  const emailType = "failed_payment";
   const transport = createTransport();
   if (!transport) {
     console.warn("Skipping failed payment email; SMTP configuration missing.", {
       billKind: payload.billKind,
       billId: payload.billId,
       failedStatus: payload.failedStatus,
+    });
+    await logBillingEmailAudit({
+      billType: getBillTypeForAudit(payload.billKind),
+      billId: payload.billId,
+      emailType,
+      recipientEmail: payload.recipientEmails[0] || null,
+      recipientSource: payload.recipientSource || null,
+      status: "skipped",
+      skipReason: "smtp_configuration_missing",
     });
     return false;
   }
@@ -489,6 +583,14 @@ const sendFailedPaymentEmail = async (payload: FailedPaymentNotification) => {
       billId: payload.billId,
       failedStatus: payload.failedStatus,
     });
+    await logBillingEmailAudit({
+      billType: getBillTypeForAudit(payload.billKind),
+      billId: payload.billId,
+      emailType,
+      recipientSource: payload.recipientSource || null,
+      status: "skipped",
+      skipReason: "missing_recipient",
+    });
     return false;
   }
 
@@ -497,14 +599,37 @@ const sendFailedPaymentEmail = async (payload: FailedPaymentNotification) => {
     recipientEmails,
   });
 
-  await transport.transporter.sendMail({
-    from: transport.from,
-    to: recipientEmails,
-    cc: INTERNAL_PAYMENT_EMAIL,
-    subject: emailContent.subject,
-    html: emailContent.html,
-    text: emailContent.text,
-  });
+  try {
+    await transport.transporter.sendMail({
+      from: transport.from,
+      to: recipientEmails,
+      cc: INTERNAL_PAYMENT_EMAIL,
+      subject: emailContent.subject,
+      html: emailContent.html,
+      text: emailContent.text,
+    });
+    for (const email of recipientEmails) {
+      await logBillingEmailAudit({
+        billType: getBillTypeForAudit(payload.billKind),
+        billId: payload.billId,
+        emailType,
+        recipientEmail: email,
+        recipientSource: payload.recipientSource || null,
+        status: "sent",
+      });
+    }
+  } catch (error: any) {
+    await logBillingEmailAudit({
+      billType: getBillTypeForAudit(payload.billKind),
+      billId: payload.billId,
+      emailType,
+      recipientEmail: recipientEmails[0] || null,
+      recipientSource: payload.recipientSource || null,
+      status: "failed",
+      errorMessage: error?.message || "Send failed",
+    });
+    throw error;
+  }
 
   return true;
 };
@@ -705,6 +830,24 @@ const getStripePaymentMethodCategory = (input: {
   return "manual";
 };
 
+const getTenantBillRecipient = async (bill: TenantBillRow) => {
+  const leaseContact = bill.lease_agreement_id ? await getLeaseTenantContacts(bill.lease_agreement_id) : null;
+  return resolveBillingRecipient({
+    role: "tenant",
+    propertyId: bill.property_id,
+    fields: bill,
+    linkedUserIds: [bill.tenant_id, ...(leaseContact?.userIds || [])],
+  });
+};
+
+const getOwnerInvoiceRecipient = async (invoice: OwnerInvoiceRow) =>
+  resolveBillingRecipient({
+    role: "owner",
+    propertyId: invoice.property_id,
+    fields: invoice,
+    linkedUserIds: [invoice.owner_id],
+  });
+
 const updateTenantBillStatus = async (bill: TenantBillRow, nextStatus: StripeSyncStatus, context: {
   stripeSessionId: string | null;
   stripePaymentIntentId: string | null;
@@ -744,21 +887,11 @@ const updateTenantBillStatus = async (bill: TenantBillRow, nextStatus: StripeSyn
   const { error } = await supabaseAdmin.from("tenant_bills").update(updates).eq("id", bill.id);
   if (error) throw error;
 
-  let contactName: string | null = null;
-  let recipientEmails: string[] = [];
-  if (bill.tenant_id) {
-    const userInfoMap = await getUserInfoMap([bill.tenant_id]);
-    const info = userInfoMap.get(bill.tenant_id);
-    contactName = info?.name || null;
-    recipientEmails = info?.email ? [info.email] : [];
-  } else {
-    const leaseContact = await getLeaseTenantContacts(bill.lease_agreement_id);
-    contactName = leaseContact.names[0] || null;
-    recipientEmails = leaseContact.emails;
-  }
-
+  const recipient = await getTenantBillRecipient(bill);
+  const contactName = recipient.ok ? recipient.name : null;
+  const recipientEmails = recipient.ok ? [recipient.email] : [];
   const tenantName = contactName || recipientEmails[0] || null;
-  await sendCustomerPaymentStatusEmail({
+  const customerPaymentEmailPayload = {
     billKind: "tenant",
     billId: bill.id,
     propertyAddress: getPropertyAddress(bill.properties),
@@ -774,7 +907,19 @@ const updateTenantBillStatus = async (bill: TenantBillRow, nextStatus: StripeSyn
     stripePaymentIntentId: context.stripePaymentIntentId,
     connectedAccountId: context.connectedAccountId,
     paymentMethod: context.paymentMethod,
-  });
+    ctaUrl: recipient.ok ? recipient.ctaUrl : null,
+    recipientSource: recipient.ok ? recipient.source : recipient.source,
+  } satisfies StatusChangeNotification;
+  if (recipient.ok) {
+    await sendCustomerPaymentStatusEmail(customerPaymentEmailPayload);
+  } else {
+    await logSkippedCustomerPaymentStatusEmail(
+      customerPaymentEmailPayload,
+      recipient.skipReason,
+      recipient.email,
+      recipient.source
+    );
+  }
 
   const ownerContacts = await getPropertyOwnerContacts(bill.property_id);
   await sendLandlordTenantPaymentStatusEmail({
@@ -804,23 +949,37 @@ const updateTenantBillStatus = async (bill: TenantBillRow, nextStatus: StripeSyn
       billId: bill.id,
     });
     if (!wasFailedPaymentEmailSent(bill, context.failedStatus, failedPaymentKey)) {
-      const sent = await sendFailedPaymentEmail({
-        billKind: "tenant",
-        billId: bill.id,
-        propertyAddress: getPropertyAddress(bill.properties),
-        contactName,
-        recipientEmails,
-        amount: bill.amount,
-        description: bill.description || bill.bill_type,
-        dueDate: bill.due_date,
-        oldStatus: currentStatus,
-        failedStatus: context.failedStatus,
-        stripeSessionId: context.stripeSessionId,
-        stripePaymentIntentId: context.stripePaymentIntentId,
-        connectedAccountId: context.connectedAccountId,
-        paymentMethod: context.paymentMethod,
-        retryUrl: `${CANONICAL_PORTAL_URL}/tenant/payments`,
-      });
+      const sent = recipient.ok
+        ? await sendFailedPaymentEmail({
+            billKind: "tenant",
+            billId: bill.id,
+            propertyAddress: getPropertyAddress(bill.properties),
+            contactName,
+            recipientEmails,
+            amount: bill.amount,
+            description: bill.description || bill.bill_type,
+            dueDate: bill.due_date,
+            oldStatus: currentStatus,
+            failedStatus: context.failedStatus,
+            stripeSessionId: context.stripeSessionId,
+            stripePaymentIntentId: context.stripePaymentIntentId,
+            connectedAccountId: context.connectedAccountId,
+            paymentMethod: context.paymentMethod,
+            retryUrl: recipient.ctaUrl,
+            recipientSource: recipient.source,
+          })
+        : false;
+      if (!recipient.ok) {
+        await logBillingEmailAudit({
+          billType: "tenant_bill",
+          billId: bill.id,
+          emailType: "failed_payment",
+          recipientEmail: recipient.email,
+          recipientSource: recipient.source,
+          status: "skipped",
+          skipReason: recipient.skipReason,
+        });
+      }
       if (sent) {
         await markFailedPaymentEmailSent({
           billKind: "tenant",
@@ -873,16 +1032,11 @@ const updateOwnerInvoiceStatus = async (invoice: OwnerInvoiceRow, nextStatus: St
   const { error } = await supabaseAdmin.from("billing_invoices").update(updates).eq("id", invoice.id);
   if (error) throw error;
 
-  let contactName: string | null = null;
-  let recipientEmails: string[] = [];
-  if (invoice.owner_id) {
-    const userInfoMap = await getUserInfoMap([invoice.owner_id]);
-    const info = userInfoMap.get(invoice.owner_id);
-    contactName = info?.name || null;
-    recipientEmails = info?.email ? [info.email] : [];
-  }
+  const recipient = await getOwnerInvoiceRecipient(invoice);
+  const contactName = recipient.ok ? recipient.name : null;
+  const recipientEmails = recipient.ok ? [recipient.email] : [];
 
-  await sendCustomerPaymentStatusEmail({
+  const customerPaymentEmailPayload = {
     billKind: "owner",
     billId: invoice.id,
     propertyAddress: getPropertyAddress(invoice.properties),
@@ -897,7 +1051,19 @@ const updateOwnerInvoiceStatus = async (invoice: OwnerInvoiceRow, nextStatus: St
     stripePaymentIntentId: context.stripePaymentIntentId,
     connectedAccountId: null,
     paymentMethod: context.paymentMethod,
-  });
+    ctaUrl: recipient.ok ? recipient.ctaUrl : null,
+    recipientSource: recipient.ok ? recipient.source : recipient.source,
+  } satisfies StatusChangeNotification;
+  if (recipient.ok) {
+    await sendCustomerPaymentStatusEmail(customerPaymentEmailPayload);
+  } else {
+    await logSkippedCustomerPaymentStatusEmail(
+      customerPaymentEmailPayload,
+      recipient.skipReason,
+      recipient.email,
+      recipient.source
+    );
+  }
 
   if (nextStatus === "due" && context.failedStatus) {
     const failedPaymentKey = getFailedPaymentKey({
@@ -908,23 +1074,37 @@ const updateOwnerInvoiceStatus = async (invoice: OwnerInvoiceRow, nextStatus: St
       billId: invoice.id,
     });
     if (!wasFailedPaymentEmailSent(invoice, context.failedStatus, failedPaymentKey)) {
-      const sent = await sendFailedPaymentEmail({
-        billKind: "owner",
-        billId: invoice.id,
-        propertyAddress: getPropertyAddress(invoice.properties),
-        contactName,
-        recipientEmails,
-        amount: invoice.total_due ?? invoice.fee_amount,
-        description: invoice.description || invoice.category,
-        dueDate: invoice.due_date,
-        oldStatus: currentStatus,
-        failedStatus: context.failedStatus,
-        stripeSessionId: context.stripeSessionId,
-        stripePaymentIntentId: context.stripePaymentIntentId,
-        connectedAccountId: null,
-        paymentMethod: context.paymentMethod,
-        retryUrl: `${CANONICAL_PORTAL_URL}/owner/billing`,
-      });
+      const sent = recipient.ok
+        ? await sendFailedPaymentEmail({
+            billKind: "owner",
+            billId: invoice.id,
+            propertyAddress: getPropertyAddress(invoice.properties),
+            contactName,
+            recipientEmails,
+            amount: invoice.total_due ?? invoice.fee_amount,
+            description: invoice.description || invoice.category,
+            dueDate: invoice.due_date,
+            oldStatus: currentStatus,
+            failedStatus: context.failedStatus,
+            stripeSessionId: context.stripeSessionId,
+            stripePaymentIntentId: context.stripePaymentIntentId,
+            connectedAccountId: null,
+            paymentMethod: context.paymentMethod,
+            retryUrl: recipient.ctaUrl,
+            recipientSource: recipient.source,
+          })
+        : false;
+      if (!recipient.ok) {
+        await logBillingEmailAudit({
+          billType: "owner_invoice",
+          billId: invoice.id,
+          emailType: "failed_payment",
+          recipientEmail: recipient.email,
+          recipientSource: recipient.source,
+          status: "skipped",
+          skipReason: recipient.skipReason,
+        });
+      }
       if (sent) {
         await markFailedPaymentEmailSent({
           billKind: "owner",
@@ -959,7 +1139,7 @@ export const syncTenantBillsFromCheckoutSession = async (
 
   const { data, error } = await supabaseAdmin
     .from("tenant_bills")
-    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .in("id", tenantBillIds);
 
   if (error) throw error;
@@ -1007,7 +1187,7 @@ export const syncOwnerInvoicesFromCheckoutSession = async (
 
   const { data, error } = await supabaseAdmin
     .from("billing_invoices")
-    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .in("id", invoiceIds);
 
   if (error) throw error;
@@ -1047,7 +1227,7 @@ export const syncTenantBillsFromPaymentIntent = async (
 
   const { data, error } = await supabaseAdmin
     .from("tenant_bills")
-    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("stripe_payment_intent_id", paymentIntent.id);
 
   if (error) throw error;
@@ -1085,7 +1265,7 @@ export const syncOwnerInvoicesFromPaymentIntent = async (
 
   const { data, error } = await supabaseAdmin
     .from("billing_invoices")
-    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("stripe_payment_intent_id", paymentIntent.id);
 
   if (error) throw error;
@@ -1111,7 +1291,7 @@ export const syncOwnerInvoicesFromPaymentIntent = async (
 export const refreshTenantBillStripeStatus = async (billId: string) => {
   const { data, error } = await supabaseAdmin
     .from("tenant_bills")
-    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("id", billId)
     .maybeSingle();
 
@@ -1223,7 +1403,7 @@ export const refreshTenantBillStripeStatus = async (billId: string) => {
 export const refreshOwnerInvoiceStripeStatus = async (invoiceId: string) => {
   const { data, error } = await supabaseAdmin
     .from("billing_invoices")
-    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("id", invoiceId)
     .maybeSingle();
 
@@ -1378,28 +1558,18 @@ export const refreshStripePaymentStatuses = async (): Promise<CronRefreshSummary
 export const sendManualTenantBillPaidConfirmation = async (billId: string) => {
   const { data, error } = await supabaseAdmin
     .from("tenant_bills")
-    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .select("id, property_id, tenant_id, lease_agreement_id, status, amount, description, due_date, bill_type, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("id", billId)
     .maybeSingle();
   if (error) throw error;
   const bill = data as TenantBillRow | null;
   if (!bill) return;
 
-  let contactName: string | null = null;
-  let recipientEmails: string[] = [];
-  if (bill.tenant_id) {
-    const userInfoMap = await getUserInfoMap([bill.tenant_id]);
-    const info = userInfoMap.get(bill.tenant_id);
-    contactName = info?.name || null;
-    recipientEmails = info?.email ? [info.email] : [];
-  } else {
-    const leaseContact = await getLeaseTenantContacts(bill.lease_agreement_id);
-    contactName = leaseContact.names[0] || null;
-    recipientEmails = leaseContact.emails;
-  }
-
+  const recipient = await getTenantBillRecipient(bill);
+  const contactName = recipient.ok ? recipient.name : null;
+  const recipientEmails = recipient.ok ? [recipient.email] : [];
   const tenantName = contactName || recipientEmails[0] || null;
-  await sendCustomerPaymentStatusEmail({
+  const customerPaymentEmailPayload = {
     billKind: "tenant",
     billId: bill.id,
     propertyAddress: getPropertyAddress(bill.properties),
@@ -1415,7 +1585,19 @@ export const sendManualTenantBillPaidConfirmation = async (billId: string) => {
     stripePaymentIntentId: bill.stripe_payment_intent_id,
     connectedAccountId: null,
     paymentMethod: "manual",
-  });
+    ctaUrl: recipient.ok ? recipient.ctaUrl : null,
+    recipientSource: recipient.ok ? recipient.source : recipient.source,
+  } satisfies StatusChangeNotification;
+  if (recipient.ok) {
+    await sendCustomerPaymentStatusEmail(customerPaymentEmailPayload);
+  } else {
+    await logSkippedCustomerPaymentStatusEmail(
+      customerPaymentEmailPayload,
+      recipient.skipReason,
+      recipient.email,
+      recipient.source
+    );
+  }
 
   const ownerContacts = await getPropertyOwnerContacts(bill.property_id);
   await sendLandlordTenantPaymentStatusEmail({
@@ -1440,23 +1622,18 @@ export const sendManualTenantBillPaidConfirmation = async (billId: string) => {
 export const sendManualOwnerInvoicePaidConfirmation = async (invoiceId: string) => {
   const { data, error } = await supabaseAdmin
     .from("billing_invoices")
-    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
+    .select("id, owner_id, property_id, status, total_due, fee_amount, description, due_date, category, stripe_session_id, stripe_payment_intent_id, processing_started_at, payment_link_url, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, failed_payment_email_sent_at, failed_payment_email_last_status, failed_payment_email_event_id, properties(address)")
     .eq("id", invoiceId)
     .maybeSingle();
   if (error) throw error;
   const invoice = data as OwnerInvoiceRow | null;
   if (!invoice) return;
 
-  let contactName: string | null = null;
-  let recipientEmails: string[] = [];
-  if (invoice.owner_id) {
-    const userInfoMap = await getUserInfoMap([invoice.owner_id]);
-    const info = userInfoMap.get(invoice.owner_id);
-    contactName = info?.name || null;
-    recipientEmails = info?.email ? [info.email] : [];
-  }
+  const recipient = await getOwnerInvoiceRecipient(invoice);
+  const contactName = recipient.ok ? recipient.name : null;
+  const recipientEmails = recipient.ok ? [recipient.email] : [];
 
-  await sendCustomerPaymentStatusEmail({
+  const customerPaymentEmailPayload = {
     billKind: "owner",
     billId: invoice.id,
     propertyAddress: getPropertyAddress(invoice.properties),
@@ -1471,5 +1648,17 @@ export const sendManualOwnerInvoicePaidConfirmation = async (invoiceId: string) 
     stripePaymentIntentId: invoice.stripe_payment_intent_id,
     connectedAccountId: null,
     paymentMethod: "manual",
-  });
+    ctaUrl: recipient.ok ? recipient.ctaUrl : null,
+    recipientSource: recipient.ok ? recipient.source : recipient.source,
+  } satisfies StatusChangeNotification;
+  if (recipient.ok) {
+    await sendCustomerPaymentStatusEmail(customerPaymentEmailPayload);
+  } else {
+    await logSkippedCustomerPaymentStatusEmail(
+      customerPaymentEmailPayload,
+      recipient.skipReason,
+      recipient.email,
+      recipient.source
+    );
+  }
 };

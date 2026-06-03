@@ -10,6 +10,11 @@ import {
   CANONICAL_PORTAL_URL,
 } from "@/lib/email/payments-due-soon";
 import { formatDateOnly } from "@/lib/date-only";
+import {
+  BillingRecipientSource,
+  logBillingEmailAudit,
+  resolveBillingRecipient,
+} from "@/lib/billing/email-recipients";
 
 const DAILY_REMINDER_TYPE = "daily_payment_digest";
 const CHECKPOINT_TYPES = {
@@ -21,6 +26,8 @@ const CHECKPOINT_TYPES = {
 type ReminderGroup = {
   recipientType: ReminderRecipientType;
   name?: string | null;
+  ctaUrl?: string | null;
+  recipientSource?: BillingRecipientSource | null;
   sections: Record<ReminderSectionKey, ReminderBill[]>;
 };
 
@@ -42,24 +49,6 @@ const createTransport = () => {
     }),
     from,
   };
-};
-
-const getUserMap = async (ids: string[]) => {
-  const unique = Array.from(new Set(ids));
-  const entries = await Promise.all(
-    unique.map(async (id) => {
-      const { data, error } = await supabaseAdmin.auth.admin.getUserById(id);
-      if (error || !data?.user) return [id, null] as const;
-      return [
-        id,
-        {
-          email: data.user.email || null,
-          name: (data.user.user_metadata as any)?.name || null,
-        },
-      ] as const;
-    })
-  );
-  return new Map(entries);
 };
 
 const logReminder = async (payload: {
@@ -128,6 +117,26 @@ const toOwnerBill = (bill: any): ReminderBill => ({
   notes: bill.description || "",
 });
 
+const getLeaseTenantIdsByLeaseId = async (leaseIds: string[]) => {
+  const uniqueLeaseIds = Array.from(new Set(leaseIds.map((id) => String(id || "").trim()).filter(Boolean)));
+  const result = new Map<string, string[]>();
+  if (!uniqueLeaseIds.length) return result;
+
+  const { data, error } = await supabaseAdmin
+    .from("lease_agreement_tenants")
+    .select("lease_agreement_id, user_id")
+    .in("lease_agreement_id", uniqueLeaseIds);
+  if (error) throw error;
+
+  for (const row of data || []) {
+    const key = String(row.lease_agreement_id || "");
+    const current = result.get(key) || [];
+    if (row.user_id) current.push(row.user_id);
+    result.set(key, current);
+  }
+  return result;
+};
+
 const toTenantBill = (bill: any): ReminderBill => ({
   id: bill.id,
   amount: bill.amount,
@@ -171,7 +180,7 @@ export async function runDailyPaymentReminder(request: Request) {
     supabaseAdmin
       .from("billing_invoices")
       .select(
-        "id, owner_id, property_id, total_due, fee_amount, base_rent, description, due_date, status, category, invoice_number, properties ( address )"
+        "id, owner_id, property_id, total_due, fee_amount, base_rent, description, due_date, status, category, invoice_number, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, properties ( address )"
       )
       .lt("due_date", todayIso)
       .neq("status", "paid")
@@ -181,7 +190,7 @@ export async function runDailyPaymentReminder(request: Request) {
     supabaseAdmin
       .from("billing_invoices")
       .select(
-        "id, owner_id, property_id, total_due, fee_amount, base_rent, description, due_date, status, category, invoice_number, properties ( address )"
+        "id, owner_id, property_id, total_due, fee_amount, base_rent, description, due_date, status, category, invoice_number, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, properties ( address )"
       )
       .eq("due_date", tomorrowIso)
       .neq("status", "paid")
@@ -191,7 +200,7 @@ export async function runDailyPaymentReminder(request: Request) {
     supabaseAdmin
       .from("billing_invoices")
       .select(
-        "id, owner_id, property_id, total_due, fee_amount, base_rent, description, due_date, status, category, invoice_number, properties ( address )"
+        "id, owner_id, property_id, total_due, fee_amount, base_rent, description, due_date, status, category, invoice_number, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, properties ( address )"
       )
       .gte("due_date", dueSoonStartIso)
       .lte("due_date", dueSoonIso)
@@ -201,7 +210,7 @@ export async function runDailyPaymentReminder(request: Request) {
       .neq("status", "voided"),
     supabaseAdmin
       .from("tenant_bills")
-      .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status, properties ( address )")
+      .select("id, tenant_id, property_id, lease_agreement_id, bill_type, description, amount, due_date, status, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, properties ( address )")
       .lt("due_date", todayIso)
       .neq("status", "paid")
       .neq("status", "processing")
@@ -209,7 +218,7 @@ export async function runDailyPaymentReminder(request: Request) {
       .neq("status", "voided"),
     supabaseAdmin
       .from("tenant_bills")
-      .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status, properties ( address )")
+      .select("id, tenant_id, property_id, lease_agreement_id, bill_type, description, amount, due_date, status, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, properties ( address )")
       .eq("due_date", tomorrowIso)
       .neq("status", "paid")
       .neq("status", "processing")
@@ -217,7 +226,7 @@ export async function runDailyPaymentReminder(request: Request) {
       .neq("status", "voided"),
     supabaseAdmin
       .from("tenant_bills")
-      .select("id, tenant_id, property_id, bill_type, description, amount, due_date, status, properties ( address )")
+      .select("id, tenant_id, property_id, lease_agreement_id, bill_type, description, amount, due_date, status, recipient_email, recipient_name, recipient_source, recipient_invite_id, recipient_user_id, properties ( address )")
       .gte("due_date", dueSoonStartIso)
       .lte("due_date", dueSoonIso)
       .neq("status", "paid")
@@ -238,23 +247,22 @@ export async function runDailyPaymentReminder(request: Request) {
     return NextResponse.json({ error: queryErrors[0]?.message || "Failed to query reminder bills" }, { status: 500 });
   }
 
-  const ownerIds = [
-    ...(ownerOverdue.data || []).map((b: any) => b.owner_id),
-    ...(ownerTomorrow.data || []).map((b: any) => b.owner_id),
-    ...(ownerSoon.data || []).map((b: any) => b.owner_id),
-  ].filter(Boolean);
-  const tenantIds = [
-    ...(tenantOverdue.data || []).map((b: any) => b.tenant_id),
-    ...(tenantTomorrow.data || []).map((b: any) => b.tenant_id),
-    ...(tenantSoon.data || []).map((b: any) => b.tenant_id),
-  ].filter(Boolean);
-  const userMap = await getUserMap([...ownerIds, ...tenantIds]);
+  const tenantBills = [
+    ...(tenantOverdue.data || []),
+    ...(tenantTomorrow.data || []),
+    ...(tenantSoon.data || []),
+  ];
+  const leaseTenantIdsByLeaseId = await getLeaseTenantIdsByLeaseId(
+    tenantBills.map((bill: any) => bill.lease_agreement_id)
+  );
 
   const grouped: Record<string, ReminderGroup> = {};
   const addBill = (
     recipientType: ReminderRecipientType,
     email: string,
     name: string | null | undefined,
+    ctaUrl: string | null | undefined,
+    recipientSource: BillingRecipientSource | null | undefined,
     section: ReminderSectionKey,
     bill: ReminderBill
   ) => {
@@ -263,36 +271,65 @@ export async function runDailyPaymentReminder(request: Request) {
       grouped[key] = {
         recipientType,
         name,
+        ctaUrl,
+        recipientSource,
         sections: createEmptySections(),
       };
     }
     grouped[key].sections[section].push(bill);
   };
 
-  (ownerOverdue.data || []).forEach((bill: any) => {
-    const userInfo = userMap.get(bill.owner_id);
-    if (userInfo?.email) addBill("owner", userInfo.email, userInfo.name, "overdue", toOwnerBill(bill));
-  });
-  (ownerTomorrow.data || []).forEach((bill: any) => {
-    const userInfo = userMap.get(bill.owner_id);
-    if (userInfo?.email) addBill("owner", userInfo.email, userInfo.name, "dueTomorrow", toOwnerBill(bill));
-  });
-  (ownerSoon.data || []).forEach((bill: any) => {
-    const userInfo = userMap.get(bill.owner_id);
-    if (userInfo?.email) addBill("owner", userInfo.email, userInfo.name, "dueSoon", toOwnerBill(bill));
-  });
-  (tenantOverdue.data || []).forEach((bill: any) => {
-    const userInfo = userMap.get(bill.tenant_id);
-    if (userInfo?.email) addBill("tenant", userInfo.email, userInfo.name, "overdue", toTenantBill(bill));
-  });
-  (tenantTomorrow.data || []).forEach((bill: any) => {
-    const userInfo = userMap.get(bill.tenant_id);
-    if (userInfo?.email) addBill("tenant", userInfo.email, userInfo.name, "dueTomorrow", toTenantBill(bill));
-  });
-  (tenantSoon.data || []).forEach((bill: any) => {
-    const userInfo = userMap.get(bill.tenant_id);
-    if (userInfo?.email) addBill("tenant", userInfo.email, userInfo.name, "dueSoon", toTenantBill(bill));
-  });
+  const addResolvedOwnerBill = async (bill: any, section: ReminderSectionKey) => {
+    const recipient = await resolveBillingRecipient({
+      role: "owner",
+      propertyId: bill.property_id,
+      fields: bill,
+      linkedUserIds: [bill.owner_id],
+    });
+    if (!recipient.ok) {
+      await logBillingEmailAudit({
+        billType: "owner_invoice",
+        billId: bill.id,
+        emailType: DAILY_REMINDER_TYPE,
+        recipientEmail: recipient.email,
+        recipientSource: recipient.source,
+        status: "skipped",
+        skipReason: recipient.skipReason,
+      });
+      return;
+    }
+    addBill("owner", recipient.email, recipient.name, recipient.ctaUrl, recipient.source, section, toOwnerBill(bill));
+  };
+
+  const addResolvedTenantBill = async (bill: any, section: ReminderSectionKey) => {
+    const leaseTenantIds = bill.lease_agreement_id ? leaseTenantIdsByLeaseId.get(bill.lease_agreement_id) || [] : [];
+    const recipient = await resolveBillingRecipient({
+      role: "tenant",
+      propertyId: bill.property_id,
+      fields: bill,
+      linkedUserIds: [bill.tenant_id, ...leaseTenantIds],
+    });
+    if (!recipient.ok) {
+      await logBillingEmailAudit({
+        billType: "tenant_bill",
+        billId: bill.id,
+        emailType: DAILY_REMINDER_TYPE,
+        recipientEmail: recipient.email,
+        recipientSource: recipient.source,
+        status: "skipped",
+        skipReason: recipient.skipReason,
+      });
+      return;
+    }
+    addBill("tenant", recipient.email, recipient.name, recipient.ctaUrl, recipient.source, section, toTenantBill(bill));
+  };
+
+  for (const bill of ownerOverdue.data || []) await addResolvedOwnerBill(bill, "overdue");
+  for (const bill of ownerTomorrow.data || []) await addResolvedOwnerBill(bill, "dueTomorrow");
+  for (const bill of ownerSoon.data || []) await addResolvedOwnerBill(bill, "dueSoon");
+  for (const bill of tenantOverdue.data || []) await addResolvedTenantBill(bill, "overdue");
+  for (const bill of tenantTomorrow.data || []) await addResolvedTenantBill(bill, "dueTomorrow");
+  for (const bill of tenantSoon.data || []) await addResolvedTenantBill(bill, "dueSoon");
 
   const checkpointCandidates = Object.entries(grouped).map(([key, group]) => {
     const email = key.split(":")[1];
@@ -369,6 +406,8 @@ export async function runDailyPaymentReminder(request: Request) {
       recipientType: group.recipientType,
       sections: group.sections,
       logoUrl: `${CANONICAL_PORTAL_URL}/luxor-logo.png`,
+      ctaUrl: group.ctaUrl,
+      ctaLabel: group.recipientSource === "pending_invite" ? "SET UP ACCOUNT & VIEW BILLS" : undefined,
     });
 
     try {
@@ -389,6 +428,16 @@ export async function runDailyPaymentReminder(request: Request) {
         status: "sent",
         providerMessageId: (info as any)?.messageId || null,
       });
+      for (const billId of billIds) {
+        await logBillingEmailAudit({
+          billType: group.recipientType === "owner" ? "owner_invoice" : "tenant_bill",
+          billId,
+          emailType: DAILY_REMINDER_TYPE,
+          recipientEmail: email,
+          recipientSource: group.recipientSource || null,
+          status: "sent",
+        });
+      }
       for (const trigger of unsentTriggers) {
         await logReminder({
           recipientEmail: email,
@@ -416,6 +465,17 @@ export async function runDailyPaymentReminder(request: Request) {
         status: "failed",
         error: error?.message || "Send failed",
       });
+      for (const billId of billIds) {
+        await logBillingEmailAudit({
+          billType: group.recipientType === "owner" ? "owner_invoice" : "tenant_bill",
+          billId,
+          emailType: DAILY_REMINDER_TYPE,
+          recipientEmail: email,
+          recipientSource: group.recipientSource || null,
+          status: "failed",
+          errorMessage: error?.message || "Send failed",
+        });
+      }
       results.push({ email, status: "failed", error: error?.message });
     }
   }

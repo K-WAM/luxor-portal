@@ -13,6 +13,16 @@ type TenantOption = {
   propertyAddress: string;
 };
 
+type PendingInviteOption = {
+  id: string;
+  email: string;
+  name?: string | null;
+  role: string;
+  property_id: string;
+  status: string;
+  expires_at?: string | null;
+};
+
 type LeaseAgreementOption = {
   id: string;
   leaseStartDate: string;
@@ -45,6 +55,11 @@ type TenantBillRow = {
   year: number;
   invoiceUrl?: string | null;
   paymentLinkUrl?: string | null;
+  recipientEmail?: string | null;
+  recipientName?: string | null;
+  recipientSource?: "auth_user" | "pending_invite" | "manual" | null;
+  recipientInviteId?: string | null;
+  recipientUserId?: string | null;
   stripeSessionId?: string | null;
   stripePaymentIntentId?: string | null;
   voidedAt?: string;
@@ -80,6 +95,7 @@ export default function AdminBilling() {
   const [error, setError] = useState<string | null>(null);
   const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
   const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInviteOption[]>([]);
   const [leaseOptionsByProperty, setLeaseOptionsByProperty] = useState<Record<string, LeaseAgreementOption[]>>({});
   const [tenantBillError, setTenantBillError] = useState<string | null>(null);
   const [tenantBillSuccess, setTenantBillSuccess] = useState<string | null>(null);
@@ -102,6 +118,8 @@ export default function AdminBilling() {
     billType: "rent",
     description: "",
     notifyTenant: true,
+    recipientChoice: "linked",
+    manualRecipientEmail: "",
   });
   const [leaseBillGenerator, setLeaseBillGenerator] = useState({
     propertyId: "",
@@ -116,7 +134,7 @@ export default function AdminBilling() {
   const [showDesktopSite, setShowDesktopSite] = useState(false);
   const [showGenerateLeaseBillsMobile, setShowGenerateLeaseBillsMobile] = useState(false);
   const [showCreateTenantBillMobile, setShowCreateTenantBillMobile] = useState(false);
-  const [tenantEdits, setTenantEdits] = useState<Record<string, { billType?: string; amount?: string; dueDate?: string; status?: string; description?: string; tenantId?: string; propertyId?: string; billScope?: "tenant" | "lease"; leaseAgreementId?: string }>>({});
+  const [tenantEdits, setTenantEdits] = useState<Record<string, { billType?: string; amount?: string; dueDate?: string; status?: string; description?: string; tenantId?: string; propertyId?: string; billScope?: "tenant" | "lease"; leaseAgreementId?: string; recipientChoice?: string; manualRecipientEmail?: string }>>({});
 
   // Date sort helper for tenant bills
   const getDueDateTimestamp = (dateStr?: string | null) => {
@@ -236,9 +254,29 @@ export default function AdminBilling() {
     }
   };
 
+  const loadPendingInvites = async () => {
+    try {
+      const res = await fetch("/api/invites", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load invites");
+      const now = Date.now();
+      setPendingInvites(
+        (data || []).filter(
+          (invite: any) =>
+            invite.role === "tenant" &&
+            invite.status === "pending" &&
+            invite.expires_at &&
+            new Date(invite.expires_at).getTime() > now
+        )
+      );
+    } catch (err: any) {
+      setTenantBillError(err.message || "Failed to load pending invites");
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
-      await Promise.all([loadProperties(), loadTenantOptions(), loadTenantBills()]);
+      await Promise.all([loadProperties(), loadTenantOptions(), loadTenantBills(), loadPendingInvites()]);
     };
     load();
   }, []);
@@ -251,6 +289,56 @@ export default function AdminBilling() {
     if (!tenantBill.propertyId) return tenantOptions;
     return tenantOptions.filter((t) => t.propertyId === tenantBill.propertyId);
   }, [tenantOptions, tenantBill.propertyId]);
+
+  const getTenantInviteOptions = (propertyId: string) =>
+    pendingInvites.filter((invite) => invite.property_id === propertyId);
+
+  const buildRecipientPayload = (
+    choice: string,
+    manualEmail: string,
+    propertyId: string,
+    tenantId?: string | null
+  ) => {
+    if (choice === "manual") {
+      return {
+        recipientSource: "manual",
+        recipientEmail: manualEmail.trim() || null,
+        recipientName: null,
+        recipientInviteId: null,
+        recipientUserId: null,
+      };
+    }
+    if (choice.startsWith("invite:")) {
+      const inviteId = choice.slice("invite:".length);
+      const invite = getTenantInviteOptions(propertyId).find((item) => item.id === inviteId);
+      return {
+        recipientSource: "pending_invite",
+        recipientEmail: invite?.email || null,
+        recipientName: invite?.name || null,
+        recipientInviteId: inviteId || null,
+        recipientUserId: null,
+      };
+    }
+    if (choice.startsWith("auth:")) {
+      const userId = choice.slice("auth:".length);
+      const tenant = tenantOptions.find((item) => item.userId === userId && item.propertyId === propertyId);
+      return {
+        recipientSource: "auth_user",
+        recipientEmail: tenant?.email || null,
+        recipientName: null,
+        recipientInviteId: null,
+        recipientUserId: userId || tenantId || null,
+      };
+    }
+    return {};
+  };
+
+  const getBillRecipientChoice = (bill: TenantBillRow) => {
+    if (bill.recipientSource === "manual") return "manual";
+    if (bill.recipientSource === "pending_invite" && bill.recipientInviteId) return `invite:${bill.recipientInviteId}`;
+    if (bill.recipientSource === "auth_user" && bill.recipientUserId) return `auth:${bill.recipientUserId}`;
+    return "linked";
+  };
 
   const singleBillLeaseOptions = useMemo(
     () => leaseOptionsByProperty[tenantBill.propertyId] || [],
@@ -410,6 +498,12 @@ export default function AdminBilling() {
           dueDate: tenantBill.dueDate,
           description: tenantBill.description,
           notifyTenant: tenantBill.notifyTenant,
+          ...buildRecipientPayload(
+            tenantBill.recipientChoice,
+            tenantBill.manualRecipientEmail,
+            tenantBill.propertyId,
+            tenantBill.tenantId
+          ),
         }),
       });
       const data = await res.json();
@@ -425,6 +519,8 @@ export default function AdminBilling() {
         leaseAgreementId: prev.billScope === "lease" ? prev.leaseAgreementId : "",
         amount: "",
         description: "",
+        recipientChoice: "linked",
+        manualRecipientEmail: "",
       }));
       await loadTenantBills(showVoidedTenantBills);
     } catch (err: any) {
@@ -544,6 +640,8 @@ export default function AdminBilling() {
     const propertyId = edits.propertyId ?? bill.propertyId;
     const billScope = edits.billScope ?? bill.billScope;
     const leaseAgreementId = edits.leaseAgreementId ?? bill.leaseAgreementId ?? "";
+    const recipientChoice = edits.recipientChoice ?? getBillRecipientChoice(bill);
+    const manualRecipientEmail = edits.manualRecipientEmail ?? (bill.recipientSource === "manual" ? bill.recipientEmail || "" : "");
     try {
       setTenantBillsError(null);
       setTenantBillsNotice(null);
@@ -561,6 +659,7 @@ export default function AdminBilling() {
           propertyId,
           billScope,
           leaseAgreementId,
+          ...buildRecipientPayload(recipientChoice, manualRecipientEmail, propertyId, tenantId),
         }),
       });
       const data = await res.json();
@@ -953,6 +1052,46 @@ export default function AdminBilling() {
             </div>
           )}
           <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Billing Email Recipient</label>
+            <select
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={tenantBill.recipientChoice}
+              onChange={(e) =>
+                setTenantBill((prev) => ({
+                  ...prev,
+                  recipientChoice: e.target.value,
+                  manualRecipientEmail: e.target.value === "manual" ? prev.manualRecipientEmail : "",
+                }))
+              }
+              disabled={!tenantBill.propertyId}
+            >
+              <option value="linked">Linked account email</option>
+              {tenantBill.billScope === "tenant" && tenantBill.tenantId && (
+                <option value={`auth:${tenantBill.tenantId}`}>
+                  Selected tenant account
+                </option>
+              )}
+              {getTenantInviteOptions(tenantBill.propertyId).map((invite) => (
+                <option key={invite.id} value={`invite:${invite.id}`}>
+                  Pending invite - {invite.email}
+                </option>
+              ))}
+              <option value="manual">Manual email</option>
+            </select>
+          </div>
+          {tenantBill.recipientChoice === "manual" && (
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Manual Recipient Email</label>
+              <input
+                type="email"
+                className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+                value={tenantBill.manualRecipientEmail}
+                onChange={(e) => setTenantBill((prev) => ({ ...prev, manualRecipientEmail: e.target.value }))}
+                placeholder="tenant@example.com"
+              />
+            </div>
+          )}
+          <div className="flex flex-col text-sm">
             <label className="text-slate-600 mb-1">Amount</label>
             <input
               type="number"
@@ -1277,6 +1416,51 @@ export default function AdminBilling() {
                                   </option>
                                 ))}
                               </select>
+                            )}
+                            <select
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                              value={tenantEdits[bill.id]?.recipientChoice ?? getBillRecipientChoice(bill)}
+                              onChange={(e) =>
+                                setTenantEdits((prev) => ({
+                                  ...prev,
+                                  [bill.id]: {
+                                    ...prev[bill.id],
+                                    recipientChoice: e.target.value,
+                                    manualRecipientEmail:
+                                      e.target.value === "manual"
+                                        ? prev[bill.id]?.manualRecipientEmail ?? (bill.recipientSource === "manual" ? bill.recipientEmail || "" : "")
+                                        : "",
+                                  },
+                                }))
+                              }
+                            >
+                              <option value="linked">Email: linked account</option>
+                              {currentBillScope === "tenant" &&
+                                (tenantEdits[bill.id]?.tenantId ?? bill.tenantId) && (
+                                  <option value={`auth:${tenantEdits[bill.id]?.tenantId ?? bill.tenantId}`}>
+                                    Email: selected tenant
+                                  </option>
+                                )}
+                              {getTenantInviteOptions(currentPropertyId).map((invite) => (
+                                <option key={invite.id} value={`invite:${invite.id}`}>
+                                  Email: invite {getCompactUserLabel(invite.email)}
+                                </option>
+                              ))}
+                              <option value="manual">Email: manual</option>
+                            </select>
+                            {(tenantEdits[bill.id]?.recipientChoice ?? getBillRecipientChoice(bill)) === "manual" && (
+                              <input
+                                type="email"
+                                className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                                placeholder="tenant@example.com"
+                                value={tenantEdits[bill.id]?.manualRecipientEmail ?? (bill.recipientSource === "manual" ? bill.recipientEmail || "" : "")}
+                                onChange={(e) =>
+                                  setTenantEdits((prev) => ({
+                                    ...prev,
+                                    [bill.id]: { ...prev[bill.id], manualRecipientEmail: e.target.value },
+                                  }))
+                                }
+                              />
                             )}
                           </div>
                         )}

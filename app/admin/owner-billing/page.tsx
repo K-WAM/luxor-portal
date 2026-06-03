@@ -18,6 +18,11 @@ type BillRow = {
   invoiceUrl?: string;
   invoiceNumber?: string;
   paymentLinkUrl?: string | null;
+  recipientEmail?: string | null;
+  recipientName?: string | null;
+  recipientSource?: "auth_user" | "pending_invite" | "manual" | null;
+  recipientInviteId?: string | null;
+  recipientUserId?: string | null;
   stripeSessionId?: string | null;
   stripePaymentIntentId?: string | null;
   feePercent?: number | null;
@@ -57,6 +62,16 @@ type OwnerPaymentDetailsRow = {
   stripeConnectedAccountId: string;
 };
 
+type PendingInviteOption = {
+  id: string;
+  email: string;
+  name?: string | null;
+  role: string;
+  property_id: string;
+  status: string;
+  expires_at?: string | null;
+};
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^[+()\d\s.-]{7,}$/;
 
@@ -79,6 +94,7 @@ export default function OwnerBillingDetailsPage() {
   const [ownerBillError, setOwnerBillError] = useState<string | null>(null);
   const [properties, setProperties] = useState<{ id: string; address: string }[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInviteOption[]>([]);
   const [showVoidedOwnerBills, setShowVoidedOwnerBills] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; description: string } | null>(null);
   const [newBill, setNewBill] = useState<{
@@ -89,6 +105,8 @@ export default function OwnerBillingDetailsPage() {
     category: string;
     dueDate: string;
     description: string;
+    recipientChoice: string;
+    manualRecipientEmail: string;
   }>({
     propertyId: "",
     ownerId: "",
@@ -97,6 +115,8 @@ export default function OwnerBillingDetailsPage() {
     category: "pm_fee",
     dueDate: "",
     description: "",
+    recipientChoice: "linked",
+    manualRecipientEmail: "",
   });
   const [ownerInvoiceFile, setOwnerInvoiceFile] = useState<File | null>(null);
   const [invoiceUploading, setInvoiceUploading] = useState<Record<string, boolean>>({});
@@ -113,6 +133,8 @@ export default function OwnerBillingDetailsPage() {
         ownerId?: string;
         dueDate?: string;
         description?: string;
+        recipientChoice?: string;
+        manualRecipientEmail?: string;
       }
     >
   >({});
@@ -291,9 +313,29 @@ export default function OwnerBillingDetailsPage() {
     }
   };
 
+  const loadPendingInvites = async () => {
+    try {
+      const res = await fetch("/api/invites", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load invites");
+      const now = Date.now();
+      setPendingInvites(
+        (data || []).filter(
+          (invite: any) =>
+            invite.role === "owner" &&
+            invite.status === "pending" &&
+            invite.expires_at &&
+            new Date(invite.expires_at).getTime() > now
+        )
+      );
+    } catch (err: any) {
+      setOwnerBillError(err.message || "Failed to load pending invites");
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
-      await Promise.all([loadBills(), loadProperties(), loadOwnerOptions(), loadData()]);
+      await Promise.all([loadBills(), loadProperties(), loadOwnerOptions(), loadPendingInvites(), loadData()]);
     };
     load();
   }, []);
@@ -309,6 +351,56 @@ export default function OwnerBillingDetailsPage() {
 
   const getOwnersForProperty = (propertyId: string) => {
     return ownerOptions.filter((o) => o.propertyId === propertyId);
+  };
+
+  const getOwnerInviteOptions = (propertyId: string) =>
+    pendingInvites.filter((invite) => invite.property_id === propertyId);
+
+  const buildRecipientPayload = (
+    choice: string,
+    manualEmail: string,
+    propertyId: string,
+    ownerId?: string | null
+  ) => {
+    if (choice === "manual") {
+      return {
+        recipientSource: "manual",
+        recipientEmail: manualEmail.trim() || null,
+        recipientName: null,
+        recipientInviteId: null,
+        recipientUserId: null,
+      };
+    }
+    if (choice.startsWith("invite:")) {
+      const inviteId = choice.slice("invite:".length);
+      const invite = getOwnerInviteOptions(propertyId).find((item) => item.id === inviteId);
+      return {
+        recipientSource: "pending_invite",
+        recipientEmail: invite?.email || null,
+        recipientName: invite?.name || null,
+        recipientInviteId: inviteId || null,
+        recipientUserId: null,
+      };
+    }
+    if (choice.startsWith("auth:")) {
+      const userId = choice.slice("auth:".length);
+      const owner = ownerOptions.find((item) => item.userId === userId && item.propertyId === propertyId);
+      return {
+        recipientSource: "auth_user",
+        recipientEmail: owner?.email || null,
+        recipientName: null,
+        recipientInviteId: null,
+        recipientUserId: userId || ownerId || null,
+      };
+    }
+    return {};
+  };
+
+  const getBillRecipientChoice = (bill: BillRow) => {
+    if (bill.recipientSource === "manual") return "manual";
+    if (bill.recipientSource === "pending_invite" && bill.recipientInviteId) return `invite:${bill.recipientInviteId}`;
+    if (bill.recipientSource === "auth_user" && bill.recipientUserId) return `auth:${bill.recipientUserId}`;
+    return "linked";
   };
 
   useEffect(() => {
@@ -349,6 +441,12 @@ export default function OwnerBillingDetailsPage() {
           category: newBill.category,
           dueDate: newBill.dueDate || undefined,
           description: newBill.description || undefined,
+          ...buildRecipientPayload(
+            newBill.recipientChoice,
+            newBill.manualRecipientEmail,
+            newBill.propertyId,
+            newBill.ownerId
+          ),
         }),
       });
       const data = await res.json();
@@ -367,6 +465,8 @@ export default function OwnerBillingDetailsPage() {
 
   const handleSave = async (bill: BillRow) => {
     const edits = editAmounts[bill.id] || {};
+    const recipientChoice = edits.recipientChoice ?? getBillRecipientChoice(bill);
+    const manualRecipientEmail = edits.manualRecipientEmail ?? (bill.recipientSource === "manual" ? bill.recipientEmail || "" : "");
     try {
       setOwnerBillsLoading(true);
       const res = await fetch("/api/admin/billing", {
@@ -380,6 +480,12 @@ export default function OwnerBillingDetailsPage() {
           ownerId: edits.ownerId,
           dueDate: edits.dueDate,
           description: edits.description ?? bill.description,
+          ...buildRecipientPayload(
+            recipientChoice,
+            manualRecipientEmail,
+            bill.propertyId || "",
+            edits.ownerId ?? bill.ownerId
+          ),
         }),
       });
       const data = await res.json();
@@ -873,6 +979,42 @@ export default function OwnerBillingDetailsPage() {
             </select>
           </div>
           <div className="flex flex-col text-sm">
+            <label className="text-slate-600 mb-1">Billing Email Recipient</label>
+            <select
+              className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+              value={newBill.recipientChoice}
+              onChange={(e) =>
+                setNewBill((prev) => ({
+                  ...prev,
+                  recipientChoice: e.target.value,
+                  manualRecipientEmail: e.target.value === "manual" ? prev.manualRecipientEmail : "",
+                }))
+              }
+              disabled={!newBill.propertyId}
+            >
+              <option value="linked">Linked account email</option>
+              {newBill.ownerId && <option value={`auth:${newBill.ownerId}`}>Selected owner account</option>}
+              {getOwnerInviteOptions(newBill.propertyId).map((invite) => (
+                <option key={invite.id} value={`invite:${invite.id}`}>
+                  Pending invite - {invite.email}
+                </option>
+              ))}
+              <option value="manual">Manual email</option>
+            </select>
+          </div>
+          {newBill.recipientChoice === "manual" && (
+            <div className="flex flex-col text-sm">
+              <label className="text-slate-600 mb-1">Manual Recipient Email</label>
+              <input
+                type="email"
+                className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+                value={newBill.manualRecipientEmail}
+                onChange={(e) => setNewBill((prev) => ({ ...prev, manualRecipientEmail: e.target.value }))}
+                placeholder="owner@example.com"
+              />
+            </div>
+          )}
+          <div className="flex flex-col text-sm">
             <label className="text-slate-600 mb-1">Category</label>
             <select
               className="border border-slate-300 rounded px-3 py-2 text-sm bg-white"
@@ -1095,22 +1237,66 @@ export default function OwnerBillingDetailsPage() {
                         {isVoided ? (
                           <span title={bill.ownerEmail}>{getCompactUserLabel(bill.ownerEmail)}</span>
                         ) : (
-                          <select
-                            className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
-                            value={edits.ownerId ?? bill.ownerId ?? ""}
-                            onChange={(e) =>
-                              setEditAmounts((prev) => ({
-                                ...prev,
-                                [bill.id]: { ...prev[bill.id], ownerId: e.target.value },
-                              }))
-                            }
-                          >
-                            {getOwnersForProperty(bill.propertyId || "").map((o) => (
-                              <option key={o.userId} value={o.userId} title={o.email || o.userId}>
-                                {getCompactUserLabel(o.email, o.userId)}
-                              </option>
-                            ))}
-                          </select>
+                          <div>
+                            <select
+                              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                              value={edits.ownerId ?? bill.ownerId ?? ""}
+                              onChange={(e) =>
+                                setEditAmounts((prev) => ({
+                                  ...prev,
+                                  [bill.id]: { ...prev[bill.id], ownerId: e.target.value },
+                                }))
+                              }
+                            >
+                              {getOwnersForProperty(bill.propertyId || "").map((o) => (
+                                <option key={o.userId} value={o.userId} title={o.email || o.userId}>
+                                  {getCompactUserLabel(o.email, o.userId)}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              className="mt-1 border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                              value={edits.recipientChoice ?? getBillRecipientChoice(bill)}
+                              onChange={(e) =>
+                                setEditAmounts((prev) => ({
+                                  ...prev,
+                                  [bill.id]: {
+                                    ...prev[bill.id],
+                                    recipientChoice: e.target.value,
+                                    manualRecipientEmail:
+                                      e.target.value === "manual"
+                                        ? prev[bill.id]?.manualRecipientEmail ?? (bill.recipientSource === "manual" ? bill.recipientEmail || "" : "")
+                                        : "",
+                                  },
+                                }))
+                              }
+                            >
+                              <option value="linked">Email: linked account</option>
+                              {(edits.ownerId ?? bill.ownerId) && (
+                                <option value={`auth:${edits.ownerId ?? bill.ownerId}`}>Email: selected owner</option>
+                              )}
+                              {getOwnerInviteOptions(bill.propertyId || "").map((invite) => (
+                                <option key={invite.id} value={`invite:${invite.id}`}>
+                                  Email: invite {getCompactUserLabel(invite.email)}
+                                </option>
+                              ))}
+                              <option value="manual">Email: manual</option>
+                            </select>
+                            {(edits.recipientChoice ?? getBillRecipientChoice(bill)) === "manual" && (
+                              <input
+                                type="email"
+                                className="mt-1 border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                                placeholder="owner@example.com"
+                                value={edits.manualRecipientEmail ?? (bill.recipientSource === "manual" ? bill.recipientEmail || "" : "")}
+                                onChange={(e) =>
+                                  setEditAmounts((prev) => ({
+                                    ...prev,
+                                    [bill.id]: { ...prev[bill.id], manualRecipientEmail: e.target.value },
+                                  }))
+                                }
+                              />
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-3 py-3 align-top text-slate-800 break-words">

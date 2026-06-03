@@ -20,7 +20,21 @@ function SignInPageInner() {
   const supabase = createClient();
   const searchParams = useSearchParams();
 
+  const getSafeNextPath = (userRole: string) => {
+    const next = searchParams.get("next");
+    if (!next || !next.startsWith("/") || next.startsWith("//")) return null;
+    if (userRole === "owner" && next.startsWith("/owner/")) return next;
+    if (userRole === "tenant" && next.startsWith("/tenant/")) return next;
+    if (userRole === "admin" && next.startsWith("/admin/")) return next;
+    return null;
+  };
+
   const redirectByRole = (userRole: string) => {
+    const safeNextPath = getSafeNextPath(userRole);
+    if (safeNextPath) {
+      router.push(safeNextPath);
+      return;
+    }
     switch (userRole) {
       case "admin":
         router.push("/admin");
