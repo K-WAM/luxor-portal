@@ -333,6 +333,10 @@ export default function AdminBilling() {
     return {};
   };
 
+  const hasUnlinkedTenantRecipient = (payload: ReturnType<typeof buildRecipientPayload>) =>
+    (payload.recipientSource === "manual" && !!payload.recipientEmail) ||
+    (payload.recipientSource === "pending_invite" && (!!payload.recipientEmail || !!payload.recipientInviteId));
+
   const getBillRecipientChoice = (bill: TenantBillRow) => {
     if (bill.recipientSource === "manual") return "manual";
     if (bill.recipientSource === "pending_invite" && bill.recipientInviteId) return `invite:${bill.recipientInviteId}`;
@@ -464,12 +468,18 @@ export default function AdminBilling() {
   }, [leaseBillGenerator.propertyId]);
 
   const handleCreateTenantBill = async () => {
+    const recipientPayload = buildRecipientPayload(
+      tenantBill.recipientChoice,
+      tenantBill.manualRecipientEmail,
+      tenantBill.propertyId,
+      tenantBill.tenantId
+    );
     if (!tenantBill.propertyId) {
       setTenantBillError("Select a property.");
       return;
     }
-    if (tenantBill.billScope === "tenant" && !tenantBill.tenantId) {
-      setTenantBillError("Select a tenant.");
+    if (tenantBill.billScope === "tenant" && !tenantBill.tenantId && !hasUnlinkedTenantRecipient(recipientPayload)) {
+      setTenantBillError("Select a tenant or enter a manual/pending-invite billing recipient.");
       return;
     }
     if (tenantBill.billScope === "lease" && !tenantBill.leaseAgreementId) {
@@ -498,12 +508,7 @@ export default function AdminBilling() {
           dueDate: tenantBill.dueDate,
           description: tenantBill.description,
           notifyTenant: tenantBill.notifyTenant,
-          ...buildRecipientPayload(
-            tenantBill.recipientChoice,
-            tenantBill.manualRecipientEmail,
-            tenantBill.propertyId,
-            tenantBill.tenantId
-          ),
+          ...recipientPayload,
         }),
       });
       const data = await res.json();

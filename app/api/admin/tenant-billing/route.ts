@@ -58,6 +58,10 @@ const buildRecipientPayload = (body: any) => {
   };
 };
 
+const hasUnlinkedTenantRecipient = (recipient: ReturnType<typeof buildRecipientPayload>) =>
+  (recipient.recipient_source === "manual" && !!recipient.recipient_email) ||
+  (recipient.recipient_source === "pending_invite" && (!!recipient.recipient_email || !!recipient.recipient_invite_id));
+
 const getNormalizedDueDateParts = (dueDate: unknown) => {
   const normalized = dueDate === null || dueDate === undefined ? null : toDateOnlyString(String(dueDate));
   const parts = getDateOnlyParts(normalized);
@@ -470,11 +474,14 @@ export async function POST(request: Request) {
 
     if (billScope === "tenant") {
       if (!tenantId) {
-        return NextResponse.json({ error: "tenantId is required for tenant-specific bills" }, { status: 400 });
-      }
-      const isAssigned = await validateTenantAssignment(propertyId, tenantId);
-      if (!isAssigned) {
-        return NextResponse.json({ error: "Selected tenant is not linked to the selected property" }, { status: 400 });
+        if (!hasUnlinkedTenantRecipient(recipient)) {
+          return NextResponse.json({ error: "tenantId or explicit billing recipient is required for tenant-specific bills" }, { status: 400 });
+        }
+      } else {
+        const isAssigned = await validateTenantAssignment(propertyId, tenantId);
+        if (!isAssigned) {
+          return NextResponse.json({ error: "Selected tenant is not linked to the selected property" }, { status: 400 });
+        }
       }
     } else {
       if (!leaseAgreementId) {
@@ -495,7 +502,7 @@ export async function POST(request: Request) {
       description,
       amount: parsedAmount,
       dueDate: body?.dueDate,
-      notifyTenant,
+      notifyTenant: tenantId ? notifyTenant : false,
       paymentLinkUrl,
       recipient,
     });
@@ -620,17 +627,23 @@ export async function PATCH(request: Request) {
 
     updates.property_id = nextPropertyId;
     updates.bill_scope = nextBillScope;
+    const recipient = buildRecipientPayload(body);
 
     if (nextBillScope === "tenant") {
       if (!nextTenantId) {
-        return NextResponse.json({ error: "tenantId is required for tenant-specific bills" }, { status: 400 });
+        if (!hasUnlinkedTenantRecipient(recipient)) {
+          return NextResponse.json({ error: "tenantId or explicit billing recipient is required for tenant-specific bills" }, { status: 400 });
+        }
+        updates.tenant_id = null;
+        updates.lease_agreement_id = null;
+      } else {
+        const isAssigned = await validateTenantAssignment(nextPropertyId, nextTenantId);
+        if (!isAssigned) {
+          return NextResponse.json({ error: "Selected tenant is not linked to the selected property" }, { status: 400 });
+        }
+        updates.tenant_id = nextTenantId;
+        updates.lease_agreement_id = null;
       }
-      const isAssigned = await validateTenantAssignment(nextPropertyId, nextTenantId);
-      if (!isAssigned) {
-        return NextResponse.json({ error: "Selected tenant is not linked to the selected property" }, { status: 400 });
-      }
-      updates.tenant_id = nextTenantId;
-      updates.lease_agreement_id = null;
     } else {
       if (!nextLeaseAgreementId) {
         return NextResponse.json({ error: "leaseAgreementId is required for lease-level bills" }, { status: 400 });
@@ -651,7 +664,7 @@ export async function PATCH(request: Request) {
       updates.invoice_url = body.invoiceUrl || null;
     }
 
-    Object.assign(updates, buildRecipientPayload(body));
+    Object.assign(updates, recipient);
 
     if (nextBillScope === "lease") {
       const nextBillType = String(updates.bill_type || existingBill.bill_type || "").trim().toLowerCase();
