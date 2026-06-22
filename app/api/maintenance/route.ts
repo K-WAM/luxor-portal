@@ -267,6 +267,68 @@ async function sendTenantScheduleEmail(params: {
   }
 }
 
+async function sendTenantStatusEmail(params: {
+  type: "opened" | "closed";
+  tenantEmail: string;
+  tenantName: string;
+  propertyAddress: string;
+  category: string;
+  description: string;
+  requestId: string;
+  closingNote?: string;
+  cost?: number | null;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+
+  const isOpen = params.type === "opened";
+  const subject = isOpen
+    ? "Your maintenance request has been received"
+    : "Your maintenance request has been resolved";
+  const categoryLabel = params.category
+    ? params.category.charAt(0).toUpperCase() + params.category.slice(1)
+    : "General";
+
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;color:#1e293b;">
+      <div style="background:#0f172a;padding:24px 32px;border-radius:8px 8px 0 0;">
+        <h1 style="margin:0;font-size:18px;font-weight:600;color:#f8fafc;">${subject}</h1>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;padding:28px 32px;border-radius:0 0 8px 8px;">
+        <p style="margin:0 0 16px;font-size:14px;color:#334155;">Hi ${params.tenantName},</p>
+        <p style="margin:0 0 20px;font-size:14px;color:#334155;">
+          ${isOpen
+            ? "We have received your maintenance request and will be in touch shortly."
+            : "Your maintenance request has been resolved. Please reach out if you have any further concerns."}
+        </p>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:8px 0;font-size:13px;color:#64748b;width:140px;">Property</td><td style="padding:8px 0;font-size:14px;color:#0f172a;">${params.propertyAddress}</td></tr>
+          <tr><td style="padding:8px 0;font-size:13px;color:#64748b;">Category</td><td style="padding:8px 0;font-size:14px;color:#0f172a;">${categoryLabel}</td></tr>
+          <tr><td style="padding:8px 0;font-size:13px;color:#64748b;vertical-align:top;border-top:1px solid #f1f5f9;">Description</td><td style="padding:8px 0;font-size:14px;color:#0f172a;border-top:1px solid #f1f5f9;white-space:pre-wrap;">${params.description}</td></tr>
+          ${params.closingNote ? `<tr><td style="padding:8px 0;font-size:13px;color:#64748b;vertical-align:top;">Resolution note</td><td style="padding:8px 0;font-size:14px;color:#0f172a;white-space:pre-wrap;">${params.closingNote}</td></tr>` : ""}
+          ${params.cost != null ? `<tr><td style="padding:8px 0;font-size:13px;color:#64748b;">Cost</td><td style="padding:8px 0;font-size:14px;color:#0f172a;">$${Number(params.cost).toFixed(2)}</td></tr>` : ""}
+        </table>
+        <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;">Request ID: ${params.requestId}</p>
+      </div>
+    </div>`;
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "Luxor Maintenance <noreply@luxordev.com>",
+        to: [params.tenantEmail],
+        subject,
+        html,
+      }),
+    });
+    if (!res.ok) console.error("[maintenance email] status notification error:", await res.text());
+  } catch (err) {
+    console.error("[maintenance email] Failed to send status email:", err);
+  }
+}
+
 export async function GET(request: Request) {
   try {
     const { user, role } = await getAuthContext()
@@ -335,6 +397,8 @@ export async function GET(request: Request) {
       status: item.status,
       internalComments: item.internal_comments,
       cost: item.cost,
+      closingNote: item.closing_note,
+      costAccountability: item.cost_accountability,
       createdAt: item.created_at,
       closedAt: item.closed_at,
       propertyAddress: item.properties?.address,
@@ -463,6 +527,9 @@ export async function PATCH(request: Request) {
       status,
       internalComments,
       cost,
+      closingNote,
+      costAccountability,
+      attachments,
       propertyId,
       tenantName,
       tenantEmail,
@@ -472,6 +539,8 @@ export async function PATCH(request: Request) {
       closedAt,
       schedulingDetails,
       sendConfirmationEmail,
+      sendOpenedEmail,
+      sendClosedEmail,
     } = body
 
     if (!id) {
@@ -487,22 +556,19 @@ export async function PATCH(request: Request) {
     }
     if (internalComments !== undefined) updateData.internal_comments = internalComments
     if (cost !== undefined) updateData.cost = cost
+    if (closingNote !== undefined) updateData.closing_note = closingNote
+    if (costAccountability !== undefined) updateData.cost_accountability = costAccountability
+    if (attachments !== undefined) updateData.attachments = attachments
     if (propertyId !== undefined) updateData.property_id = propertyId
     if (tenantName !== undefined) updateData.tenant_name = tenantName
     if (tenantEmail !== undefined) updateData.tenant_email = tenantEmail
     if (category !== undefined) updateData.category = category
     if (description !== undefined) updateData.description = description
     if (createdAt !== undefined) {
-      if (createdAt) {
-        updateData.created_at = createdAt
-      }
+      if (createdAt) updateData.created_at = createdAt
     }
     if (closedAt !== undefined) {
-      if (closedAt === null || closedAt === '') {
-        updateData.closed_at = null
-      } else {
-        updateData.closed_at = closedAt
-      }
+      updateData.closed_at = closedAt === null || closedAt === '' ? null : closedAt
     }
     if (schedulingDetails !== undefined) {
       updateData.scheduling_details = normalizeSchedulingDetails(schedulingDetails)
@@ -512,29 +578,20 @@ export async function PATCH(request: Request) {
       .from('maintenance_requests')
       .update(updateData)
       .eq('id', id)
-      .select()
+      .select(`*, properties(address)`)
       .single()
 
     if (error) throw error
 
+    // Resolve property address for emails
+    const resolvedAddress: string = (data as any)?.properties?.address || data?.property_id || ''
+
     const normalizedScheduling = normalizeSchedulingDetails(data?.scheduling_details)
     if (sendConfirmationEmail && normalizedScheduling?.confirmed && data?.tenant_email) {
-      let propertyAddress = data.property_id || ''
-      try {
-        const { data: propData } = await supabaseAdmin
-          .from('properties')
-          .select('address')
-          .eq('id', data.property_id)
-          .single();
-        if (propData?.address) propertyAddress = propData.address;
-      } catch {
-        // ignore lookup errors
-      }
-
       sendTenantScheduleEmail({
         tenantEmail: data.tenant_email,
         tenantName: data.tenant_name || "Tenant",
-        propertyAddress,
+        propertyAddress: resolvedAddress,
         category: data.category || "General",
         description: data.description || "",
         confirmedDate: normalizedScheduling.confirmed.date,
@@ -542,6 +599,32 @@ export async function PATCH(request: Request) {
         vendorCanEnterWithoutTenant: normalizedScheduling.vendor_can_enter_without_tenant,
         note: normalizedScheduling.confirmed.note || "",
       }).catch(() => { /* already logged */ });
+    }
+
+    if (sendOpenedEmail && data?.tenant_email) {
+      sendTenantStatusEmail({
+        type: "opened",
+        tenantEmail: data.tenant_email,
+        tenantName: data.tenant_name || "Tenant",
+        propertyAddress: resolvedAddress,
+        category: data.category || "General",
+        description: data.description || "",
+        requestId: data.id,
+      }).catch(() => {});
+    }
+
+    if (sendClosedEmail && data?.tenant_email) {
+      sendTenantStatusEmail({
+        type: "closed",
+        tenantEmail: data.tenant_email,
+        tenantName: data.tenant_name || "Tenant",
+        propertyAddress: resolvedAddress,
+        category: data.category || "General",
+        description: data.description || "",
+        requestId: data.id,
+        closingNote: data.closing_note || "",
+        cost: data.cost,
+      }).catch(() => {});
     }
 
     return NextResponse.json(data)

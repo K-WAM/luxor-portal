@@ -1,3 +1,5 @@
+**GitHub:** https://github.com/K-WAM/luxor-portal (main branch)
+
 > **Start every session with:** "Read `CLAUDE.md` and apply all rules before proceeding. Appendix D is the authoritative calculation Ã¢â€ â€™ output map for every financial variable. **After any change that touches a formula, variable name, or output value, update Appendix D before ending the session.**"
 
 ---

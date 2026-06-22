@@ -1,8 +1,26 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
+import {
+  Pencil,
+  Trash2,
+  CalendarClock,
+  Mail,
+  Upload,
+  X,
+  Check,
+  Plus,
+  FileText,
+  Copy,
+  Search,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { getShortPropertyName } from "@/lib/property-short-name";
+
+type Attachment = { url: string; name: string; type?: string; size?: number };
 
 type MaintenanceRequest = {
   id: string;
@@ -14,10 +32,12 @@ type MaintenanceRequest = {
   description: string;
   status: string;
   internalComments?: string;
+  closingNote?: string;
+  costAccountability?: string;
   cost?: number;
   createdAt?: string;
   closedAt?: string;
-  attachments?: { url: string; name: string; type?: string; size?: number }[];
+  attachments?: Attachment[];
   schedulingDetails?: {
     availability_options: { date: string; window: string }[];
     is_flexible: boolean;
@@ -26,13 +46,34 @@ type MaintenanceRequest = {
   } | null;
 };
 
-type Property = { id: string; address: string };
+type Property = {
+  id: string;
+  address: string;
+  current_tenant_names?: string[];
+};
+
+type PropertyTenant = { name: string; email: string };
 
 const TIME_BLOCK_OPTIONS = [
   { value: "morning", label: "Morning: 8–12" },
   { value: "midday", label: "Midday: 12–3" },
   { value: "afternoon", label: "Afternoon: 3–5" },
   { value: "evening", label: "Evening: 5–8" },
+];
+
+const CATEGORY_OPTIONS = [
+  { value: "", label: "General" },
+  { value: "plumbing", label: "Plumbing" },
+  { value: "electrical", label: "Electrical" },
+  { value: "appliance", label: "Appliance" },
+  { value: "hvac", label: "Heating / Cooling" },
+  { value: "other", label: "Other" },
+];
+
+const ACCOUNTABILITY_OPTIONS = [
+  { value: "owner", label: "Owner" },
+  { value: "tenant", label: "Tenant" },
+  { value: "property_manager", label: "Property Manager" },
 ];
 
 const toDateTimeLocal = (value?: string) => {
@@ -50,21 +91,34 @@ const toIsoString = (value?: string) => {
   return d.toISOString();
 };
 
+const inputCls = "border border-slate-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white w-full";
+const labelCls = "block text-xs font-semibold text-slate-600 mb-1";
+
 export default function MaintenanceRequestsPage() {
   const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [propertyTenants, setPropertyTenants] = useState<Map<string, PropertyTenant[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [editingNotes, setEditingNotes] = useState<string | null>(null);
-  const [notesText, setNotesText] = useState("");
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState("all");
-  const [showClosed, setShowClosed] = useState(false);
-  const [showDesktopSite, setShowDesktopSite] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showClosed, setShowClosed] = useState(true);
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, key: string) => {
+    if (!text) return;
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500);
+    });
+  };
 
   const [createForm, setCreateForm] = useState({
     propertyId: "",
@@ -86,6 +140,9 @@ export default function MaintenanceRequestsPage() {
     status: "open",
     createdAt: "",
     closedAt: "",
+    internalComments: "",
+    closingNote: "",
+    costAccountability: "owner",
   });
 
   const [respondForm, setRespondForm] = useState({
@@ -103,70 +160,74 @@ export default function MaintenanceRequestsPage() {
     try {
       setLoading(true);
       setError(null);
-      const propsRes = await fetch("/api/properties");
-      if (propsRes.ok) setProperties((await propsRes.json()) || []);
-      const reqRes = await fetch("/api/maintenance");
+      const [propsRes, reqRes, userPropsRes, usersRes] = await Promise.all([
+        fetch("/api/properties"),
+        fetch("/api/maintenance"),
+        fetch("/api/admin/user-properties"),
+        fetch("/api/admin/users"),
+      ]);
+
+      const propsData: Property[] = propsRes.ok ? await propsRes.json() : [];
+      setProperties(propsData || []);
+
       const reqData = await reqRes.json();
-      if (!reqRes.ok) throw new Error(reqData.error || "Failed to load");
+      if (!reqRes.ok) throw new Error(reqData.error || "Failed to load requests");
       setRequests(reqData || []);
+
+      // Build propertyId → tenants map
+      if (userPropsRes.ok && usersRes.ok) {
+        const userProps: any[] = await userPropsRes.json();
+        const users: any[] = await usersRes.json();
+        const userMap = new Map(users.map((u) => [u.id, u]));
+        const tenantMap = new Map<string, PropertyTenant[]>();
+        for (const up of userProps) {
+          if (up.role !== "tenant") continue;
+          const u = userMap.get(up.user_id);
+          if (!u) continue;
+          const list = tenantMap.get(up.property_id) || [];
+          list.push({ name: u.name || u.email || "Tenant", email: u.email || "" });
+          tenantMap.set(up.property_id, list);
+        }
+        setPropertyTenants(tenantMap);
+      }
     } catch (err: any) {
-      setError(err.message || "Failed to load maintenance requests.");
+      setError(err.message || "Failed to load data.");
     } finally {
       setLoading(false);
     }
   };
 
   const loadRequests = async () => {
-    try {
-      const res = await fetch("/api/maintenance");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load");
-      setRequests(data || []);
-    } catch (err: any) {
-      setError(err.message || "Failed to load maintenance requests.");
-    }
+    const res = await fetch("/api/maintenance");
+    const data = await res.json();
+    if (res.ok) setRequests(data || []);
+  };
+
+  const patch = async (payload: Record<string, any>) => {
+    const res = await fetch("/api/maintenance", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to update");
+    return data;
   };
 
   const updateStatus = async (id: string, status: string) => {
     try {
       setSavingId(id);
-      const res = await fetch("/api/maintenance", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to update");
+      await patch({ id, status });
       await loadRequests();
     } catch (err: any) {
-      setError(err.message || "Update failed");
+      setError(err.message);
     } finally {
       setSavingId(null);
     }
   };
 
-  const saveNotes = async (id: string, cost?: number) => {
-    try {
-      setSavingId(id);
-      const updateData: any = { id, internalComments: notesText };
-      if (cost !== undefined) updateData.cost = cost;
-      const res = await fetch("/api/maintenance", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to save notes");
-      await loadRequests();
-      setEditingNotes(null);
-      setNotesText("");
-    } catch (err: any) {
-      setError(err.message || "Failed to save notes");
-    } finally {
-      setSavingId(null);
-    }
-  };
   const deleteRequest = async (id: string) => {
+    if (!confirm("Delete this maintenance request?")) return;
     try {
       setSavingId(id);
       const res = await fetch("/api/maintenance", {
@@ -178,86 +239,70 @@ export default function MaintenanceRequestsPage() {
       if (!res.ok) throw new Error(data.error || "Failed to delete");
       await loadRequests();
     } catch (err: any) {
-      setError(err.message || "Failed to delete maintenance request.");
+      setError(err.message);
     } finally {
       setSavingId(null);
     }
   };
 
-  const handleCreateChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => setCreateForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const handleCreateChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setCreateForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   const handleCreateSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
     if (!createForm.propertyId || !createForm.tenantName || !createForm.tenantEmail || !createForm.description) {
       setError("Please fill in all required fields");
       return;
     }
     try {
       setCreating(true);
-      const payload: any = {
-        propertyId: createForm.propertyId,
-        tenantName: createForm.tenantName,
-        tenantEmail: createForm.tenantEmail,
-        category: createForm.category,
-        description: createForm.description,
-      };
+      setError(null);
       const res = await fetch("/api/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          propertyId: createForm.propertyId,
+          tenantName: createForm.tenantName,
+          tenantEmail: createForm.tenantEmail,
+          category: createForm.category,
+          description: createForm.description,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create request");
-      const createdId = data?.id;
-      if (createdId && (createForm.cost || createForm.internalComments)) {
-        const patchPayload: any = { id: createdId };
-        if (createForm.cost) patchPayload.cost = parseFloat(createForm.cost);
-        if (createForm.internalComments) patchPayload.internalComments = createForm.internalComments;
-        const patchRes = await fetch("/api/maintenance", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(patchPayload),
+      if (!res.ok) throw new Error(data.error || "Failed to create");
+      if (data?.id && (createForm.cost || createForm.internalComments)) {
+        await patch({
+          id: data.id,
+          ...(createForm.cost ? { cost: parseFloat(createForm.cost) } : {}),
+          ...(createForm.internalComments ? { internalComments: createForm.internalComments } : {}),
         });
-        if (!patchRes.ok) {
-          const patchData = await patchRes.json().catch(() => ({}));
-          setError(patchData.error || "Created request, but failed to save internal notes.");
-        }
       }
-      setCreateForm({
-        propertyId: "",
-        tenantName: "",
-        tenantEmail: "",
-        category: "",
-        description: "",
-        cost: "",
-        internalComments: "",
-      });
+      setCreateForm({ propertyId: "", tenantName: "", tenantEmail: "", category: "", description: "", cost: "", internalComments: "" });
       setShowCreateForm(false);
       await loadRequests();
     } catch (err: any) {
-      setError(err.message || "Failed to create request");
+      setError(err.message);
     } finally {
       setCreating(false);
     }
   };
 
   const startEdit = (req: MaintenanceRequest) => {
-    const fallbackPropertyId = req.propertyId || properties[0]?.id || "";
     setEditingRequestId(req.id);
     setRespondingRequestId(null);
     setEditForm({
-      propertyId: fallbackPropertyId,
+      propertyId: req.propertyId || properties[0]?.id || "",
       tenantName: req.tenantName || "",
       tenantEmail: req.tenantEmail || "",
       category: req.category || "",
       description: req.description || "",
-      cost: req.cost !== undefined ? req.cost.toString() : "",
+      cost: req.cost !== undefined && req.cost !== null ? String(req.cost) : "",
       status: req.status || "open",
       createdAt: toDateTimeLocal(req.createdAt),
       closedAt: toDateTimeLocal(req.closedAt),
+      internalComments: req.internalComments || "",
+      closingNote: req.closingNote || "",
+      costAccountability: req.costAccountability || "owner",
     });
   };
 
@@ -272,24 +317,18 @@ export default function MaintenanceRequestsPage() {
     });
   };
 
-  const handleEditChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => setEditForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const handleEditChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setEditForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
-  const handleRespondChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => setRespondForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const handleRespondChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setRespondForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
-  const handleEditSubmit = async (e: FormEvent) => {
+  const handleEditSubmit = async (e: React.SyntheticEvent, sendEmail?: "opened" | "closed") => {
     e.preventDefault();
     if (!editingRequestId) return;
-    if (!editForm.propertyId || !editForm.tenantName || !editForm.tenantEmail) {
-      setError("Please provide property, tenant name, and tenant email.");
-      return;
-    }
     try {
       setSavingId(editingRequestId);
-      const payload: any = {
+      const payload: Record<string, any> = {
         id: editingRequestId,
         propertyId: editForm.propertyId,
         tenantName: editForm.tenantName,
@@ -297,25 +336,38 @@ export default function MaintenanceRequestsPage() {
         category: editForm.category,
         description: editForm.description,
         status: editForm.status,
+        internalComments: editForm.internalComments,
+        closingNote: editForm.closingNote,
+        costAccountability: editForm.costAccountability,
       };
       if (editForm.cost !== "") payload.cost = parseFloat(editForm.cost);
       const createdAtIso = toIsoString(editForm.createdAt);
       if (createdAtIso) payload.createdAt = createdAtIso;
-      const closedAtIso = editForm.closedAt === "" ? null : toIsoString(editForm.closedAt);
-      if (closedAtIso !== undefined) payload.closedAt = closedAtIso;
-      const res = await fetch("/api/maintenance", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to save changes");
+      payload.closedAt = editForm.closedAt === "" ? null : toIsoString(editForm.closedAt) ?? null;
+      if (sendEmail === "opened") payload.sendOpenedEmail = true;
+      if (sendEmail === "closed") payload.sendClosedEmail = true;
+      await patch(payload);
       await loadRequests();
       setEditingRequestId(null);
     } catch (err: any) {
-      setError(err.message || "Failed to save changes.");
+      setError(err.message);
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const sendEmailOnly = async (req: MaintenanceRequest, type: "opened" | "closed") => {
+    try {
+      setSendingEmail(req.id);
+      await patch({
+        id: req.id,
+        ...(type === "opened" ? { sendOpenedEmail: true } : { sendClosedEmail: true }),
+      });
+      setError(null);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSendingEmail(null);
     }
   };
 
@@ -329,49 +381,63 @@ export default function MaintenanceRequestsPage() {
     }
     try {
       setSavingId(req.id);
-      const schedulingDetails = {
-        availability_options: req.schedulingDetails?.availability_options || [],
-        is_flexible: !!req.schedulingDetails?.is_flexible,
-        vendor_can_enter_without_tenant: !!req.schedulingDetails?.vendor_can_enter_without_tenant,
-        confirmed: {
-          date: confirmedDate,
-          window: confirmedWindow,
-          note: respondForm.schedulingNote || "",
-          source: selectedOption ? "proposed" : "custom",
-          confirmed_at: new Date().toISOString(),
+      await patch({
+        id: req.id,
+        status: "in_progress",
+        schedulingDetails: {
+          availability_options: req.schedulingDetails?.availability_options || [],
+          is_flexible: !!req.schedulingDetails?.is_flexible,
+          vendor_can_enter_without_tenant: !!req.schedulingDetails?.vendor_can_enter_without_tenant,
+          confirmed: {
+            date: confirmedDate,
+            window: confirmedWindow,
+            note: respondForm.schedulingNote || "",
+            source: selectedOption ? "proposed" : "custom",
+            confirmed_at: new Date().toISOString(),
+          },
         },
-      };
-      const res = await fetch("/api/maintenance", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: req.id,
-          status: "in_progress",
-          schedulingDetails,
-          sendConfirmationEmail: true,
-        }),
+        sendConfirmationEmail: true,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to confirm schedule");
       await loadRequests();
       setRespondingRequestId(null);
     } catch (err: any) {
-      setError(err.message || "Failed to confirm schedule.");
+      setError(err.message);
     } finally {
       setSavingId(null);
     }
   };
 
-  const cancelEdit = () => setEditingRequestId(null);
-  const cancelRespond = () => setRespondingRequestId(null);
+  const handleFileUpload = async (req: MaintenanceRequest, file: File) => {
+    try {
+      setUploadingFor(req.id);
+      const supabase = createClient();
+      const ext = file.name.split(".").pop();
+      const path = `${req.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("maintenance-attachments")
+        .upload(path, file, { upsert: false });
+      if (upErr) throw new Error(upErr.message);
+      const { data: urlData } = supabase.storage.from("maintenance-attachments").getPublicUrl(path);
+      const newAttachment: Attachment = { url: urlData.publicUrl, name: file.name, type: file.type, size: file.size };
+      const existing: Attachment[] = req.attachments || [];
+      await patch({ id: req.id, attachments: [...existing, newAttachment] });
+      await loadRequests();
+    } catch (err: any) {
+      setError(err.message || "File upload failed");
+    } finally {
+      setUploadingFor(null);
+    }
+  };
 
-  const getElapsedTime = (createdAt?: string, closedAt?: string) => {
+  // Tenant dropdown helpers
+  const tenantsForProperty = (propertyId: string): PropertyTenant[] =>
+    propertyTenants.get(propertyId) || [];
+
+  const getElapsedTime = (createdAt?: string) => {
     if (!createdAt) return "N/A";
-    const start = new Date(createdAt);
-    const end = closedAt ? new Date(closedAt) : new Date();
-    const diff = end.getTime() - start.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const diff = Date.now() - new Date(createdAt).getTime();
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
     if (days > 0) return `${days}d ${hours}h`;
     if (hours > 0) return `${hours}h`;
     return "< 1h";
@@ -379,47 +445,322 @@ export default function MaintenanceRequestsPage() {
 
   const formatDateShort = (value?: string) =>
     value
-      ? new Date(value).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })
-      : "N/A";
+      ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "—";
 
-  const getDisplayTitle = (description?: string) => {
-    const normalized = String(description || "").replace(/\s+/g, " ").trim();
-    if (!normalized) return "Maintenance request";
-    const firstSentence = normalized.split(/[.!?]/).find((part) => part.trim())?.trim() || normalized;
-    if (firstSentence.length <= 48) return firstSentence;
-    return `${firstSentence.slice(0, 45).trimEnd()}...`;
-  };
+  const isRedRequest = (createdAt?: string) =>
+    !!createdAt && (Date.now() - new Date(createdAt).getTime()) / 86400000 > 21;
 
-  const propertyFilteredRequests = useMemo(
-    () => requests.filter((r) => (selectedPropertyId === "all" ? true : r.propertyId === selectedPropertyId)),
-    [requests, selectedPropertyId]
-  );
-  const activeRequests = useMemo(
-    () => propertyFilteredRequests.filter((r) => r.status !== "closed"),
-    [propertyFilteredRequests]
-  );
-  const closedRequests = useMemo(
-    () => propertyFilteredRequests.filter((r) => r.status === "closed"),
-    [propertyFilteredRequests]
-  );
+  const propertyFilteredRequests = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return requests.filter((r) => {
+      if (selectedPropertyId !== "all" && r.propertyId !== selectedPropertyId) return false;
+      if (!q) return true;
+      return [r.tenantName, r.tenantEmail, r.description, r.propertyAddress, r.category]
+        .some((v) => String(v || "").toLowerCase().includes(q));
+    });
+  }, [requests, selectedPropertyId, search]);
+  const activeRequests = useMemo(() => propertyFilteredRequests.filter((r) => r.status !== "closed"), [propertyFilteredRequests]);
+  const closedRequests = useMemo(() => propertyFilteredRequests.filter((r) => r.status === "closed"), [propertyFilteredRequests]);
 
-  const isRedRequest = (createdAt?: string) => {
-    if (!createdAt) return false;
-    const days = (new Date().getTime() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24);
-    return days > 21;
-  };
-  if (loading) {
+  // Shared inline edit panel
+  const renderEditPanel = (req: MaintenanceRequest) => {
+    const isClosing = editForm.status === "closed";
+    const tenants = tenantsForProperty(editForm.propertyId);
+    const isSaving = savingId === req.id;
+
     return (
-      <div className="p-8">
-        <h1 className="text-3xl font-bold mb-6">Maintenance Requests</h1>
-        <p className="text-gray-600">Loading requests...</p>
-      </div>
+      <tr>
+        <td colSpan={7} className="bg-slate-50 border-t border-b border-slate-200 px-4 py-4">
+          <form className="space-y-4 text-sm" onSubmit={(e) => handleEditSubmit(e)}>
+            {/* Row 1: Property + Category + Status */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label className={labelCls}>Property</label>
+                <select name="propertyId" value={editForm.propertyId} onChange={handleEditChange} className={inputCls} required>
+                  <option value="">Select…</option>
+                  {properties.map((p) => (
+                    <option key={p.id} value={p.id}>{getShortPropertyName(p.address)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Category</label>
+                <select name="category" value={editForm.category} onChange={handleEditChange} className={inputCls}>
+                  {CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Status</label>
+                <select name="status" value={editForm.status} onChange={handleEditChange} className={inputCls}>
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Cost ($)</label>
+                <input type="number" step="0.01" name="cost" value={editForm.cost} onChange={handleEditChange} className={inputCls} placeholder="0.00" />
+              </div>
+            </div>
+
+            {/* Row 2: Tenant name + email (datalist: pick from property tenants or type freely) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Tenant Name</label>
+                <input
+                  type="text"
+                  name="tenantName"
+                  list={`edit-tenant-names-${req.id}`}
+                  value={editForm.tenantName}
+                  onChange={(e) => {
+                    const t = tenants.find((t) => t.name === e.target.value);
+                    setEditForm((f) => ({ ...f, tenantName: e.target.value, tenantEmail: t?.email || f.tenantEmail }));
+                  }}
+                  className={inputCls}
+                  placeholder="Select or type…"
+                />
+                <datalist id={`edit-tenant-names-${req.id}`}>
+                  {tenants.map((t) => <option key={t.email} value={t.name} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className={labelCls}>Tenant Email</label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="email"
+                    name="tenantEmail"
+                    list={`edit-tenant-emails-${req.id}`}
+                    value={editForm.tenantEmail}
+                    onChange={(e) => {
+                      const t = tenants.find((t) => t.email === e.target.value);
+                      setEditForm((f) => ({ ...f, tenantEmail: e.target.value, tenantName: t?.name || f.tenantName }));
+                    }}
+                    className={inputCls}
+                    placeholder="Select or type…"
+                  />
+                  <datalist id={`edit-tenant-emails-${req.id}`}>
+                    {tenants.map((t) => <option key={t.email} value={t.email} />)}
+                  </datalist>
+                  <button
+                    type="button"
+                    title={copiedKey === `edit-${req.id}` ? "Copied!" : "Copy email"}
+                    onClick={() => copyToClipboard(editForm.tenantEmail, `edit-${req.id}`)}
+                    className="shrink-0 p-2 rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                  >
+                    {copiedKey === `edit-${req.id}` ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 3: Dates */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Date Opened</label>
+                <input type="datetime-local" name="createdAt" value={editForm.createdAt} onChange={handleEditChange} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Date Closed</label>
+                <input type="datetime-local" name="closedAt" value={editForm.closedAt} onChange={handleEditChange} className={inputCls} />
+              </div>
+            </div>
+
+            {/* Row 4: Description */}
+            <div>
+              <label className={labelCls}>Description</label>
+              <textarea name="description" value={editForm.description} onChange={handleEditChange} className={inputCls} rows={2} />
+            </div>
+
+            {/* Row 5: Internal Notes */}
+            <div>
+              <label className={labelCls}>Internal Notes</label>
+              <textarea name="internalComments" value={editForm.internalComments} onChange={handleEditChange} className={inputCls} rows={2} placeholder="Internal notes visible only to admin…" />
+            </div>
+
+            {/* Row 6: Close details — shown when status=closed */}
+            {isClosing && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+                <div className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Close Details</div>
+                <div>
+                  <label className={labelCls}>Closing Note (sent to tenant)</label>
+                  <textarea name="closingNote" value={editForm.closingNote} onChange={handleEditChange} className={inputCls} rows={2} placeholder="Describe the resolution…" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>Cost Accountability</label>
+                    <select name="costAccountability" value={editForm.costAccountability} onChange={handleEditChange} className={inputCls}>
+                      {ACCOUNTABILITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Row 7: Attachments */}
+            {req.attachments && req.attachments.length > 0 && (
+              <div>
+                <label className={labelCls}>Attachments</label>
+                <div className="flex flex-wrap gap-2">
+                  {req.attachments.map((a, i) => (
+                    <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline border border-slate-200 rounded px-2 py-1 bg-white">
+                      <FileText size={12} /> {a.name}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 text-sm font-medium"
+              >
+                <Check size={14} /> {isSaving ? "Saving…" : "Save Changes"}
+              </button>
+              {isClosing && (
+                <button
+                  type="button"
+                  disabled={isSaving || !editForm.tenantEmail}
+                  onClick={(e) => handleEditSubmit(e, "closed")}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 text-sm font-medium"
+                >
+                  <Mail size={14} /> Save & Email Tenant
+                </button>
+              )}
+              {/* Upload attachment */}
+              <label className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-700 hover:bg-slate-50 cursor-pointer text-sm font-medium">
+                <Upload size={14} /> {uploadingFor === req.id ? "Uploading…" : "Attach File"}
+                <input
+                  type="file"
+                  className="hidden"
+                  disabled={uploadingFor === req.id}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleFileUpload(req, f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setEditingRequestId(null)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300 text-sm"
+              >
+                <X size={14} /> Cancel
+              </button>
+            </div>
+          </form>
+        </td>
+      </tr>
     );
-  }
+  };
+
+  const renderRespondPanel = (req: MaintenanceRequest) => (
+    <tr>
+      <td colSpan={7} className="bg-slate-50 border-t border-b border-slate-200 px-4 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div className="md:col-span-3 font-semibold text-slate-700">Scheduling Response</div>
+          <div className="flex flex-col gap-1 md:col-span-3">
+            <label className={labelCls}>Choose proposed window</label>
+            <select name="scheduleChoice" value={respondForm.scheduleChoice} onChange={handleRespondChange} className={inputCls}>
+              <option value="">Select proposed window…</option>
+              {(req.schedulingDetails?.availability_options || []).map((opt, idx) => (
+                <option key={`${opt.date}-${idx}`} value={String(idx)}>{opt.date} ({opt.window})</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Or custom date</label>
+            <input type="date" name="customScheduleDate" value={respondForm.customScheduleDate} onChange={handleRespondChange} className={inputCls} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Time block</label>
+            <select name="customScheduleWindow" value={respondForm.customScheduleWindow} onChange={handleRespondChange} className={inputCls}>
+              {TIME_BLOCK_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Note (optional)</label>
+            <input type="text" name="schedulingNote" value={respondForm.schedulingNote} onChange={handleRespondChange} className={inputCls} />
+          </div>
+          <div className="md:col-span-3 text-xs text-slate-500">
+            Flexible: {req.schedulingDetails?.is_flexible ? "Yes" : "No"} · Vendor may enter without tenant: {req.schedulingDetails?.vendor_can_enter_without_tenant ? "Yes" : "No"}
+          </div>
+          <div className="md:col-span-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleConfirmSchedule(req)}
+              disabled={savingId === req.id}
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300 text-sm font-medium"
+            >
+              <Mail size={14} /> {savingId === req.id ? "Confirming…" : "Confirm & Email Tenant"}
+            </button>
+            <button type="button" onClick={() => setRespondingRequestId(null)} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300 text-sm">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+
+  const iconBtn = "p-2 rounded-md border disabled:opacity-50 transition-colors";
+  const renderActionButtons = (req: MaintenanceRequest, isClosed = false) => (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        title={editingRequestId === req.id ? "Close editor" : "Edit"}
+        className={`${iconBtn} ${editingRequestId === req.id ? "border-slate-400 bg-slate-100 text-slate-800" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}
+        onClick={() => editingRequestId === req.id ? setEditingRequestId(null) : startEdit(req)}
+        disabled={savingId === req.id}
+      >
+        <Pencil size={15} />
+      </button>
+      {!isClosed && (
+        <button
+          title="Respond / Schedule visit"
+          className={`${iconBtn} border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
+          onClick={() => respondingRequestId === req.id ? setRespondingRequestId(null) : startRespond(req)}
+          disabled={savingId === req.id}
+        >
+          <CalendarClock size={15} />
+        </button>
+      )}
+      <button
+        title={req.tenantEmail ? `Email tenant (${req.status === "closed" ? "resolved" : "received"} notice)` : "No tenant email"}
+        className={`${iconBtn} border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100`}
+        onClick={() => sendEmailOnly(req, req.status === "closed" ? "closed" : "opened")}
+        disabled={sendingEmail === req.id || !req.tenantEmail}
+      >
+        <Mail size={15} />
+      </button>
+      <button
+        title={copiedKey === `row-${req.id}` ? "Copied!" : "Copy tenant email"}
+        className={`${iconBtn} border-slate-300 bg-white text-slate-600 hover:bg-slate-100`}
+        onClick={() => copyToClipboard(req.tenantEmail, `row-${req.id}`)}
+        disabled={!req.tenantEmail}
+      >
+        {copiedKey === `row-${req.id}` ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}
+      </button>
+      <button
+        title="Delete"
+        className={`${iconBtn} border-red-200 bg-red-50 text-red-700 hover:bg-red-100`}
+        onClick={() => deleteRequest(req.id)}
+        disabled={savingId === req.id}
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+
+  if (loading) return (
+    <div className="p-8">
+      <h1 className="text-3xl font-bold mb-4">Maintenance Requests</h1>
+      <p className="text-slate-500">Loading…</p>
+    </div>
+  );
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -427,740 +768,288 @@ export default function MaintenanceRequestsPage() {
         <h1 className="text-3xl font-bold">Maintenance Requests</h1>
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
         >
-          {showCreateForm ? "Cancel" : "+ New Request"}
+          {showCreateForm ? <X size={16} /> : <Plus size={16} />}
+          {showCreateForm ? "Cancel" : "New Request"}
         </button>
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex justify-between">
           {error}
+          <button onClick={() => setError(null)}><X size={14} /></button>
         </div>
       )}
 
+      {/* Create form */}
       {showCreateForm && (
         <div className="mb-8 bg-white rounded-lg border border-slate-200 p-6">
-          <h2 className="text-xl font-semibold mb-4">Create New Maintenance Request</h2>
+          <h2 className="text-lg font-semibold mb-4">Create New Maintenance Request</h2>
           <form onSubmit={handleCreateSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Property <span className="text-red-500">*</span>
-                </label>
-                <select
-                  name="propertyId"
-                  value={createForm.propertyId}
-                  onChange={handleCreateChange}
-                  required
-                  className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select property...</option>
-                  {properties.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {getShortPropertyName(p.address)}
-                    </option>
-                  ))}
+                <label className={labelCls}>Property <span className="text-red-500">*</span></label>
+                <select name="propertyId" value={createForm.propertyId} onChange={handleCreateChange} required className={inputCls}>
+                  <option value="">Select property…</option>
+                  {properties.map((p) => <option key={p.id} value={p.id}>{getShortPropertyName(p.address)}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Category</label>
-                <select
-                  name="category"
-                  value={createForm.category}
-                  onChange={handleCreateChange}
-                  className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">General</option>
-                  <option value="plumbing">Plumbing</option>
-                  <option value="electrical">Electrical</option>
-                  <option value="appliance">Appliance</option>
-                  <option value="hvac">Heating / Cooling</option>
-                  <option value="other">Other</option>
+                <label className={labelCls}>Category</label>
+                <select name="category" value={createForm.category} onChange={handleCreateChange} className={inputCls}>
+                  {CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Tenant Name <span className="text-red-500">*</span>
-                </label>
+                <label className={labelCls}>Tenant Name <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   name="tenantName"
+                  list={`create-tenant-names`}
                   value={createForm.tenantName}
-                  onChange={handleCreateChange}
+                  onChange={(e) => {
+                    const t = tenantsForProperty(createForm.propertyId).find((t) => t.name === e.target.value);
+                    setCreateForm((f) => ({ ...f, tenantName: e.target.value, tenantEmail: t?.email || f.tenantEmail }));
+                  }}
                   required
-                  className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={inputCls}
+                  placeholder="Select or type…"
                 />
+                <datalist id="create-tenant-names">
+                  {tenantsForProperty(createForm.propertyId).map((t) => <option key={t.email} value={t.name} />)}
+                </datalist>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Tenant Email <span className="text-red-500">*</span>
-                </label>
+                <label className={labelCls}>Tenant Email <span className="text-red-500">*</span></label>
                 <input
                   type="email"
                   name="tenantEmail"
+                  list={`create-tenant-emails`}
                   value={createForm.tenantEmail}
-                  onChange={handleCreateChange}
+                  onChange={(e) => {
+                    const t = tenantsForProperty(createForm.propertyId).find((t) => t.email === e.target.value);
+                    setCreateForm((f) => ({ ...f, tenantEmail: e.target.value, tenantName: t?.name || f.tenantName }));
+                  }}
                   required
-                  className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={inputCls}
+                  placeholder="Select or type…"
                 />
+                <datalist id="create-tenant-emails">
+                  {tenantsForProperty(createForm.propertyId).map((t) => <option key={t.email} value={t.email} />)}
+                </datalist>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Estimated Cost ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="cost"
-                  value={createForm.cost}
-                  onChange={handleCreateChange}
-                  className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <label className={labelCls}>Estimated Cost ($)</label>
+                <input type="number" step="0.01" name="cost" value={createForm.cost} onChange={handleCreateChange} className={inputCls} />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">
-                Description <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                name="description"
-                value={createForm.description}
-                onChange={handleCreateChange}
-                required
-                rows={3}
-                className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <label className={labelCls}>Description <span className="text-red-500">*</span></label>
+              <textarea name="description" value={createForm.description} onChange={handleCreateChange} required rows={3} className={inputCls} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Internal Notes</label>
-              <textarea
-                name="internalComments"
-                value={createForm.internalComments}
-                onChange={handleCreateChange}
-                rows={2}
-                className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <label className={labelCls}>Internal Notes</label>
+              <textarea name="internalComments" value={createForm.internalComments} onChange={handleCreateChange} rows={2} className={inputCls} />
             </div>
             <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={creating}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
-              >
-                {creating ? "Creating..." : "Create Request"}
+              <button type="submit" disabled={creating} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 text-sm font-medium">
+                <Check size={14} /> {creating ? "Creating…" : "Create Request"}
               </button>
-              <button
-                type="button"
-                onClick={() => setShowCreateForm(false)}
-                className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300 transition-colors"
-              >
+              <button type="button" onClick={() => setShowCreateForm(false)} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300 text-sm">
                 Cancel
               </button>
             </div>
           </form>
         </div>
       )}
+
+      {/* Filters */}
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="w-full md:max-w-xs">
-          <label className="block text-sm font-medium mb-1 text-slate-700">Property</label>
-          <select
-            value={selectedPropertyId}
-            onChange={(e) => setSelectedPropertyId(e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Properties</option>
-            {properties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {getShortPropertyName(p.address)}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end w-full md:w-auto">
+          <div className="w-full sm:max-w-xs">
+            <label className="block text-sm font-medium mb-1 text-slate-700">Property</label>
+            <select value={selectedPropertyId} onChange={(e) => setSelectedPropertyId(e.target.value)} className={inputCls}>
+              <option value="all">All Properties</option>
+              {properties.map((p) => <option key={p.id} value={p.id}>{getShortPropertyName(p.address)}</option>)}
+            </select>
+          </div>
+          <div className="w-full sm:max-w-xs">
+            <label className="block text-sm font-medium mb-1 text-slate-700">Search</label>
+            <div className="relative">
+              <Search size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Tenant, email, description…"
+                className={`${inputCls} pl-8`}
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch("")} title="Clear" className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
         <button
           type="button"
-          onClick={() => setShowClosed((prev) => !prev)}
-          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          onClick={() => setShowClosed((v) => !v)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 shrink-0"
         >
+          {showClosed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           {showClosed ? "Hide Closed" : "Show Closed"}
         </button>
       </div>
-      <div className="mb-4 md:hidden">
-        <button
-          type="button"
-          onClick={() => setShowDesktopSite((prev) => !prev)}
-          className="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          {showDesktopSite ? "Back to Mobile View" : "View Desktop Site for More Options"}
-        </button>
-      </div>
+
+      {/* Active Requests */}
       <div className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4 text-slate-800">Active Requests ({activeRequests.length})</h2>
+        <h2 className="text-xl font-semibold mb-3 text-slate-800">Active Requests ({activeRequests.length})</h2>
         {activeRequests.length === 0 ? (
-          <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-gray-500">No active maintenance requests.</div>
+          <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-slate-500">No active maintenance requests.</div>
         ) : (
-          <>
-          <div className={`${showDesktopSite ? "hidden" : "md:hidden"} bg-white rounded-lg border border-slate-200 overflow-hidden`}>
-            <div className="divide-y divide-slate-100">
-              {activeRequests.map((req) => {
-                const displayTitle = getDisplayTitle(req.description);
-                return (
-                  <div key={req.id} className="px-4 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-slate-900" title={req.propertyAddress || req.propertyId || "N/A"}>
-                          {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
-                        </div>
-                        <div className="mt-1 text-sm text-slate-700 break-words">{displayTitle}</div>
-                        <div className="mt-1 text-xs text-slate-500">
-                          {req.tenantName}
-                          {req.createdAt ? ` • Opened ${formatDateShort(req.createdAt)}` : ""}
-                        </div>
-                        {req.description && req.description !== displayTitle && (
-                          <div className="mt-1 text-xs text-slate-500 break-words">{req.description}</div>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <select
-                          className="rounded-md border border-slate-300 px-2 py-1 text-xs bg-white"
-                          value={req.status}
-                          onChange={(e) => updateStatus(req.id, e.target.value)}
-                          disabled={savingId === req.id}
-                        >
-                          <option value="open">Open</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="closed">Closed</option>
-                        </select>
-                        <button
-                          className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                          onClick={() => startRespond(req)}
-                          disabled={savingId === req.id}
-                        >
-                          Respond
-                        </button>
-                      </div>
-                    </div>
-                    {respondingRequestId === req.id && (
-                      <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                        <div className="font-medium text-sm">Scheduling response</div>
-                        <div className="mt-2 flex flex-col gap-3 text-sm">
-                          <div className="flex flex-col gap-1">
-                            <label className="font-medium">Choose proposed window</label>
-                            <select
-                              name="scheduleChoice"
-                              value={respondForm.scheduleChoice}
-                              onChange={handleRespondChange}
-                              className="border border-slate-300 rounded-md px-2 py-1.5"
-                            >
-                              <option value="">Select proposed window...</option>
-                              {(req.schedulingDetails?.availability_options || []).map((opt, idx) => (
-                                <option key={`${opt.date}-${opt.window}-${idx}`} value={String(idx)}>
-                                  {opt.date} ({opt.window})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="font-medium">Or custom date</label>
-                            <input
-                              type="date"
-                              name="customScheduleDate"
-                              value={respondForm.customScheduleDate}
-                              onChange={handleRespondChange}
-                              className="border border-slate-300 rounded-md px-2 py-1.5"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="font-medium">Custom time block</label>
-                            <select
-                              name="customScheduleWindow"
-                              value={respondForm.customScheduleWindow}
-                              onChange={handleRespondChange}
-                              className="border border-slate-300 rounded-md px-2 py-1.5"
-                            >
-                              {TIME_BLOCK_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <label className="font-medium">Scheduling note</label>
-                            <input
-                              type="text"
-                              name="schedulingNote"
-                              value={respondForm.schedulingNote}
-                              onChange={handleRespondChange}
-                              className="border border-slate-300 rounded-md px-2 py-1.5"
-                            />
-                          </div>
-                          <div className="text-xs text-slate-600">
-                            Tenant flexible: {req.schedulingDetails?.is_flexible ? "Yes" : "No"} · Vendor may enter if tenant absent: {req.schedulingDetails?.vendor_can_enter_without_tenant ? "Yes" : "No"}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleConfirmSchedule(req)}
-                              disabled={savingId === req.id}
-                              className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:bg-emerald-300"
-                            >
-                              {savingId === req.id ? "Confirming..." : "Confirm & Email Tenant"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelRespond}
-                              className="rounded-md bg-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-300"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className={`${showDesktopSite ? "block" : "hidden md:block"} bg-white rounded-lg border border-slate-200 overflow-hidden`}>
+          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full table-fixed">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[12%]">Opened</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[9%]">Age</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[11%]">Property</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[18%]">Tenant</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[24%]">Description</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[10%]">Status</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[16%]">Actions</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[11%]">Opened</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[7%]">Age</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[10%]">Property</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[17%]">Tenant</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Description</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[10%]">Status</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[12%]">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-100">
                   {activeRequests.map((req) => {
                     const isRed = isRedRequest(req.createdAt);
                     return (
-                    <React.Fragment key={req.id}>
-                      <tr className={`transition-colors ${isRed ? "bg-red-50 hover:bg-red-100" : "hover:bg-slate-50"}`}>
-                        <td className="px-3 py-3 align-top text-sm text-slate-700">{formatDateShort(req.createdAt)}</td>
-                        <td className="px-3 py-3 align-top text-sm">
-                          <span className={isRed ? "font-semibold text-red-700" : "text-slate-600"}>
-                            {getElapsedTime(req.createdAt)}
-                            {isRed && <span className="ml-1 text-xs">(overdue)</span>}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 align-top text-sm text-slate-900 font-medium" title={req.propertyAddress || req.propertyId || "N/A"}>
-                          {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
-                        </td>
-                        <td className="px-3 py-3 align-top text-sm">
-                          <div className="font-medium text-slate-900">{req.tenantName}</div>
-                          <div className="text-slate-500 text-xs">{req.tenantEmail}</div>
-                        </td>
-                        <td className="px-3 py-3 align-top text-sm text-slate-700">
-                          <p className="whitespace-normal break-words">{req.description}</p>
-                          {req.schedulingDetails?.confirmed && (
-                            <p className="text-xs text-emerald-700 mt-0.5 whitespace-normal break-words">
-                              Scheduled: {req.schedulingDetails.confirmed.date} ({req.schedulingDetails.confirmed.window})
-                            </p>
-                          )}
-                          {req.schedulingDetails?.availability_options?.length ? (
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              {req.schedulingDetails.availability_options.length} proposed windows
-                            </p>
-                          ) : null}
-                          {req.internalComments && (
-                            <p className="text-xs text-slate-500 mt-0.5 italic whitespace-normal break-words">Note: {req.internalComments}</p>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 align-top text-sm">
-                          <select
-                            className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            value={req.status}
-                            onChange={(e) => updateStatus(req.id, e.target.value)}
-                            disabled={savingId === req.id}
-                          >
-                            <option value="open">Open</option>
-                            <option value="in_progress">In Progress</option>
-                            <option value="closed">Closed</option>
-                          </select>
-                          {savingId === req.id && <span className="ml-2 text-xs text-gray-500">Saving...</span>}
-                        </td>
-                        <td className="px-3 py-3 align-top text-sm">
-                          <div className="flex flex-wrap gap-2">
-                          <button
-                            className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-800 hover:bg-slate-100 disabled:opacity-60"
-                            onClick={() => startEdit(req)}
-                            disabled={savingId === req.id}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="px-3 py-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                            onClick={() => startRespond(req)}
-                            disabled={savingId === req.id}
-                          >
-                            Respond
-                          </button>
-                          <button
-                            className="px-3 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60"
-                            onClick={() => {
-                              setEditingNotes(req.id);
-                              setNotesText(req.internalComments || "");
-                            }}
-                          >
-                            {req.internalComments ? "Edit Notes" : "Add Notes"}
-                          </button>
-                          <button
-                            className="px-3 py-1.5 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60"
-                            onClick={() => deleteRequest(req.id)}
-                            disabled={savingId === req.id}
-                          >
-                            Delete
-                          </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {editingRequestId === req.id && (
-                        <tr>
-                          <td colSpan={7} className="bg-slate-50 px-4 py-3">
-                            <form className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm" onSubmit={handleEditSubmit}>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Property</label>
-                                <select name="propertyId" value={editForm.propertyId} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" required>
-                                  <option value="">Select property...</option>
-                                  {properties.map((p) => (<option key={p.id} value={p.id}>{getShortPropertyName(p.address)}</option>))}
-                                </select>
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Tenant Name</label>
-                                <input type="text" name="tenantName" value={editForm.tenantName} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Tenant Email</label>
-                                <input type="email" name="tenantEmail" value={editForm.tenantEmail} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Category</label>
-                                <select name="category" value={editForm.category} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5">
-                                  <option value="">General</option>
-                                  <option value="plumbing">Plumbing</option>
-                                  <option value="electrical">Electrical</option>
-                                  <option value="appliance">Appliance</option>
-                                  <option value="hvac">Heating / Cooling</option>
-                                  <option value="other">Other</option>
-                                </select>
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Status</label>
-                                <select name="status" value={editForm.status} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5">
-                                  <option value="open">Open</option>
-                                  <option value="in_progress">In Progress</option>
-                                  <option value="closed">Closed</option>
-                                </select>
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Cost ($)</label>
-                                <input type="number" step="0.01" name="cost" value={editForm.cost} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" placeholder="0.00" />
-                              </div>
-                              <div className="flex flex-col gap-1 md:col-span-3">
-                                <label className="font-medium">Description</label>
-                                <textarea name="description" value={editForm.description} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" rows={2} />
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:col-span-3">
-                                <div className="flex flex-col gap-1">
-                                  <label className="font-medium">Created At</label>
-                                  <input
-                                    type="datetime-local"
-                                    name="createdAt"
-                                    value={editForm.createdAt}
-                                    onChange={handleEditChange}
-                                    className="border border-slate-300 rounded-md px-2 py-1.5"
-                                  />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                  <label className="font-medium">Closed At</label>
-                                  <input
-                                    type="datetime-local"
-                                    name="closedAt"
-                                    value={editForm.closedAt}
-                                    onChange={handleEditChange}
-                                    className="border border-slate-300 rounded-md px-2 py-1.5"
-                                  />
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 md:col-span-3">
-                                <button type="submit" disabled={savingId === req.id} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300">{savingId === req.id ? "Saving..." : "Save Changes"}</button>
-                                <button type="button" onClick={cancelEdit} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300">Cancel</button>
-                              </div>
-                            </form>
+                      <React.Fragment key={req.id}>
+                        <tr className={`transition-colors ${isRed ? "bg-red-50 hover:bg-red-100" : "hover:bg-slate-50"}`}>
+                          <td className="px-3 py-3 align-top text-sm text-slate-600">{formatDateShort(req.createdAt)}</td>
+                          <td className="px-3 py-3 align-top text-sm">
+                            <span className={isRed ? "font-semibold text-red-700" : "text-slate-500"}>{getElapsedTime(req.createdAt)}</span>
                           </td>
-                        </tr>
-                      )}
-                      {respondingRequestId === req.id && (
-                        <tr>
-                          <td colSpan={7} className="bg-slate-50 px-4 py-3">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm border border-slate-200 rounded-md p-3">
-                              <div className="md:col-span-3 font-medium text-sm">Scheduling response</div>
-                              <div className="flex flex-col gap-1 md:col-span-3">
-                                <label className="font-medium">Choose one of tenant proposed windows</label>
-                                <select
-                                  name="scheduleChoice"
-                                  value={respondForm.scheduleChoice}
-                                  onChange={handleRespondChange}
-                                  className="border border-slate-300 rounded-md px-2 py-1.5"
-                                >
-                                  <option value="">Select proposed window...</option>
-                                  {(req.schedulingDetails?.availability_options || []).map((opt, idx) => (
-                                    <option key={`${opt.date}-${opt.window}-${idx}`} value={String(idx)}>
-                                      {opt.date} ({opt.window})
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Or custom date</label>
-                                <input
-                                  type="date"
-                                  name="customScheduleDate"
-                                  value={respondForm.customScheduleDate}
-                                  onChange={handleRespondChange}
-                                  className="border border-slate-300 rounded-md px-2 py-1.5"
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1">
-                                <label className="font-medium">Custom time block</label>
-                                <select
-                                  name="customScheduleWindow"
-                                  value={respondForm.customScheduleWindow}
-                                  onChange={handleRespondChange}
-                                  className="border border-slate-300 rounded-md px-2 py-1.5"
-                                >
-                                  {TIME_BLOCK_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                      {opt.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="flex flex-col gap-1 md:col-span-3">
-                                <label className="font-medium">Scheduling note (optional)</label>
-                                <input
-                                  type="text"
-                                  name="schedulingNote"
-                                  value={respondForm.schedulingNote}
-                                  onChange={handleRespondChange}
-                                  className="border border-slate-300 rounded-md px-2 py-1.5"
-                                />
-                              </div>
-                              <div className="md:col-span-3 text-xs text-slate-600">
-                                Tenant flexible: {req.schedulingDetails?.is_flexible ? "Yes" : "No"} · Vendor may enter if tenant absent: {req.schedulingDetails?.vendor_can_enter_without_tenant ? "Yes" : "No"}
-                              </div>
-                              <div className="md:col-span-3 flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleConfirmSchedule(req)}
-                                  disabled={savingId === req.id}
-                                  className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300"
-                                >
-                                  {savingId === req.id ? "Confirming..." : "Confirm Schedule & Email Tenant"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={cancelRespond}
-                                  className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
+                          <td className="px-3 py-3 align-top text-sm font-medium text-slate-900" title={req.propertyAddress}>
+                            {getShortPropertyName(req.propertyAddress) || req.propertyId || "—"}
                           </td>
-                        </tr>
-                      )}
-                      {editingNotes === req.id && (
-                        <tr>
-                          <td colSpan={7} className="bg-slate-50 px-4 py-3">
-                            <textarea
-                              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              rows={3}
-                              placeholder="Add notes, cost details, or comments..."
-                              value={notesText}
-                              onChange={(e) => setNotesText(e.target.value)}
+                          <td className="px-3 py-3 align-top text-sm">
+                            <div className="font-medium text-slate-900">{req.tenantName}</div>
+                            <div className="text-xs text-slate-500">{req.tenantEmail}</div>
+                          </td>
+                          <td className="px-3 py-3 align-top text-sm text-slate-700">
+                            <p className="whitespace-normal break-words">{req.description}</p>
+                            {req.schedulingDetails?.confirmed && (
+                              <p className="text-xs text-emerald-700 mt-0.5">
+                                Scheduled: {req.schedulingDetails.confirmed.date} ({req.schedulingDetails.confirmed.window})
+                              </p>
+                            )}
+                            {req.internalComments && (
+                              <p className="text-xs text-slate-400 italic mt-0.5">Note: {req.internalComments}</p>
+                            )}
+                            {req.attachments && req.attachments.length > 0 && (
+                              <div className="flex gap-1 mt-1 flex-wrap">
+                                {req.attachments.map((a, i) => (
+                                  <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-0.5">
+                                    <FileText size={11} /> {a.name}
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-top text-sm">
+                            <select
+                              className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              value={req.status}
+                              onChange={(e) => updateStatus(req.id, e.target.value)}
                               disabled={savingId === req.id}
-                            />
-                            <div className="flex gap-2 mt-2">
-                              <button
-                                onClick={() => saveNotes(req.id, req.cost)}
-                                disabled={savingId === req.id}
-                                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
-                              >
-                                {savingId === req.id ? "Saving..." : "Save"}
-                              </button>
-                              <button
-                                onClick={() => { setEditingNotes(null); setNotesText(""); }}
-                                disabled={savingId === req.id}
-                                className="px-4 py-2 bg-slate-200 text-slate-700 text-sm rounded-md hover:bg-slate-300 disabled:bg-slate-100 disabled:cursor-not-allowed transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
+                            >
+                              <option value="open">Open</option>
+                              <option value="in_progress">In Progress</option>
+                              <option value="closed">Closed</option>
+                            </select>
                           </td>
+                          <td className="px-3 py-3 align-top">{renderActionButtons(req)}</td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
+                        {editingRequestId === req.id && renderEditPanel(req)}
+                        {respondingRequestId === req.id && renderRespondPanel(req)}
+                      </React.Fragment>
+                    );
                   })}
                 </tbody>
               </table>
             </div>
           </div>
-          </>
         )}
       </div>
+
+      {/* Closed Requests */}
       {showClosed && (
-      <div>
-        <h2 className="text-2xl font-semibold mb-4 text-slate-800">Closed Requests ({closedRequests.length})</h2>
-        {closedRequests.length === 0 ? (
-          <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-gray-500">No closed maintenance requests.</div>
-        ) : (
-          <>
-          <div className={`${showDesktopSite ? "hidden" : "md:hidden"} bg-white rounded-lg border border-slate-200 overflow-hidden`}>
-            <div className="divide-y divide-slate-100">
-              {closedRequests.map((req) => (
-                <div key={req.id} className="px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-900" title={req.propertyAddress || req.propertyId || "N/A"}>
-                        {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
-                      </div>
-                      <div className="mt-1 text-sm text-slate-700 break-words">{getDisplayTitle(req.description)}</div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {req.tenantName}
-                        {req.closedAt ? ` • Closed ${formatDateShort(req.closedAt)}` : ""}
-                      </div>
-                    </div>
-                    <div className="text-xs font-medium text-slate-500">Closed</div>
-                  </div>
-                </div>
-              ))}
+        <div>
+          <h2 className="text-xl font-semibold mb-3 text-slate-800">Closed Requests ({closedRequests.length})</h2>
+          {closedRequests.length === 0 ? (
+            <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-slate-500">No closed requests.</div>
+          ) : (
+            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Property</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[16%]">Tenant</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Opened</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Closed</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[8%]">Cost</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Accountable</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {closedRequests.map((req) => (
+                      <React.Fragment key={req.id}>
+                        <tr className="hover:bg-slate-50 text-sm">
+                          <td className="px-3 py-3 align-top text-slate-700 font-medium">{getShortPropertyName(req.propertyAddress) || "—"}</td>
+                          <td className="px-3 py-3 align-top">
+                            <div className="text-slate-800">{req.tenantName}</div>
+                            <div className="text-xs text-slate-400">{req.tenantEmail}</div>
+                          </td>
+                          <td className="px-3 py-3 align-top text-slate-600">
+                            <p className="whitespace-normal break-words">{req.description}</p>
+                            {req.closingNote && <p className="text-xs text-slate-500 italic mt-0.5">Close: {req.closingNote}</p>}
+                            {req.internalComments && <p className="text-xs text-slate-400 italic mt-0.5">Note: {req.internalComments}</p>}
+                            {req.attachments && req.attachments.length > 0 && (
+                              <div className="flex gap-1 mt-1 flex-wrap">
+                                {req.attachments.map((a, i) => (
+                                  <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-0.5">
+                                    <FileText size={11} /> {a.name}
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-top text-slate-500">{formatDateShort(req.createdAt)}</td>
+                          <td className="px-3 py-3 align-top text-slate-500">{formatDateShort(req.closedAt)}</td>
+                          <td className="px-3 py-3 align-top text-slate-700 font-medium">
+                            {req.cost != null ? `$${Number(req.cost).toFixed(2)}` : "—"}
+                          </td>
+                          <td className="px-3 py-3 align-top text-xs text-slate-600 capitalize">
+                            {req.costAccountability?.replace("_", " ") || "—"}
+                          </td>
+                          <td className="px-3 py-3 align-top">{renderActionButtons(req, true)}</td>
+                        </tr>
+                        {editingRequestId === req.id && renderEditPanel(req)}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-          <div className={`${showDesktopSite ? "block" : "hidden md:block"} bg-white rounded-lg border border-slate-200 overflow-hidden`}>
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[11%]">Property</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[17%]">Tenant</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[27%]">Description</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[12%]">Opened</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[12%]">Closed</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[9%]">Cost</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[12%]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-            {closedRequests.map((req) => (
-              <React.Fragment key={req.id}>
-                <tr className="hover:bg-slate-50 transition-colors text-sm">
-                  <td className="px-3 py-3 align-top text-slate-700 font-medium" title={req.propertyAddress || req.propertyId || "N/A"}>
-                    {getShortPropertyName(req.propertyAddress) || req.propertyId || "N/A"}
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    <div className="text-slate-800">{req.tenantName}</div>
-                    <div className="text-xs text-slate-400">{req.tenantEmail}</div>
-                  </td>
-                  <td className="px-3 py-3 align-top text-slate-600">
-                    <p className="whitespace-normal break-words">{req.description}</p>
-                    {req.internalComments && (
-                      <p className="text-xs text-slate-400 italic whitespace-normal break-words mt-0.5">Note: {req.internalComments}</p>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 align-top text-slate-500">{formatDateShort(req.createdAt)}</td>
-                  <td className="px-3 py-3 align-top text-slate-500">{formatDateShort(req.closedAt)}</td>
-                  <td className="px-3 py-3 align-top text-slate-700 font-medium whitespace-nowrap">
-                    {req.cost !== undefined && req.cost !== null ? `$${Number(req.cost).toFixed(2)}` : "—"}
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 text-xs disabled:opacity-60"
-                      onClick={() => startEdit(req)}
-                      disabled={savingId === req.id}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="px-3 py-1.5 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 text-xs disabled:opacity-60"
-                      onClick={() => deleteRequest(req.id)}
-                      disabled={savingId === req.id}
-                    >
-                      Delete
-                    </button>
-                    </div>
-                  </td>
-                </tr>
-                {editingRequestId === req.id && (
-                  <tr>
-                    <td colSpan={7} className="bg-slate-50 px-4 py-3">
-                      <form className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm" onSubmit={handleEditSubmit}>
-                        <div className="flex flex-col gap-1">
-                          <label className="font-medium">Property</label>
-                          <select name="propertyId" value={editForm.propertyId} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" required>
-                            <option value="">Select property...</option>
-                            {properties.map((p) => (<option key={p.id} value={p.id}>{getShortPropertyName(p.address)}</option>))}
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="font-medium">Tenant Name</label>
-                          <input type="text" name="tenantName" value={editForm.tenantName} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="font-medium">Tenant Email</label>
-                          <input type="email" name="tenantEmail" value={editForm.tenantEmail} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="font-medium">Category</label>
-                          <select name="category" value={editForm.category} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5">
-                            <option value="">General</option>
-                            <option value="plumbing">Plumbing</option>
-                            <option value="electrical">Electrical</option>
-                            <option value="appliance">Appliance</option>
-                            <option value="hvac">Heating / Cooling</option>
-                            <option value="other">Other</option>
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="font-medium">Status</label>
-                          <select name="status" value={editForm.status} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5">
-                            <option value="open">Open</option>
-                            <option value="in_progress">In Progress</option>
-                            <option value="closed">Closed</option>
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="font-medium">Cost ($)</label>
-                          <input type="number" step="0.01" name="cost" value={editForm.cost} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" placeholder="0.00" />
-                        </div>
-                        <div className="flex flex-col gap-1 md:col-span-3">
-                          <label className="font-medium">Description</label>
-                          <textarea name="description" value={editForm.description} onChange={handleEditChange} className="border border-slate-300 rounded-md px-2 py-1.5" rows={2} />
-                        </div>
-                        <div className="flex items-center gap-2 md:col-span-3">
-                          <button type="submit" disabled={savingId === req.id} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300">{savingId === req.id ? "Saving..." : "Save Changes"}</button>
-                          <button type="button" onClick={cancelEdit} className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300">Cancel</button>
-                        </div>
-                      </form>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          </>
-        )}
-      </div>
+          )}
+        </div>
       )}
     </div>
   );
