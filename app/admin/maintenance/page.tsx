@@ -862,9 +862,9 @@ export default function MaintenanceRequestsPage() {
     );
   };
 
-  const iconBtn = "p-2 rounded-md border disabled:opacity-50 transition-colors shrink-0";
+  const iconBtn = "p-1.5 rounded-md border disabled:opacity-50 transition-colors shrink-0";
   const renderActionButtons = (req: MaintenanceRequest, isClosed = false) => (
-    <div className="relative flex flex-nowrap items-center gap-1.5">
+    <div className="relative flex flex-nowrap items-center gap-1">
       {/* Hidden native date pickers triggered by the calendar icons */}
       <input
         type="date"
@@ -892,7 +892,7 @@ export default function MaintenanceRequestsPage() {
         onClick={() => editingRequestId === req.id ? setEditingRequestId(null) : startEdit(req)}
         disabled={savingId === req.id}
       >
-        <Pencil size={16} />
+        <Pencil size={15} />
       </button>
       <button
         title={`Edit date opened (currently ${formatDateShort(req.createdAt)})`}
@@ -900,7 +900,7 @@ export default function MaintenanceRequestsPage() {
         onClick={() => openDatePicker(`${req.id}-opened`)}
         disabled={savingId === req.id}
       >
-        <Calendar size={16} />
+        <Calendar size={15} />
       </button>
       {!isClosed && (
         <button
@@ -909,7 +909,7 @@ export default function MaintenanceRequestsPage() {
           onClick={() => openDatePicker(`${req.id}-closed`)}
           disabled={savingId === req.id}
         >
-          <CalendarCheck size={16} />
+          <CalendarCheck size={15} />
         </button>
       )}
       <button
@@ -918,7 +918,7 @@ export default function MaintenanceRequestsPage() {
         onClick={() => sendEmailOnly(req, req.status === "closed" ? "closed" : "opened")}
         disabled={sendingEmail === req.id || !req.tenantEmail}
       >
-        <Mail size={16} />
+        <Mail size={15} />
       </button>
       <button
         title="Add comment / view history"
@@ -929,7 +929,7 @@ export default function MaintenanceRequestsPage() {
         }}
         disabled={savingId === req.id}
       >
-        <MessageSquarePlus size={16} />
+        <MessageSquarePlus size={15} />
         {req.activityLog && req.activityLog.length > 1 && (
           <span className="ml-0.5 align-top text-[10px] font-semibold">{req.activityLog.filter((e) => e.type === "comment").length || ""}</span>
         )}
@@ -940,7 +940,7 @@ export default function MaintenanceRequestsPage() {
         onClick={() => deleteRequest(req.id)}
         disabled={savingId === req.id}
       >
-        <Trash2 size={16} />
+        <Trash2 size={15} />
       </button>
     </div>
   );
@@ -1116,17 +1116,17 @@ export default function MaintenanceRequestsPage() {
           <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-slate-500">No active maintenance requests.</div>
         ) : (
           <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto">
+            <div>
               <table className="w-full table-fixed">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[10%]">Opened</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[6%]">Age</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[9%]">Property</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[16%]">Tenant</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Description</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[9%]">Status</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[15%]">Actions</th>
+                    <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[9%]">Opened</th>
+                    <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[5%]">Age</th>
+                    <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[8%]">Property</th>
+                    <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[14%]">Tenant</th>
+                    <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Description</th>
+                    <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[8%]">Status</th>
+                    <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[19%]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1178,7 +1178,7 @@ export default function MaintenanceRequestsPage() {
                               <option value="closed">Closed</option>
                             </select>
                           </td>
-                          <td className="px-3 py-3 align-top">{renderActionButtons(req)}</td>
+                          <td className="px-2 py-3 align-top">{renderActionButtons(req)}</td>
                         </tr>
                         {editingRequestId === req.id && renderEditPanel(req)}
                         {respondingRequestId === req.id && renderRespondPanel(req)}
@@ -1201,18 +1201,18 @@ export default function MaintenanceRequestsPage() {
             <div className="bg-white rounded-lg border border-slate-200 p-6 text-center text-slate-500">No closed requests.</div>
           ) : (
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-              <div className="overflow-x-auto">
+              <div>
                 <table className="w-full table-fixed">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Property</th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[16%]">Tenant</th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Opened</th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Closed</th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[8%]">Cost</th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Accountable</th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[10%]">Actions</th>
+                      <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[9%]">Property</th>
+                      <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[14%]">Tenant</th>
+                      <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
+                      <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[9%]">Opened</th>
+                      <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[9%]">Closed</th>
+                      <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[7%]">Cost</th>
+                      <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[9%]">Accountable</th>
+                      <th className="px-2.5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[16%]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1246,7 +1246,7 @@ export default function MaintenanceRequestsPage() {
                           <td className="px-3 py-3 align-top text-xs text-slate-600 capitalize">
                             {req.costAccountability?.replace("_", " ") || "—"}
                           </td>
-                          <td className="px-3 py-3 align-top">{renderActionButtons(req, true)}</td>
+                          <td className="px-2 py-3 align-top">{renderActionButtons(req, true)}</td>
                         </tr>
                         {editingRequestId === req.id && renderEditPanel(req)}
                         {commentingId === req.id && renderCommentPanel(req)}

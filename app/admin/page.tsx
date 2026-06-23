@@ -346,8 +346,8 @@ export default function AdminDashboard() {
                 <h2 className="text-lg font-semibold text-slate-900">Properties Overview</h2>
                 <p className="text-sm text-slate-500">Financial snapshot per property.</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div>
+                <table className="w-full text-sm table-fixed">
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
                       <th className="py-3 px-4 text-left font-medium">Property</th>
@@ -530,8 +530,8 @@ export default function AdminDashboard() {
                 </div>
               </div>
               {currentMonthBillingRows.length ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-[980px] w-full text-sm">
+                <div>
+                  <table className="w-full text-sm table-fixed">
                     <thead className="bg-slate-50 text-slate-600">
                       <tr>
                         <th className="py-3 px-4 text-left font-medium w-12">Select</th>
@@ -648,8 +648,8 @@ export default function AdminDashboard() {
                 </div>
               </div>
               {nextMonthBillingRows.length ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-[900px] w-full text-sm">
+                <div>
+                  <table className="w-full text-sm table-fixed">
                     <thead className="bg-slate-50 text-slate-600">
                       <tr>
                         <th className="py-3 px-4 text-left font-medium">Property</th>
@@ -693,8 +693,8 @@ export default function AdminDashboard() {
                 <h2 className="text-lg font-semibold text-slate-900">Open Maintenance Requests</h2>
                 <p className="text-sm text-slate-500">Manage active issues and update status.</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div>
+                <table className="w-full text-sm table-fixed">
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
                       <th className="py-3 px-4 text-left font-medium">Created</th>

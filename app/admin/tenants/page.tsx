@@ -556,8 +556,8 @@ export default function TenantInvitesPage() {
             No invites created yet.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div>
+            <table className="w-full table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -690,8 +690,8 @@ export default function TenantInvitesPage() {
         ) : users.length === 0 ? (
           <div className="p-6 text-center text-gray-500">No users found.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div>
+            <table className="w-full table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">

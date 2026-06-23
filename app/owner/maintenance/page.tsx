@@ -167,8 +167,8 @@ export default function OwnerMaintenancePage() {
               ))}
             </div>
             <div className="hidden md:block bg-white rounded-lg border border-slate-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div>
+                <table className="w-full table-fixed">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">

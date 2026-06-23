@@ -490,8 +490,8 @@ export default function OwnerBilling() {
                 );
               })}
             </div>
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="hidden md:block">
+              <table className="w-full text-sm table-fixed">
                 <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-3 text-left">Property</th>

@@ -784,8 +784,8 @@ export default function OwnerBillingDetailsPage() {
           </div>
         ) : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div>
+            <table className="w-full table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Property</th>
@@ -1206,7 +1206,7 @@ export default function OwnerBillingDetailsPage() {
           )}
         </div>
         <div className={showDesktopSite ? "block" : "hidden md:block"}>
-        <div className="overflow-x-auto">
+        <div>
           <table className="w-full table-fixed text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
               <tr>

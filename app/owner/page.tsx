@@ -148,8 +148,8 @@ export default function OwnerDashboard() {
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">No properties match the current search and filter.</div>
         ) : (
           <>
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="hidden lg:block">
+              <table className="w-full text-sm table-fixed">
                 <thead className="border-b border-slate-200 text-slate-500 uppercase text-xs tracking-wide">
                   <tr>
                     <th className="py-3 text-left font-semibold">Address</th>

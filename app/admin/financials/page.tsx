@@ -1492,8 +1492,8 @@ export default function FinancialsPage() {
           </p>
           <form onSubmit={savePropertyFinancials} className="space-y-6">
             {/* Financial Data Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-slate-300">
+            <div>
+              <table className="w-full border-collapse border border-slate-300 table-fixed">
                 <thead>
                   <tr className="bg-slate-100">
                     <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">Field</th>
@@ -1628,8 +1628,8 @@ export default function FinancialsPage() {
               {loadingLeases ? (
                 <p className="text-sm text-slate-500">Loading lease records...</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse border border-slate-300 text-sm">
+                <div>
+                  <table className="w-full border-collapse border border-slate-300 text-sm table-fixed">
                     <thead>
                       <tr className="bg-slate-100">
                         <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Source</th>
@@ -1759,8 +1759,8 @@ export default function FinancialsPage() {
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
                 <div className="space-y-4">
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse border border-slate-300 text-sm">
+                  <div>
+                    <table className="w-full border-collapse border border-slate-300 text-sm table-fixed">
                       <thead>
                         <tr className="bg-slate-100">
                           <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Type</th>
@@ -2082,7 +2082,7 @@ export default function FinancialsPage() {
                 <h3 className="text-white font-semibold text-sm uppercase tracking-wide">Projected Annual Income Summary</h3>
                 <p className="text-slate-300 text-xs mt-0.5">Full-year projection based on current planned costs</p>
               </div>
-              <table className="w-full border-collapse text-sm">
+              <table className="w-full border-collapse text-sm table-fixed">
                 <thead>
                   <tr className="bg-slate-50">
                     <th className="border border-slate-200 px-4 py-2 text-left font-semibold text-slate-700 w-1/2">Category</th>
@@ -2512,8 +2512,8 @@ export default function FinancialsPage() {
               <p className="text-slate-600">Loading monthly data...</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-slate-300 text-sm">
+            <div>
+              <table className="w-full border-collapse border border-slate-300 text-sm table-fixed">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-slate-100">
                     <th className="border border-slate-300 px-3 py-2 text-left font-semibold sticky left-0 bg-slate-100 z-20">Month</th>
@@ -2833,7 +2833,7 @@ export default function FinancialsPage() {
 
                 <div>
                   <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Basis &amp; Period</div>
-                  <table className="w-full border-collapse">
+                  <table className="w-full border-collapse table-fixed">
                     <tbody className="divide-y divide-slate-100">
                       {[
                         ["Cost Basis", "Purchase Price + Repairs + Closing Costs"],
@@ -2851,7 +2851,7 @@ export default function FinancialsPage() {
 
                 <div>
                   <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Plan Values (selected period)</div>
-                  <table className="w-full border-collapse">
+                  <table className="w-full border-collapse table-fixed">
                     <tbody className="divide-y divide-slate-100">
                       {[
                         ["Plan Period", "YTD: lease-start month (or Jan) through current month of selected year. Lease / All-Time: lease-start through today (capped at lease_end for Lease view)."],
@@ -2874,7 +2874,7 @@ export default function FinancialsPage() {
 
                 <div>
                   <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Income &amp; Expenses (Actual)</div>
-                  <table className="w-full border-collapse">
+                  <table className="w-full border-collapse table-fixed">
                     <tbody className="divide-y divide-slate-100">
                       {[
                         ["Gross Income", "Sum of monthly rent_income for the period. Includes last-month deposit in the month it was physically received."],
@@ -2895,7 +2895,7 @@ export default function FinancialsPage() {
 
                 <div>
                   <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">ROI Calculations</div>
-                  <table className="w-full border-collapse">
+                  <table className="w-full border-collapse table-fixed">
                     <tbody className="divide-y divide-slate-100">
                       {[
                         ["ROI - Net Income (Pre-Tax)", "Net Income / Cost Basis x 100"],
@@ -2915,7 +2915,7 @@ export default function FinancialsPage() {
 
                 <div>
                   <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">Home Value &amp; Appreciation</div>
-                  <table className="w-full border-collapse">
+                  <table className="w-full border-collapse table-fixed">
                     <tbody className="divide-y divide-slate-100">
                       {[
                         ["Appreciation since purchase", "(Current Market Value - Cost Basis) / Cost Basis x 100"],
@@ -2934,7 +2934,7 @@ export default function FinancialsPage() {
 
                 <div>
                   <div className="font-semibold text-slate-700 mb-1.5 uppercase tracking-wide text-[10px]">YTD Performance Cards</div>
-                  <table className="w-full border-collapse">
+                  <table className="w-full border-collapse table-fixed">
                     <tbody className="divide-y divide-slate-100">
                       {[
                         ["YTD Income ROI", "Net Income / Cost Basis x 100"],
@@ -2973,8 +2973,8 @@ export default function FinancialsPage() {
       {/* Property List with Last Updated Timestamps */}
       <div className="mt-8 bg-white rounded-lg border border-slate-200 p-6">
         <h2 className="text-xl font-semibold mb-4">All Properties - Financial Data Status</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse border border-slate-300">
+        <div>
+          <table className="w-full border-collapse border border-slate-300 table-fixed">
             <thead>
               <tr className="bg-slate-100">
                 <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">Property</th>

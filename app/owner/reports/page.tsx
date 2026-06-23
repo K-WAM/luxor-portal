@@ -228,8 +228,8 @@ export default function OwnerReportsPage() {
                     </button>
                     {expanded && (
                       <>
-                        <div className="hidden md:block overflow-x-auto">
-                          <table className="w-full text-sm">
+                        <div className="hidden md:block">
+                          <table className="w-full text-sm table-fixed">
                             <thead className="border-t border-slate-200 bg-white text-slate-500 uppercase text-xs tracking-wide">
                               <tr>
                                 <th className="px-4 py-3 text-left font-semibold">Payment Description</th>
@@ -315,8 +315,8 @@ export default function OwnerReportsPage() {
                     </button>
                     {expanded && (
                       <>
-                        <div className="hidden md:block overflow-x-auto">
-                          <table className="w-full text-sm">
+                        <div className="hidden md:block">
+                          <table className="w-full text-sm table-fixed">
                             <thead className="border-t border-slate-200 bg-white text-slate-500 uppercase text-xs tracking-wide">
                               <tr>
                                 <th className="px-4 py-3 text-left font-semibold">Issue</th>

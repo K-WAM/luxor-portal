@@ -391,8 +391,8 @@ export default function PropertyFinancialSummaryPage() {
       {/* Property Financials Overview */}
       <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Property Financial Data</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse border border-slate-300">
+        <div>
+          <table className="w-full border-collapse border border-slate-300 table-fixed">
             <thead>
               <tr className="bg-slate-100">
                 <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">Field</th>
@@ -447,8 +447,8 @@ export default function PropertyFinancialSummaryPage() {
       {yeTarget && (
         <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Year-End Targets for {currentYear}</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-slate-300">
+          <div>
+            <table className="w-full border-collapse border border-slate-300 table-fixed">
               <thead>
                 <tr className="bg-slate-100">
                   <th className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">Category</th>
@@ -497,8 +497,8 @@ export default function PropertyFinancialSummaryPage() {
       {/* Month-by-Month Summary */}
       <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Monthly Performance Summary - {periodLabelShort}</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse border border-slate-300 text-sm">
+        <div>
+          <table className="w-full border-collapse border border-slate-300 text-sm table-fixed">
             <thead>
               <tr className="bg-slate-100">
                 <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Month</th>

@@ -1324,7 +1324,7 @@ export default function AdminBilling() {
           )}
         </div>
         <div className={showDesktopSite ? "block" : "hidden md:block"}>
-        <div className="overflow-x-auto">
+        <div>
           <table className="w-full table-fixed text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
               <tr>

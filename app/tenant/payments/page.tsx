@@ -565,8 +565,8 @@ export default function TenantPayments() {
                     </div>
                   ))}
                 </div>
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full border-collapse">
+                <div className="hidden md:block">
+                  <table className="w-full border-collapse table-fixed">
                     <thead>
                       <tr className="bg-gray-50 text-left text-sm text-gray-600">
                         <th className="py-2 px-3">Month</th>

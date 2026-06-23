@@ -1101,8 +1101,8 @@ export default function OwnerInvestmentReportsView() {
               Gross {formatCurrency(financialStatementRow.grossIncome)} - Expenses {formatCurrency(financialStatementRow.totalExpenses)} = Net {formatCurrency(financialStatementRow.netIncome)}
             </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+          <div>
+            <table className="w-full text-sm table-fixed">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="py-2 pr-4 font-semibold">Category</th>

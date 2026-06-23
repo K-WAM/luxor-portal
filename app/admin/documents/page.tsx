@@ -732,8 +732,8 @@ export default function AdminDocumentsPage() {
             No documents uploaded yet. Use the form above to add leases, insurance, HOA rules, or performance reports.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+          <div>
+            <table className="w-full text-sm table-fixed">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-slate-500">
                   <th className="py-2 pr-4">Property</th>
