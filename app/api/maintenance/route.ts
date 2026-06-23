@@ -267,6 +267,14 @@ async function sendTenantScheduleEmail(params: {
   }
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  open: "Open",
+  in_progress: "In Progress",
+  closed: "Resolved",
+  completed: "Resolved",
+  cancelled: "Cancelled",
+};
+
 async function sendTenantStatusEmail(params: {
   type: "opened" | "closed";
   tenantEmail: string;
@@ -275,40 +283,56 @@ async function sendTenantStatusEmail(params: {
   category: string;
   description: string;
   requestId: string;
+  status?: string;
+  dateCreated?: string;
   closingNote?: string;
   cost?: number | null;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return;
 
+  // connect@luxordev.com is always copied on tenant notifications.
+  const cc = process.env.MAINTENANCE_EMAIL_TO || "connect@luxordev.com";
   const isOpen = params.type === "opened";
   const subject = isOpen
-    ? "Your maintenance request has been received"
+    ? "Update on your maintenance request"
     : "Your maintenance request has been resolved";
+  const headerTitle = isOpen ? "Maintenance Request Update" : "Maintenance Request Resolved";
+  const statusLabel = STATUS_LABELS[String(params.status || (isOpen ? "open" : "closed"))] || "Open";
+  const statusColor = isOpen ? "#2563eb" : "#16a34a";
   const categoryLabel = params.category
     ? params.category.charAt(0).toUpperCase() + params.category.slice(1)
     : "General";
+  const createdLabel = params.dateCreated
+    ? new Date(params.dateCreated).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : "—";
+
+  const row = (label: string, value: string, topBorder = false) =>
+    `<tr><td style="padding:8px 0;font-size:13px;color:#64748b;width:150px;vertical-align:top;${topBorder ? "border-top:1px solid #f1f5f9;" : ""}">${label}</td><td style="padding:8px 0;font-size:14px;color:#0f172a;${topBorder ? "border-top:1px solid #f1f5f9;" : ""}white-space:pre-wrap;">${value}</td></tr>`;
 
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;color:#1e293b;">
       <div style="background:#0f172a;padding:24px 32px;border-radius:8px 8px 0 0;">
-        <h1 style="margin:0;font-size:18px;font-weight:600;color:#f8fafc;">${subject}</h1>
+        <h1 style="margin:0;font-size:18px;font-weight:600;color:#f8fafc;letter-spacing:-0.01em;">${headerTitle}</h1>
       </div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;padding:28px 32px;border-radius:0 0 8px 8px;">
-        <p style="margin:0 0 16px;font-size:14px;color:#334155;">Hi ${params.tenantName},</p>
+      <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;padding:28px 32px;border-radius:0 0 8px 8px;">
+        <p style="margin:0 0 16px;font-size:14px;color:#334155;">Hi ${params.tenantName || "there"},</p>
         <p style="margin:0 0 20px;font-size:14px;color:#334155;">
           ${isOpen
-            ? "We have received your maintenance request and will be in touch shortly."
+            ? "Here is the latest update on your maintenance request. We will be in touch as it progresses."
             : "Your maintenance request has been resolved. Please reach out if you have any further concerns."}
         </p>
         <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:8px 0;font-size:13px;color:#64748b;width:140px;">Property</td><td style="padding:8px 0;font-size:14px;color:#0f172a;">${params.propertyAddress}</td></tr>
-          <tr><td style="padding:8px 0;font-size:13px;color:#64748b;">Category</td><td style="padding:8px 0;font-size:14px;color:#0f172a;">${categoryLabel}</td></tr>
-          <tr><td style="padding:8px 0;font-size:13px;color:#64748b;vertical-align:top;border-top:1px solid #f1f5f9;">Description</td><td style="padding:8px 0;font-size:14px;color:#0f172a;border-top:1px solid #f1f5f9;white-space:pre-wrap;">${params.description}</td></tr>
-          ${params.closingNote ? `<tr><td style="padding:8px 0;font-size:13px;color:#64748b;vertical-align:top;">Resolution note</td><td style="padding:8px 0;font-size:14px;color:#0f172a;white-space:pre-wrap;">${params.closingNote}</td></tr>` : ""}
-          ${params.cost != null ? `<tr><td style="padding:8px 0;font-size:13px;color:#64748b;">Cost</td><td style="padding:8px 0;font-size:14px;color:#0f172a;">$${Number(params.cost).toFixed(2)}</td></tr>` : ""}
+          ${row("Tenant", params.tenantName || "—")}
+          ${row("Property", params.propertyAddress || "—")}
+          ${row("Date created", createdLabel)}
+          <tr><td style="padding:8px 0;font-size:13px;color:#64748b;width:150px;">Status</td><td style="padding:8px 0;"><span style="display:inline-block;font-size:12px;font-weight:600;color:#ffffff;background:${statusColor};padding:3px 10px;border-radius:999px;">${statusLabel}</span></td></tr>
+          ${row("Category", categoryLabel, true)}
+          ${row("Description", params.description || "—", true)}
+          ${params.closingNote ? row("Resolution note", params.closingNote, true) : ""}
+          ${params.cost != null ? row("Cost", `$${Number(params.cost).toFixed(2)}`) : ""}
         </table>
-        <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;">Request ID: ${params.requestId}</p>
+        <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;">Luxor Property Management &middot; Request ID: ${params.requestId}</p>
       </div>
     </div>`;
 
@@ -319,6 +343,7 @@ async function sendTenantStatusEmail(params: {
       body: JSON.stringify({
         from: "Luxor Maintenance <noreply@luxordev.com>",
         to: [params.tenantEmail],
+        cc: [cc],
         subject,
         html,
       }),
@@ -403,6 +428,7 @@ export async function GET(request: Request) {
       closedAt: item.closed_at,
       propertyAddress: item.properties?.address,
       attachments: item.attachments || [],
+      activityLog: Array.isArray(item.activity_log) ? item.activity_log : [],
       schedulingDetails: normalizeSchedulingDetails(item.scheduling_details),
     }))
 
@@ -459,6 +485,7 @@ export async function POST(request: Request) {
       }
     }
 
+    const creator = (user.user_metadata as any)?.name || user.email || (role === 'tenant' ? 'Tenant' : 'Admin')
     const insertData: any = {
       property_id: body.propertyId,
       tenant_name: tenantName,
@@ -467,6 +494,7 @@ export async function POST(request: Request) {
       description: body.description,
       status: 'open',
       scheduling_details: schedulingDetails,
+      activity_log: [{ at: new Date().toISOString(), type: 'created', note: 'Request created', author: creator }],
     }
 
     // Add optional fields if provided
@@ -541,11 +569,21 @@ export async function PATCH(request: Request) {
       sendConfirmationEmail,
       sendOpenedEmail,
       sendClosedEmail,
+      addComment,
     } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID required' }, { status: 400 })
     }
+
+    // Fetch the existing row first so we can append to the audit log and detect
+    // genuine status changes (not no-op re-saves).
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('maintenance_requests')
+      .select('status, activity_log')
+      .eq('id', id)
+      .single()
+    if (existingError) throw existingError
 
     const updateData: any = {}
     if (status) {
@@ -574,12 +612,39 @@ export async function PATCH(request: Request) {
       updateData.scheduling_details = normalizeSchedulingDetails(schedulingDetails)
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('maintenance_requests')
-      .update(updateData)
-      .eq('id', id)
-      .select(`*, properties(address)`)
-      .single()
+    // ---- Audit trail: append timestamped entries for an auditable record ----
+    const author = (user.user_metadata as any)?.name || user.email || 'Admin'
+    const nowIso = new Date().toISOString()
+    const auditEntries: { at: string; type: string; note: string; author: string }[] = []
+
+    if (typeof addComment === 'string' && addComment.trim()) {
+      auditEntries.push({ at: nowIso, type: 'comment', note: addComment.trim(), author })
+    }
+    if (status && status !== existing?.status) {
+      auditEntries.push({ at: nowIso, type: 'status', note: `Status changed to ${STATUS_LABELS[status] || status}`, author })
+    }
+    if (sendOpenedEmail) {
+      auditEntries.push({ at: nowIso, type: 'email', note: 'Update email sent to tenant', author })
+    }
+    if (sendClosedEmail) {
+      auditEntries.push({ at: nowIso, type: 'email', note: 'Closure email sent to tenant', author })
+    }
+    if (sendConfirmationEmail) {
+      auditEntries.push({ at: nowIso, type: 'email', note: 'Visit schedule confirmed with tenant', author })
+    }
+    if (auditEntries.length > 0) {
+      const currentLog = Array.isArray(existing?.activity_log) ? existing.activity_log : []
+      updateData.activity_log = [...currentLog, ...auditEntries]
+    }
+
+    // Email-only requests with no other changes still log to the audit trail above,
+    // so an empty update only happens for true no-ops — fetch instead of UPDATE.
+    const table = supabaseAdmin.from('maintenance_requests')
+    const builder = Object.keys(updateData).length > 0
+      ? table.update(updateData).eq('id', id).select(`*, properties(address)`)
+      : table.select(`*, properties(address)`).eq('id', id)
+
+    const { data, error } = await builder.single()
 
     if (error) throw error
 
@@ -610,6 +675,8 @@ export async function PATCH(request: Request) {
         category: data.category || "General",
         description: data.description || "",
         requestId: data.id,
+        status: data.status,
+        dateCreated: data.created_at,
       }).catch(() => {});
     }
 
@@ -622,6 +689,8 @@ export async function PATCH(request: Request) {
         category: data.category || "General",
         description: data.description || "",
         requestId: data.id,
+        status: data.status,
+        dateCreated: data.created_at,
         closingNote: data.closing_note || "",
         cost: data.cost,
       }).catch(() => {});

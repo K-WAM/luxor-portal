@@ -1,26 +1,31 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import {
   Pencil,
   Trash2,
+  Calendar,
+  CalendarCheck,
   CalendarClock,
   Mail,
   Upload,
   X,
   Check,
   Plus,
+  MessageSquarePlus,
   FileText,
-  Copy,
   Search,
   ChevronDown,
   ChevronUp,
+  MessageSquare,
+  CircleDot,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getShortPropertyName } from "@/lib/property-short-name";
 
 type Attachment = { url: string; name: string; type?: string; size?: number };
+type ActivityEntry = { at: string; type: string; note: string; author?: string };
 
 type MaintenanceRequest = {
   id: string;
@@ -38,6 +43,7 @@ type MaintenanceRequest = {
   createdAt?: string;
   closedAt?: string;
   attachments?: Attachment[];
+  activityLog?: ActivityEntry[];
   schedulingDetails?: {
     availability_options: { date: string; window: string }[];
     is_flexible: boolean;
@@ -100,6 +106,13 @@ export default function MaintenanceRequestsPage() {
   const [propertyTenants, setPropertyTenants] = useState<Map<string, PropertyTenant[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ msg: string; action?: { label: string; run: () => void } } | null>(null);
+
+  const flashNotice = (msg: string, action?: { label: string; run: () => void }) => {
+    setNotice({ msg, action });
+    // Plain confirmations auto-dismiss; ones with an action stay until used/dismissed.
+    if (!action) setTimeout(() => setNotice((n) => (n?.msg === msg ? null : n)), 2500);
+  };
   const [savingId, setSavingId] = useState<string | null>(null);
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -110,14 +123,25 @@ export default function MaintenanceRequestsPage() {
   const [search, setSearch] = useState("");
   const [showClosed, setShowClosed] = useState(true);
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [commentingId, setCommentingId] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState("");
+  // Hidden date inputs per row, triggered by the calendar icons for at-a-glance date edits.
+  const dateInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const copyToClipboard = (text: string, key: string) => {
-    if (!text) return;
-    navigator.clipboard?.writeText(text).then(() => {
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500);
-    });
+  const openDatePicker = (key: string) => {
+    const el = dateInputRefs.current[key];
+    if (!el) return;
+    if (typeof el.showPicker === "function") {
+      try { el.showPicker(); return; } catch { /* fall through */ }
+    }
+    el.focus();
+    el.click();
+  };
+
+  const toDateInput = (value?: string) => {
+    if (!value) return "";
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? "" : toDateTimeLocal(value).slice(0, 10);
   };
 
   const [createForm, setCreateForm] = useState({
@@ -364,10 +388,67 @@ export default function MaintenanceRequestsPage() {
         ...(type === "opened" ? { sendOpenedEmail: true } : { sendClosedEmail: true }),
       });
       setError(null);
+      flashNotice(`Notification sent to ${req.tenantName || "tenant"}.`);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setSendingEmail(null);
+    }
+  };
+
+  // Quick comment — appends a timestamped entry to the ticket's audit log.
+  const addComment = async (req: MaintenanceRequest) => {
+    const text = commentText.trim();
+    if (!text) return;
+    try {
+      setSavingId(req.id);
+      await patch({ id: req.id, addComment: text });
+      await loadRequests();
+      setCommentText("");
+      setError(null);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // Quick "date opened" edit from the row calendar icon (no panel needed).
+  const setOpenedDate = async (req: MaintenanceRequest, dateStr: string) => {
+    if (!dateStr) return;
+    try {
+      setSavingId(req.id);
+      await patch({ id: req.id, createdAt: new Date(`${dateStr}T12:00:00`).toISOString() });
+      await loadRequests();
+      setError(null);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // Quick close: pick a closed date from the row icon → mark closed on that date.
+  const quickClose = async (req: MaintenanceRequest, dateStr: string) => {
+    if (!dateStr) return;
+    try {
+      setSavingId(req.id);
+      await patch({
+        id: req.id,
+        status: "closed",
+        closedAt: new Date(`${dateStr}T12:00:00`).toISOString(),
+      });
+      await loadRequests();
+      setError(null);
+      const closedLabel = formatDateShort(new Date(`${dateStr}T12:00:00`).toISOString());
+      flashNotice(
+        `Request closed as of ${closedLabel}.`,
+        req.tenantEmail ? { label: "Notify tenant of closure", run: () => sendEmailOnly(req, "closed") } : undefined
+      );
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSavingId(null);
     }
   };
 
@@ -526,31 +607,21 @@ export default function MaintenanceRequestsPage() {
               </div>
               <div>
                 <label className={labelCls}>Tenant Email</label>
-                <div className="flex gap-1.5">
-                  <input
-                    type="email"
-                    name="tenantEmail"
-                    list={`edit-tenant-emails-${req.id}`}
-                    value={editForm.tenantEmail}
-                    onChange={(e) => {
-                      const t = tenants.find((t) => t.email === e.target.value);
-                      setEditForm((f) => ({ ...f, tenantEmail: e.target.value, tenantName: t?.name || f.tenantName }));
-                    }}
-                    className={inputCls}
-                    placeholder="Select or type…"
-                  />
-                  <datalist id={`edit-tenant-emails-${req.id}`}>
-                    {tenants.map((t) => <option key={t.email} value={t.email} />)}
-                  </datalist>
-                  <button
-                    type="button"
-                    title={copiedKey === `edit-${req.id}` ? "Copied!" : "Copy email"}
-                    onClick={() => copyToClipboard(editForm.tenantEmail, `edit-${req.id}`)}
-                    className="shrink-0 p-2 rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-                  >
-                    {copiedKey === `edit-${req.id}` ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}
-                  </button>
-                </div>
+                <input
+                  type="email"
+                  name="tenantEmail"
+                  list={`edit-tenant-emails-${req.id}`}
+                  value={editForm.tenantEmail}
+                  onChange={(e) => {
+                    const t = tenants.find((t) => t.email === e.target.value);
+                    setEditForm((f) => ({ ...f, tenantEmail: e.target.value, tenantName: t?.name || f.tenantName }));
+                  }}
+                  className={inputCls}
+                  placeholder="Select or type…"
+                />
+                <datalist id={`edit-tenant-emails-${req.id}`}>
+                  {tenants.map((t) => <option key={t.email} value={t.email} />)}
+                </datalist>
               </div>
             </div>
 
@@ -644,6 +715,15 @@ export default function MaintenanceRequestsPage() {
                   }}
                 />
               </label>
+              {req.status !== "closed" && (
+                <button
+                  type="button"
+                  onClick={() => startRespond(req)}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-700 hover:bg-slate-50 text-sm font-medium"
+                >
+                  <CalendarClock size={14} /> Schedule Visit
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setEditingRequestId(null)}
@@ -707,42 +787,152 @@ export default function MaintenanceRequestsPage() {
     </tr>
   );
 
-  const iconBtn = "p-2 rounded-md border disabled:opacity-50 transition-colors";
+  const formatDateTime = (value?: string) =>
+    value
+      ? new Date(value).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+      : "";
+
+  const ACTIVITY_STYLE: Record<string, { color: string; label: string }> = {
+    created: { color: "text-slate-500", label: "Created" },
+    comment: { color: "text-violet-600", label: "Comment" },
+    status: { color: "text-amber-600", label: "Status" },
+    email: { color: "text-blue-600", label: "Email" },
+    note: { color: "text-slate-500", label: "Note" },
+  };
+
+  // Quick-comment + auditable activity timeline (newest first).
+  const renderCommentPanel = (req: MaintenanceRequest) => {
+    const log = [...(req.activityLog || [])].reverse();
+    const isSaving = savingId === req.id;
+    return (
+      <tr>
+        <td colSpan={8} className="bg-violet-50/40 border-t border-b border-slate-200 px-4 py-4">
+          <div className="max-w-3xl">
+            <div className="flex items-center gap-2 mb-2">
+              <MessageSquare size={15} className="text-violet-600" />
+              <span className="text-sm font-semibold text-slate-700">Activity & Comments</span>
+              <span className="text-xs text-slate-400">— audit record</span>
+            </div>
+
+            {/* Quick add */}
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addComment(req); } }}
+                placeholder="Add a quick update… (e.g. 'Vendor scheduled for Thursday')"
+                className={`${inputCls} flex-1`}
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => addComment(req)}
+                disabled={isSaving || !commentText.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-md hover:bg-violet-700 disabled:opacity-50 text-sm font-medium shrink-0"
+              >
+                <Plus size={14} /> {isSaving ? "Saving…" : "Add"}
+              </button>
+            </div>
+
+            {/* Timeline */}
+            {log.length === 0 ? (
+              <p className="text-xs text-slate-400">No activity recorded yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {log.map((entry, i) => {
+                  const style = ACTIVITY_STYLE[entry.type] || ACTIVITY_STYLE.note;
+                  return (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <CircleDot size={13} className={`mt-1 shrink-0 ${style.color}`} />
+                      <div className="min-w-0">
+                        <span className="text-slate-800 break-words">{entry.note}</span>
+                        <div className="text-xs text-slate-400">
+                          {style.label} · {formatDateTime(entry.at)}{entry.author ? ` · ${entry.author}` : ""}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  const iconBtn = "p-2 rounded-md border disabled:opacity-50 transition-colors shrink-0";
   const renderActionButtons = (req: MaintenanceRequest, isClosed = false) => (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="relative flex flex-nowrap items-center gap-1.5">
+      {/* Hidden native date pickers triggered by the calendar icons */}
+      <input
+        type="date"
+        ref={(el) => { dateInputRefs.current[`${req.id}-opened`] = el; }}
+        defaultValue={toDateInput(req.createdAt)}
+        onChange={(e) => setOpenedDate(req, e.target.value)}
+        className="absolute left-0 top-0 h-0 w-0 opacity-0 pointer-events-none"
+        tabIndex={-1}
+        aria-hidden
+      />
+      {!isClosed && (
+        <input
+          type="date"
+          ref={(el) => { dateInputRefs.current[`${req.id}-closed`] = el; }}
+          onChange={(e) => quickClose(req, e.target.value)}
+          className="absolute left-0 top-0 h-0 w-0 opacity-0 pointer-events-none"
+          tabIndex={-1}
+          aria-hidden
+        />
+      )}
+
       <button
         title={editingRequestId === req.id ? "Close editor" : "Edit"}
         className={`${iconBtn} ${editingRequestId === req.id ? "border-slate-400 bg-slate-100 text-slate-800" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}
         onClick={() => editingRequestId === req.id ? setEditingRequestId(null) : startEdit(req)}
         disabled={savingId === req.id}
       >
-        <Pencil size={15} />
+        <Pencil size={16} />
+      </button>
+      <button
+        title={`Edit date opened (currently ${formatDateShort(req.createdAt)})`}
+        className={`${iconBtn} border-slate-300 bg-white text-slate-700 hover:bg-slate-100`}
+        onClick={() => openDatePicker(`${req.id}-opened`)}
+        disabled={savingId === req.id}
+      >
+        <Calendar size={16} />
       </button>
       {!isClosed && (
         <button
-          title="Respond / Schedule visit"
+          title="Close request — pick a closed date"
           className={`${iconBtn} border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
-          onClick={() => respondingRequestId === req.id ? setRespondingRequestId(null) : startRespond(req)}
+          onClick={() => openDatePicker(`${req.id}-closed`)}
           disabled={savingId === req.id}
         >
-          <CalendarClock size={15} />
+          <CalendarCheck size={16} />
         </button>
       )}
       <button
-        title={req.tenantEmail ? `Email tenant (${req.status === "closed" ? "resolved" : "received"} notice)` : "No tenant email"}
+        title={req.tenantEmail ? `Email tenant (${req.status === "closed" ? "resolved" : "received"} notice)` : "No tenant email on file"}
         className={`${iconBtn} border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100`}
         onClick={() => sendEmailOnly(req, req.status === "closed" ? "closed" : "opened")}
         disabled={sendingEmail === req.id || !req.tenantEmail}
       >
-        <Mail size={15} />
+        <Mail size={16} />
       </button>
       <button
-        title={copiedKey === `row-${req.id}` ? "Copied!" : "Copy tenant email"}
-        className={`${iconBtn} border-slate-300 bg-white text-slate-600 hover:bg-slate-100`}
-        onClick={() => copyToClipboard(req.tenantEmail, `row-${req.id}`)}
-        disabled={!req.tenantEmail}
+        title="Add comment / view history"
+        className={`${iconBtn} ${commentingId === req.id ? "border-violet-400 bg-violet-100 text-violet-800" : "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"}`}
+        onClick={() => {
+          if (commentingId === req.id) { setCommentingId(null); }
+          else { setCommentingId(req.id); setCommentText(""); }
+        }}
+        disabled={savingId === req.id}
       >
-        {copiedKey === `row-${req.id}` ? <Check size={15} className="text-emerald-600" /> : <Copy size={15} />}
+        <MessageSquarePlus size={16} />
+        {req.activityLog && req.activityLog.length > 1 && (
+          <span className="ml-0.5 align-top text-[10px] font-semibold">{req.activityLog.filter((e) => e.type === "comment").length || ""}</span>
+        )}
       </button>
       <button
         title="Delete"
@@ -750,7 +940,7 @@ export default function MaintenanceRequestsPage() {
         onClick={() => deleteRequest(req.id)}
         disabled={savingId === req.id}
       >
-        <Trash2 size={15} />
+        <Trash2 size={16} />
       </button>
     </div>
   );
@@ -763,7 +953,7 @@ export default function MaintenanceRequestsPage() {
   );
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Maintenance Requests</h1>
         <button
@@ -779,6 +969,22 @@ export default function MaintenanceRequestsPage() {
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex justify-between">
           {error}
           <button onClick={() => setError(null)}><X size={14} /></button>
+        </div>
+      )}
+      {notice && (
+        <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-sm flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2"><Check size={15} /> {notice.msg}</span>
+          <span className="flex items-center gap-2 shrink-0">
+            {notice.action && (
+              <button
+                onClick={() => { notice.action!.run(); setNotice(null); }}
+                className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                <Mail size={13} /> {notice.action.label}
+              </button>
+            )}
+            <button onClick={() => setNotice(null)} title="Dismiss" className="text-emerald-700 hover:text-emerald-900"><X size={14} /></button>
+          </span>
         </div>
       )}
 
@@ -914,13 +1120,13 @@ export default function MaintenanceRequestsPage() {
               <table className="w-full table-fixed">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[11%]">Opened</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[7%]">Age</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[10%]">Property</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[17%]">Tenant</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[10%]">Opened</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[6%]">Age</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[9%]">Property</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[16%]">Tenant</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Description</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[10%]">Status</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[12%]">Actions</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[9%]">Status</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[15%]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -976,6 +1182,7 @@ export default function MaintenanceRequestsPage() {
                         </tr>
                         {editingRequestId === req.id && renderEditPanel(req)}
                         {respondingRequestId === req.id && renderRespondPanel(req)}
+                        {commentingId === req.id && renderCommentPanel(req)}
                       </React.Fragment>
                     );
                   })}
@@ -1042,6 +1249,7 @@ export default function MaintenanceRequestsPage() {
                           <td className="px-3 py-3 align-top">{renderActionButtons(req, true)}</td>
                         </tr>
                         {editingRequestId === req.id && renderEditPanel(req)}
+                        {commentingId === req.id && renderCommentPanel(req)}
                       </React.Fragment>
                     ))}
                   </tbody>
